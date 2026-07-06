@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+  background: #0c0c0d;
+  color: #f4f4f5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(244, 244, 245, 0.16);
+}
+
+/* Quiet scrollbars */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #232327;
+  border-radius: 4px;
+  border: 2px solid #0c0c0d;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #2e2e33;
+}
+
+/* Single, consistent focus treatment across the chrome */
+:focus-visible {
+  outline: 2px solid rgba(244, 244, 245, 0.45);
+  outline-offset: 2px;
+}
+
+@keyframes ark-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ark-spin {
+  animation: ark-spin 0.8s linear infinite;
+}

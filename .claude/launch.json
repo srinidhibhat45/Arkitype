@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "arkitype",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "/Users/srinidhibhat/Desktop/Arkitype"],
+      "port": 3111
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+"use client";
+
+/**
+ * Arkitype — a guided design-system builder.
+ * Welcome moment → seven ordered steps. The rail is the process; each step
+ * is one focused decision with its live canvas.
+ */
+import { useEffect, useState } from "react";
+import { useDesignSystem } from "@/store/useDesignSystem";
+import { Welcome } from "@/components/steps/Welcome";
+import { TopBar } from "@/components/shell/TopBar";
+import { StageRail } from "@/components/shell/StageRail";
+import { ColourStep } from "@/components/steps/ColourStep";
+import { TypeStep } from "@/components/steps/TypeStep";
+import { SpaceStep } from "@/components/steps/SpaceStep";
+import { ShapeStep } from "@/components/steps/ShapeStep";
+import { MotionStep } from "@/components/steps/MotionStep";
+import { RolesStep } from "@/components/steps/RolesStep";
+import { ComponentsStep } from "@/components/steps/ComponentsStep";
+import { PreviewStep } from "@/components/steps/PreviewStep";
+import { ShipStep } from "@/components/steps/ShipStep";
+
+export default function WorkspacePage() {
+  // Gate on client mount so the persisted store hydrates before first paint
+  // (avoids SSR/localStorage mismatch).
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+
+  const started = useDesignSystem((s) => s.meta.started);
+  const activeStep = useDesignSystem((s) => s.journey.activeStep);
+
+  if (!ready) return <div className="h-screen bg-ink" />;
+  if (!started) return <Welcome />;
+
+  return (
+    <div className="flex h-screen flex-col overflow-hidden bg-ink">
+      <TopBar />
+      <div className="flex min-h-0 flex-1">
+        <StageRail />
+        <main className="min-h-0 min-w-0 flex-1">
+          {activeStep === "colour" ? (
+            <ColourStep />
+          ) : activeStep === "type" ? (
+            <TypeStep />
+          ) : activeStep === "space" ? (
+            <SpaceStep />
+          ) : activeStep === "shape" ? (
+            <ShapeStep />
+          ) : activeStep === "motion" ? (
+            <MotionStep />
+          ) : activeStep === "roles" ? (
+            <RolesStep />
+          ) : activeStep === "components" ? (
+            <ComponentsStep />
+          ) : activeStep === "preview" ? (
+            <PreviewStep />
+          ) : (
+            <ShipStep />
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}

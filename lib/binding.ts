@@ -109,6 +109,22 @@ export function bindingSwatch(
   }
 }
 
+/** Where a binding's value is defined, so the inspector can link back to it. */
+export type BindingSource =
+  | { step: "roles"; anchor: string }
+  | { step: "colour"; anchor: string }
+  | null;
+
+export function bindingSource(binding: string): BindingSource {
+  const { kind, value } = parseBinding(binding);
+  if (kind === "role") return { step: "roles", anchor: value };
+  if (kind === "prim") {
+    const cut = value.lastIndexOf("-");
+    return { step: "colour", anchor: cut === -1 ? value : value.slice(0, cut) };
+  }
+  return null; // hex/space/radius/text/leading/weight/font/px/raw have no defining step
+}
+
 /** A short human label for a binding, for the "currently bound to…" chip. */
 export function describeBinding(binding: string): { kind: string; label: string } {
   const { kind, value } = parseBinding(binding);

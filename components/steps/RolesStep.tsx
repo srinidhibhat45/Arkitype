@@ -10,7 +10,7 @@
  *  • Felt immediately: a live in-context card renders in both modes beside the
  *    matrix, and the WCAG audit re-checks contrast on every change.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   PreviewMode,
   useDesignSystem,
@@ -24,7 +24,6 @@ import {
   SelectControl,
   WcagBadge,
 } from "@/components/ui/controls";
-import { StepScaffold } from "@/components/shell/StepScaffold";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -208,97 +207,122 @@ function AddRow({
   );
 }
 
-export function RolesStep() {
+/** The roles contrast audit — shared by the aside, footer note and canvas. */
+export function useRolesAudit() {
   const primitives = useDesignSystem((s) => s.primitives);
+  const semantics = useDesignSystem((s) => s.semantics);
+  return useMemo(() => {
+    const stateSlice = { primitives, semantics };
+    const verdicts = (["light", "dark"] as PreviewMode[]).flatMap((mode) =>
+      A11Y_PAIRS.map(([bg, fg, context]) => ({
+        mode,
+        bg,
+        fg,
+        context,
+        verdict: wcagVerdict(
+          resolveToken(stateSlice, mode, bg),
+          resolveToken(stateSlice, mode, fg)
+        ),
+        bgHex: resolveToken(stateSlice, mode, bg),
+        fgHex: resolveToken(stateSlice, mode, fg),
+      }))
+    );
+    const aaPass = verdicts.filter((v) => v.verdict.aa).length;
+    const aaaPass = verdicts.filter((v) => v.verdict.aaa).length;
+    const failures = verdicts.length - aaPass;
+    return { verdicts, aaPass, aaaPass, failures };
+  }, [primitives, semantics]);
+}
+
+/** Footer note for the Roles tab: AA pass/fail summary. */
+export function RolesFooterNote() {
+  const { verdicts, failures } = useRolesAudit();
+  return failures > 0 ? (
+    <span className="text-amber-400/90">
+      {failures} pairing{failures === 1 ? "" : "s"} below AA — consider fixing
+      before shipping
+    </span>
+  ) : (
+    <span className="text-fg-mute">All {verdicts.length} pairings pass AA</span>
+  );
+}
+
+/** The Roles tab's aside (notes + contrast audit summary + add group). */
+export function RolesAside() {
+  const addGroup = useDesignSystem((s) => s.addGroup);
+  const { verdicts, aaPass, aaaPass } = useRolesAudit();
+
+  return (
+    <>
+      <AsideNote>
+        This is the layer that makes light and dark <em>one</em> system: the
+        same role resolves to different steps per mode.
+      </AsideNote>
+      <AsideNote>
+        Bind a role to a ramp step from its dropdown, or click its colour well
+        for a raw hex when a value has to be exact.
+      </AsideNote>
+
+      <AsideDivider />
+
+      <div className="mb-6 rounded-xl border border-line p-4">
+        <p className="mb-3 text-[12px] font-medium text-fg-dim">Contrast audit</p>
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[12px] text-fg-mute">AA · 4.5:1</span>
+            <span
+              className={`font-mono text-[12px] ${
+                aaPass === verdicts.length ? "text-emerald-400" : "text-amber-400"
+              }`}
+            >
+              {aaPass} / {verdicts.length}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between">
+            <span className="text-[12px] text-fg-mute">AAA · 7:1</span>
+            <span className="font-mono text-[12px] text-fg-dim">
+              {aaaPass} / {verdicts.length}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <p className="mb-2 text-[12px] font-medium text-fg-dim">Add a group</p>
+        <AddRow placeholder="e.g. Chart" onAdd={addGroup} />
+      </div>
+
+      <AsideNote>
+        AA is the shipping bar. AAA is worth chasing for body copy but is often
+        impractical for muted text.
+      </AsideNote>
+    </>
+  );
+}
+
+/** The Roles tab's canvas (in-context card, role matrix, contrast audit). */
+export function RolesCanvas() {
   const semantics = useDesignSystem((s) => s.semantics);
   const groups = semantics.groups;
   const addRole = useDesignSystem((s) => s.addRole);
   const removeRole = useDesignSystem((s) => s.removeRole);
-  const addGroup = useDesignSystem((s) => s.addGroup);
-  const stateSlice = { primitives, semantics };
+  const pendingFocus = useDesignSystem((s) => s.pendingFocus);
+  const setPendingFocus = useDesignSystem((s) => s.setPendingFocus);
+  const { verdicts } = useRolesAudit();
 
-  const verdicts = (["light", "dark"] as PreviewMode[]).flatMap((mode) =>
-    A11Y_PAIRS.map(([bg, fg, context]) => ({
-      mode,
-      bg,
-      fg,
-      context,
-      verdict: wcagVerdict(
-        resolveToken(stateSlice, mode, bg),
-        resolveToken(stateSlice, mode, fg)
-      ),
-      bgHex: resolveToken(stateSlice, mode, bg),
-      fgHex: resolveToken(stateSlice, mode, fg),
-    }))
-  );
-  const aaPass = verdicts.filter((v) => v.verdict.aa).length;
-  const aaaPass = verdicts.filter((v) => v.verdict.aaa).length;
-  const failures = verdicts.length - aaPass;
-
-  const roleCount = groups.reduce((n, g) => n + g.tokens.length, 0);
+  const [flashToken, setFlashToken] = useState<string | null>(null);
+  useEffect(() => {
+    if (pendingFocus?.step !== "roles") return;
+    const anchor = pendingFocus.anchor;
+    document.getElementById(`role-${anchor}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setFlashToken(anchor);
+    setPendingFocus(null);
+    const t = setTimeout(() => setFlashToken(null), 1500);
+    return () => clearTimeout(t);
+  }, [pendingFocus, setPendingFocus]);
 
   return (
-    <StepScaffold
-      step="roles"
-      title="Meaning, mapped onto values"
-      lede={`Components never touch raw colours — they ask for roles like surface-base or feedback-success-text, and each role points at a primitive step (or a literal hex) per mode. ${roleCount} roles across ${groups.length} groups, all editable. Remap anything and every component follows; the audit re-checks contrast on every change.`}
-      footerNote={
-        failures > 0 ? (
-          <span className="text-amber-400/90">
-            {failures} pairing{failures === 1 ? "" : "s"} below AA — consider
-            fixing before shipping
-          </span>
-        ) : (
-          <span className="text-fg-mute">All {verdicts.length} pairings pass AA</span>
-        )
-      }
-      aside={
-        <>
-          <AsideNote>
-            This is the layer that makes light and dark <em>one</em> system: the
-            same role resolves to different steps per mode.
-          </AsideNote>
-          <AsideNote>
-            Bind a role to a ramp step from its dropdown, or click its colour well
-            for a raw hex when a value has to be exact.
-          </AsideNote>
-
-          <AsideDivider />
-
-          <div className="mb-6 rounded-xl border border-line p-4">
-            <p className="mb-3 text-[12px] font-medium text-fg-dim">Contrast audit</p>
-            <div className="space-y-2">
-              <div className="flex items-baseline justify-between">
-                <span className="text-[12px] text-fg-mute">AA · 4.5:1</span>
-                <span
-                  className={`font-mono text-[12px] ${
-                    aaPass === verdicts.length ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {aaPass} / {verdicts.length}
-                </span>
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-[12px] text-fg-mute">AAA · 7:1</span>
-                <span className="font-mono text-[12px] text-fg-dim">
-                  {aaaPass} / {verdicts.length}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <p className="mb-2 text-[12px] font-medium text-fg-dim">Add a group</p>
-            <AddRow placeholder="e.g. Chart" onAdd={addGroup} />
-          </div>
-
-          <AsideNote>
-            AA is the shipping bar. AAA is worth chasing for body copy but is often
-            impractical for muted text.
-          </AsideNote>
-        </>
-      }
-    >
+    <>
       <CanvasSection title="In context" hint="the roles, live in both modes">
         <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
           <RolesInContext mode="light" />
@@ -321,7 +345,10 @@ export function RolesStep() {
               {group.tokens.map((token) => (
                 <div
                   key={token}
-                  className="group grid grid-cols-[160px_1fr_1fr] items-center gap-x-4 border-b border-line px-5 py-2.5 last:border-b-0 hover:bg-ink-panel/40"
+                  id={`role-${token}`}
+                  className={`group grid grid-cols-[160px_1fr_1fr] items-center gap-x-4 border-b border-line px-5 py-2.5 last:border-b-0 transition-colors hover:bg-ink-panel/40 ${
+                    flashToken === token ? "bg-ink-panel ring-1 ring-inset ring-fg" : ""
+                  }`}
                 >
                   <div className="flex min-w-0 items-center gap-1.5">
                     <span className="min-w-0 break-words font-mono text-[11px] leading-snug text-fg-dim">
@@ -389,6 +416,6 @@ export function RolesStep() {
           ))}
         </div>
       </CanvasSection>
-    </StepScaffold>
+    </>
   );
 }

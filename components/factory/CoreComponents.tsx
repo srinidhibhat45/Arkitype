@@ -131,15 +131,15 @@ export function TokenButton({
   };
 
   return (
-    <button type="button" style={style} disabled={disabled} onClick={onClick}>
+    <button type="button" data-ark-part="container" style={style} disabled={disabled} onClick={onClick}>
       {state === "loading" ? (
-        <Loader2 size={pxNum(r("prefixIcon.size"), 14)} className="ark-spin" style={{ color: prefixColor }} />
+        <Loader2 data-ark-part="prefixIcon" size={pxNum(r("prefixIcon.size"), 14)} className="ark-spin" style={{ color: prefixColor }} />
       ) : prefixIcon ? (
-        <Sparkles size={pxNum(r("prefixIcon.size"), 14)} style={{ color: prefixColor }} />
+        <Sparkles data-ark-part="prefixIcon" size={pxNum(r("prefixIcon.size"), 14)} style={{ color: prefixColor }} />
       ) : null}
-      {children}
+      <span data-ark-part="label">{children}</span>
       {suffixIcon ? (
-        <ArrowRight size={pxNum(r("suffixIcon.size"), 14)} style={{ color: suffixColor }} />
+        <ArrowRight data-ark-part="suffixIcon" size={pxNum(r("suffixIcon.size"), 14)} style={{ color: suffixColor }} />
       ) : null}
     </button>
   );
@@ -191,6 +191,7 @@ export function TokenInput({
   return (
     <input
       type="text"
+      data-ark-part="container text"
       readOnly
       disabled={disabled}
       style={style}
@@ -229,6 +230,7 @@ export function TokenTextarea({
 
   return (
     <textarea
+      data-ark-part="container text"
       readOnly
       disabled={disabled}
       rows={3}
@@ -308,12 +310,13 @@ export function TokenSelect({
   };
 
   return (
-    <div style={style} role="combobox" aria-expanded={state === "active"} aria-disabled={disabled}>
-      <span>{state === "loading" ? "Loading options…" : value}</span>
+    <div data-ark-part="container" style={style} role="combobox" aria-expanded={state === "active"} aria-disabled={disabled}>
+      <span data-ark-part="text">{state === "loading" ? "Loading options…" : value}</span>
       {state === "loading" ? (
-        <Loader2 size={pxNum(r("chevron.size"), 13)} className="ark-spin" style={{ color: chevronColor }} />
+        <Loader2 data-ark-part="chevron" size={pxNum(r("chevron.size"), 13)} className="ark-spin" style={{ color: chevronColor }} />
       ) : (
         <ChevronDown
+          data-ark-part="chevron"
           size={pxNum(r("chevron.size"), 13)}
           style={{
             color: chevronColor,

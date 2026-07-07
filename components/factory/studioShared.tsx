@@ -9,12 +9,12 @@
  * identical picker and read the same live option lists off the design system.
  */
 import { useMemo, useState } from "react";
-import { Check, Pipette, X } from "lucide-react";
+import { ArrowUpRight, Check, Pipette, X } from "lucide-react";
 import { PreviewMode, RADII_NAMES, useDesignSystem } from "@/store/useDesignSystem";
 import { rampStepLabels } from "@/lib/color";
 import { generateTypeScale } from "@/lib/typography";
 import { resolveRef, resolveToken } from "@/lib/tokens";
-import { bindingSwatch, describeBinding } from "@/lib/binding";
+import { bindingSource, bindingSwatch, describeBinding } from "@/lib/binding";
 
 /* ── shared option data pulled from the live system ── */
 
@@ -177,6 +177,9 @@ export function ColorPicker({
   const [hex, setHex] = useState(value.startsWith("hex:") ? value.slice(4) : "#4f46e5");
   const desc = describeBinding(value);
   const currentSwatch = data.swatch(value);
+  const source = bindingSource(value);
+  const goToStep = useDesignSystem((s) => s.goToStep);
+  const setPendingFocus = useDesignSystem((s) => s.setPendingFocus);
 
   return (
     <div className="mt-2 rounded-lg border border-line-strong bg-ink-panel p-2.5">
@@ -213,6 +216,20 @@ export function ColorPicker({
         <span className="shrink-0 text-[9px] uppercase tracking-wide text-fg-mute">
           {desc.kind}
         </span>
+        {source ? (
+          <button
+            type="button"
+            title={`Open ${source.step === "roles" ? "Roles" : "Colour"} step`}
+            onClick={() => {
+              setPendingFocus({ step: source.step, anchor: source.anchor });
+              goToStep(source.step);
+              onClose();
+            }}
+            className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
+          >
+            <ArrowUpRight size={11} />
+          </button>
+        ) : null}
       </div>
 
       {tab === "roles" ? (
@@ -282,7 +299,7 @@ export function ColorPicker({
           <button
             type="button"
             onClick={() => onPick(`hex:${hex}`)}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-fg py-1.5 text-[12px] font-medium text-ink hover:bg-neutral-300"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-fg py-1.5 text-[12px] font-medium text-ink transition hover:opacity-90"
           >
             <Pipette size={12} /> Use this colour
           </button>

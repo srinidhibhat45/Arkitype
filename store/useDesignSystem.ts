@@ -41,6 +41,9 @@ export const COLOR_SLOTS: string[] = [
 
 export type PreviewMode = "light" | "dark";
 
+/** Appearance of the tool itself (chrome), independent of the preview mode. */
+export type ChromeTheme = "light" | "dark";
+
 /* ── The build order. This IS the product's information architecture. ── */
 
 export type StepId =
@@ -54,13 +57,14 @@ export type StepId =
   | "preview"
   | "ship";
 
+// Roles is no longer its own stop — it's a tab inside the Colour section (they
+// are the same colour concern: primitives, then the semantic roles onto them).
 export const STEP_ORDER: StepId[] = [
   "colour",
   "type",
   "space",
   "shape",
   "motion",
-  "roles",
   "components",
   "preview",
   "ship",
@@ -70,15 +74,17 @@ export const STEP_META: Record<
   StepId,
   { n: string; label: string; blurb: string }
 > = {
-  colour: { n: "01", label: "Colour", blurb: "Families, shades, per-swatch edits" },
+  colour: { n: "01", label: "Colour & roles", blurb: "Palette primitives and the semantic roles mapped onto them" },
   type: { n: "02", label: "Typography", blurb: "Scale, weights, font roles" },
   space: { n: "03", label: "Spacing & layout", blurb: "Rhythm and breakpoints" },
   shape: { n: "04", label: "Shape & elevation", blurb: "Radius and depth" },
   motion: { n: "05", label: "Motion", blurb: "Durations and easing curves" },
-  roles: { n: "06", label: "Roles", blurb: "Meaning mapped onto values" },
-  components: { n: "07", label: "Components", blurb: "Parts assembled from roles" },
-  preview: { n: "08", label: "Preview", blurb: "Stress-test on a real product" },
-  ship: { n: "09", label: "Ship", blurb: "Figma bundle and handoff docs" },
+  // roles: merged into the Colour section as a tab; kept as a StepId so bindings
+  // can still name it as a jump target. Not a rail stop, so `n` is unused.
+  roles: { n: "", label: "Roles", blurb: "Meaning mapped onto values" },
+  components: { n: "06", label: "Components", blurb: "Parts assembled from roles" },
+  preview: { n: "07", label: "Preview", blurb: "Stress-test on a real product" },
+  ship: { n: "08", label: "Ship", blurb: "Figma bundle and handoff docs" },
 };
 
 export function nextStep(step: StepId): StepId | null {
@@ -382,6 +388,7 @@ export interface ArkitypeState {
   journey: {
     activeStep: StepId;
     done: Partial<Record<StepId, boolean>>;
+    visited: Partial<Record<StepId, boolean>>;
   };
   primitives: {
     colorFamilies: ColorFamily[];
@@ -408,13 +415,18 @@ export interface ArkitypeState {
   };
   components: Record<string, ComponentConfig>;
   currentPreviewMode: PreviewMode;
+  /** Light/dark appearance of the tool chrome (not the component preview). */
+  chromeTheme: ChromeTheme;
   canvasZoom: number;
+  /** Transient "jump here and highlight X" target — never persisted. */
+  pendingFocus: { step: StepId; anchor: string } | null;
 
   /* actions */
   startSystem: (name: string, brandHex: string) => void;
   setSystemName: (name: string) => void;
   goToStep: (step: StepId) => void;
   completeStep: (step: StepId) => void;
+  setPendingFocus: (target: { step: StepId; anchor: string } | null) => void;
 
   /* colour */
   setSeed: (slot: string, hex: string) => void;
@@ -482,6 +494,8 @@ export interface ArkitypeState {
 
   setPreviewMode: (mode: PreviewMode) => void;
   togglePreviewMode: () => void;
+  setChromeTheme: (theme: ChromeTheme) => void;
+  toggleChromeTheme: () => void;
   setCanvasZoom: (zoom: number) => void;
 }
 
@@ -670,7 +684,7 @@ export const useDesignSystem = create<ArkitypeState>()(
   persist(
     (set) => ({
       meta: { name: "", started: false },
-      journey: { activeStep: "colour", done: {} },
+      journey: { activeStep: "colour", done: {}, visited: { colour: true } },
       primitives: freshPrimitives(),
       semantics: {
         groups: JSON.parse(JSON.stringify(DEFAULT_SEMANTIC_GROUPS)) as SemanticGroup[],
@@ -684,7 +698,9 @@ export const useDesignSystem = create<ArkitypeState>()(
         ComponentConfig
       >,
       currentPreviewMode: "dark",
+      chromeTheme: "light",
       canvasZoom: 1,
+      pendingFocus: null,
 
       startSystem: (name, brandHex) =>
         set((state) => {
@@ -695,7 +711,7 @@ export const useDesignSystem = create<ArkitypeState>()(
           }
           return {
             meta: { name: name.trim() || "Untitled system", started: true },
-            journey: { activeStep: "colour", done: {} },
+            journey: { activeStep: "colour", done: {}, visited: { colour: true } },
             primitives: {
               ...state.primitives,
               colorFamilies: families,
@@ -708,17 +724,32 @@ export const useDesignSystem = create<ArkitypeState>()(
       setSystemName: (name) =>
         set((state) => ({ meta: { ...state.meta, name } })),
 
+      setPendingFocus: (target) => set({ pendingFocus: target }),
+
       goToStep: (step) =>
-        set((state) => ({
-          journey: { ...state.journey, activeStep: step },
-        })),
+        set((state) => {
+          // "roles" is a tab of the Colour section now — never land on it directly.
+          const target: StepId = step === "roles" ? "colour" : step;
+          return {
+            journey: {
+              ...state.journey,
+              activeStep: target,
+              visited: { ...state.journey.visited, [target]: true },
+            },
+          };
+        }),
 
       completeStep: (step) =>
         set((state) => {
           const done = { ...state.journey.done, [step]: true };
           const next = nextStep(step);
+          const landing = next ?? step;
           return {
-            journey: { activeStep: next ?? step, done },
+            journey: {
+              activeStep: landing,
+              done,
+              visited: { ...state.journey.visited, [landing]: true },
+            },
           };
         }),
 
@@ -1380,11 +1411,18 @@ export const useDesignSystem = create<ArkitypeState>()(
             state.currentPreviewMode === "light" ? "dark" : "light",
         })),
 
+      setChromeTheme: (theme) => set({ chromeTheme: theme }),
+
+      toggleChromeTheme: () =>
+        set((state) => ({
+          chromeTheme: state.chromeTheme === "light" ? "dark" : "light",
+        })),
+
       setCanvasZoom: (zoom) => set({ canvasZoom: zoom }),
     }),
     {
       name: "arkitype-system",
-      version: 5,
+      version: 6,
       // v2 → v3: dynamic colour families, per-mode elevation, typography
       // weights/roles/rounding/overrides, editable spacing/radii + overrides,
       // stored semantic groups + expanded roles.
@@ -1392,6 +1430,10 @@ export const useDesignSystem = create<ArkitypeState>()(
       // feedback, navigation and pattern parts); backfill their defaults.
       // v4 → v5: per-component `bindings` map (deep part/state customization);
       // backfill an empty map so components render from defaults.
+      // v5 → v6: `journey.visited` map (distinct from `journey.done` — the
+      // rail's free-jump now tracks "seen" separately from the footer's
+      // "confirmed"); backfill from activeStep so the current step doesn't
+      // look unvisited.
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as any;
         if (!state) return persisted as ArkitypeState;
@@ -1510,6 +1552,12 @@ export const useDesignSystem = create<ArkitypeState>()(
           state.components = comps;
         }
 
+        if (version < 6 && state.journey) {
+          state.journey.visited = state.journey.visited ?? {
+            [state.journey.activeStep as StepId]: true,
+          };
+        }
+
         return state as ArkitypeState;
       },
       storage: createJSONStorage(() => localStorage),
@@ -1520,6 +1568,7 @@ export const useDesignSystem = create<ArkitypeState>()(
         semantics: state.semantics,
         components: state.components,
         currentPreviewMode: state.currentPreviewMode,
+        chromeTheme: state.chromeTheme,
         canvasZoom: state.canvasZoom,
       }),
     }

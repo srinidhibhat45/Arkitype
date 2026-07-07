@@ -19,7 +19,7 @@
  * Options persist to `ComponentConfig.properties` (exported in the docs bundle);
  * colour/scale bindings persist to `ComponentConfig.bindings`.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Moon, RotateCcw, Sun } from "lucide-react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
@@ -28,7 +28,6 @@ import {
   COMPONENT_SPECS,
   CState,
   OptionSpec,
-  PartSpec,
   PropSpec,
   Resolver,
   STATE_LABEL,
@@ -40,8 +39,8 @@ import {
   useComponentBindings,
 } from "@/lib/componentSchema";
 import { useInspectorData } from "@/components/factory/studioShared";
+import { usePartBox } from "@/components/factory/useHighlight";
 import {
-  InspectorSection,
   OptionRow,
   OptionToggle,
   ParamCard,
@@ -392,6 +391,7 @@ export function ComponentStudio({ id }: { id: string }) {
   const resetAll = useDesignSystem((s) => s.resetComponentBindings);
   const setProperty = useDesignSystem((s) => s.setComponentProperty);
   const currentMode = useDesignSystem((s) => s.currentPreviewMode);
+  const setPreviewMode = useDesignSystem((s) => s.setPreviewMode);
   const resolve = useComponentBindings(id);
   const data = useInspectorData();
 
@@ -401,7 +401,13 @@ export function ComponentStudio({ id }: { id: string }) {
   const overrideCount = bindings ? Object.keys(bindings).length : 0;
 
   const [activeState, setActiveState] = useState<CState>(spec?.states[0] ?? "default");
-  const [mode, setMode] = useState<PreviewMode>(currentMode);
+  const mode = currentMode;
+
+  // Hover-link: a parameter cluster names a schema part; the overlay measures
+  // its `data-ark-part` box inside the preview and rings it.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [hoveredPart, setHoveredPart] = useState<string | null>(null);
+  const box = usePartBox(previewRef, hoveredPart);
 
   if (!spec) return null;
 
@@ -410,6 +416,7 @@ export function ComponentStudio({ id }: { id: string }) {
   const axisValue = axis ? (opts[axis.key] as string) : undefined;
   const options = componentOptions(id).filter((o) => !o.previewAxis);
   const multiState = spec.states.length > 1;
+  const hoveredLabel = spec.parts.find((p) => p.id === hoveredPart)?.label ?? "";
 
   const hero = (st: CState, o: Record<string, string | boolean> = opts): ReactNode =>
     renderHero(id, { state: st, size, radiusStep, resolve, mode, opts: o });
@@ -514,6 +521,85 @@ export function ComponentStudio({ id }: { id: string }) {
 
   const hasOptionsSection = options.length > 0 || SIZABLE.has(id);
 
+  /* parameter clusters: an Options group (functional choices) plus one group per
+     schema part. Each part cluster is a hover target that rings its region. */
+  type Cluster = {
+    key: string;
+    title: string;
+    count?: number;
+    part: string | null;
+    content: ReactNode;
+  };
+  const clusters: Cluster[] = [];
+  if (hasOptionsSection) {
+    clusters.push({
+      key: "options",
+      title: "Options",
+      part: null,
+      content: (
+        <>
+          {SIZABLE.has(id) ? (
+            <ParamCard
+              label="Size"
+              overridden={size !== "md"}
+              onReset={() => setProperty(id, "size", "md")}
+            >
+              <TokenSegmented
+                options={SIZE_OPTIONS}
+                value={size}
+                onChange={(v) => setProperty(id, "size", v)}
+              />
+            </ParamCard>
+          ) : null}
+          {options.map(renderOption)}
+        </>
+      ),
+    });
+  }
+  for (const part of spec.parts) {
+    clusters.push({
+      key: part.id,
+      title: part.label,
+      count: part.props.length,
+      part: part.id,
+      content: <>{part.props.map(renderPropCard)}</>,
+    });
+  }
+
+  // Flank the preview with two rails when there are enough clusters; otherwise
+  // dock a single rail beside it. Either way each cluster keeps its hover-link.
+  const dualRail = clusters.length >= 3;
+  const leftClusters = dualRail ? clusters.filter((_, i) => i % 2 === 0) : [];
+  const rightClusters = dualRail ? clusters.filter((_, i) => i % 2 === 1) : clusters;
+
+  const renderCluster = (c: Cluster): ReactNode => {
+    const active = c.part != null && hoveredPart === c.part;
+    return (
+      <div
+        key={c.key}
+        onMouseEnter={() => c.part && setHoveredPart(c.part)}
+        onMouseLeave={() =>
+          c.part && setHoveredPart((h) => (h === c.part ? null : h))
+        }
+        className={`rounded-2xl border p-3 transition-colors ${
+          active ? "border-line-strong bg-ink-panel" : "border-line bg-ink-panel/50"
+        }`}
+      >
+        <div className="mb-2.5 flex items-center justify-between px-0.5">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-fg-dim">
+            {c.title}
+          </span>
+          {c.count != null ? (
+            <span className="font-mono text-[10px] text-fg-mute">{c.count}</span>
+          ) : null}
+        </div>
+        <div className="space-y-2.5">{c.content}</div>
+      </div>
+    );
+  };
+
+  const RING = "#0d99ff"; // selection-blue ring; reads on light + dark previews
+
   /* the clickable canvas strip: states for controls, variants for display */
   const stripItems: Array<{ key: string; label: string; node: ReactNode; active: boolean; onClick: () => void }> =
     multiState
@@ -535,7 +621,7 @@ export function ComponentStudio({ id }: { id: string }) {
         : [];
 
   const dotted = {
-    backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)",
+    backgroundImage: "radial-gradient(circle, rgb(var(--c-fg) / 0.07) 1px, transparent 1px)",
     backgroundSize: "16px 16px",
   } as const;
 
@@ -577,7 +663,7 @@ export function ComponentStudio({ id }: { id: string }) {
                 key={m}
                 type="button"
                 aria-label={m}
-                onClick={() => setMode(m)}
+                onClick={() => setPreviewMode(m)}
                 className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
                   mode === m ? "bg-fg text-ink" : "text-fg-mute hover:text-fg-dim"
                 }`}
@@ -590,85 +676,93 @@ export function ComponentStudio({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* body: canvas (flex) + docked inspector */}
-      <div className="flex flex-wrap items-start gap-4">
-        {/* canvas */}
-        <div className="min-w-[320px] flex-1 rounded-2xl border border-line p-4" style={dotted}>
-          <div className="flex items-center justify-center py-6">
-            <ThemeFrame mode={mode} className="w-full max-w-lg">
-              <div className="flex min-h-[160px] items-center justify-center p-8">
-                {hero(activeState)}
-              </div>
-            </ThemeFrame>
-          </div>
-
-          {stripItems.length > 0 ? (
-            <div className="mt-6 border-t border-line pt-4">
-              <div className="mb-3 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
-                {multiState ? "Interaction states — click to edit" : `${axis?.label ?? "Variants"} — click to preview`}
-              </div>
-              <ThemeFrame mode={mode}>
-                <div className="flex flex-wrap items-start gap-x-8 gap-y-5 p-5">
-                  {stripItems.map((it) => (
-                    <div
-                      key={it.key}
-                      role="button"
-                      tabIndex={0}
-                      onClick={it.onClick}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          it.onClick();
-                        }
-                      }}
-                      className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-3 transition-colors ${
-                        it.active
-                          ? "border-line-strong bg-ink-panel/60"
-                          : "border-transparent hover:border-line"
-                      }`}
-                    >
-                      {it.node}
-                      <span className={`text-[10px] ${it.active ? "text-fg" : "text-fg-mute"}`}>
-                        {it.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </ThemeFrame>
+      {/* grouped clusters flanking the live preview */}
+      <div className="studio-scope">
+        <div className={`studio-grid ${dualRail ? "cols-3" : "cols-2"}`}>
+          {dualRail ? (
+            <div className="studio-left space-y-4">
+              {leftClusters.map(renderCluster)}
             </div>
           ) : null}
-        </div>
 
-        {/* docked inspector */}
-        <div className="w-[280px] shrink-0 rounded-2xl border border-line bg-ink-panel/40">
-          <div className="border-b border-line px-3 py-2.5">
-            <span className="text-[11px] font-semibold text-fg">Properties</span>
-          </div>
-          <div className="px-2 py-1">
-            {hasOptionsSection ? (
-              <InspectorSection title="Options" defaultOpen>
-                {SIZABLE.has(id) ? (
-                  <ParamCard
-                    label="Size"
-                    overridden={size !== "md"}
-                    onReset={() => setProperty(id, "size", "md")}
-                  >
-                    <TokenSegmented
-                      options={SIZE_OPTIONS}
-                      value={size}
-                      onChange={(v) => setProperty(id, "size", v)}
+          <div className="studio-canvas">
+            <div className="rounded-2xl border border-line p-5" style={dotted}>
+              <div className="flex items-center justify-center py-8">
+                <div ref={previewRef} className="relative w-full max-w-lg">
+                  <ThemeFrame mode={mode} className="w-full">
+                    <div className="flex min-h-[180px] items-center justify-center p-10">
+                      {hero(activeState)}
+                    </div>
+                  </ThemeFrame>
+
+                  {/* hover-highlight overlay: rings the part named by the hovered cluster */}
+                  <div className="pointer-events-none absolute inset-0 z-20">
+                    <div
+                      className="absolute rounded-md"
+                      style={{
+                        top: (box?.top ?? 0) - 5,
+                        left: (box?.left ?? 0) - 5,
+                        width: (box?.width ?? 0) + 10,
+                        height: (box?.height ?? 0) + 10,
+                        boxShadow: `0 0 0 2px ${RING}`,
+                        background: `${RING}14`,
+                        opacity: box ? 1 : 0,
+                        // Fade only — snapping geometry avoids a fly-in from the corner.
+                        transition: "opacity 120ms ease-out",
+                      }}
                     />
-                  </ParamCard>
-                ) : null}
-                {options.map(renderOption)}
-              </InspectorSection>
-            ) : null}
+                    {box ? (
+                      <span
+                        className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
+                        style={{ top: box.top - 7, left: box.left - 5, background: RING }}
+                      >
+                        {hoveredLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
 
-            {spec.parts.map((part: PartSpec) => (
-              <InspectorSection key={part.id} title={part.label} count={part.props.length} defaultOpen>
-                {part.props.map(renderPropCard)}
-              </InspectorSection>
-            ))}
+              {stripItems.length > 0 ? (
+                <div className="mt-6 border-t border-line pt-4">
+                  <div className="mb-3 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
+                    {multiState ? "Interaction states — click to edit" : `${axis?.label ?? "Variants"} — click to preview`}
+                  </div>
+                  <ThemeFrame mode={mode}>
+                    <div className="flex flex-wrap items-start gap-x-8 gap-y-5 p-5">
+                      {stripItems.map((it) => (
+                        <div
+                          key={it.key}
+                          role="button"
+                          tabIndex={0}
+                          onClick={it.onClick}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              it.onClick();
+                            }
+                          }}
+                          className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-3 transition-colors ${
+                            it.active
+                              ? "border-line-strong bg-ink-panel/60"
+                              : "border-transparent hover:border-line"
+                          }`}
+                        >
+                          {it.node}
+                          <span className={`text-[10px] ${it.active ? "text-fg" : "text-fg-mute"}`}>
+                            {it.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </ThemeFrame>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="studio-right space-y-4">
+            {rightClusters.map(renderCluster)}
           </div>
         </div>
       </div>

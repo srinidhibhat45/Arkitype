@@ -11,7 +11,7 @@
  * Suggestions (harmony / tinted neutral / status hues) are still derived from
  * the brand colour and offered as chips — never imposed.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ColorFamily,
   useDesignSystem,
@@ -28,10 +28,10 @@ import {
 import {
   AsideDivider,
   AsideNote,
+  CanvasSection,
   Field,
   HexInput,
 } from "@/components/ui/controls";
-import { StepScaffold } from "@/components/shell/StepScaffold";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 
 /* ── suggestion chips (unchanged behaviour, now per dynamic family) ── */
@@ -148,7 +148,21 @@ function RampRow({ family }: { family: ColorFamily }) {
   const ramp = useDesignSystem((s) => s.primitives.colors[family.id]) ?? [];
   const setFamilyOverride = useDesignSystem((s) => s.setFamilyOverride);
   const clearFamilyOverride = useDesignSystem((s) => s.clearFamilyOverride);
+  const pendingFocus = useDesignSystem((s) => s.pendingFocus);
+  const setPendingFocus = useDesignSystem((s) => s.setPendingFocus);
   const [selected, setSelected] = useState<number | null>(null);
+  const [flash, setFlash] = useState(false);
+
+  useEffect(() => {
+    if (pendingFocus?.step !== "colour" || pendingFocus.anchor !== family.id) return;
+    document
+      .getElementById(`family-${family.id}`)
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setFlash(true);
+    setPendingFocus(null);
+    const t = setTimeout(() => setFlash(false), 1500);
+    return () => clearTimeout(t);
+  }, [pendingFocus, setPendingFocus, family.id]);
 
   const labels = rampStepLabels(family.steps);
   const selectedIdx = selected === null ? -1 : labels.indexOf(selected);
@@ -156,22 +170,19 @@ function RampRow({ family }: { family: ColorFamily }) {
   const selectedOverridden = selected !== null && family.overrides[selected] !== undefined;
 
   return (
-    <div className="mb-8">
-      <div className="mb-2.5 flex items-baseline justify-between gap-3">
-        <div>
-          <h3 className="text-[14px] font-medium text-fg">{family.name}</h3>
-          <p className="text-[12px] text-fg-mute">
-            {family.steps} shades · click a swatch to pin its exact value
-          </p>
-        </div>
-        <span className="font-mono text-[11px] uppercase text-fg-mute">{family.seed}</span>
-      </div>
-
-      <div
-        className="grid gap-px overflow-hidden rounded-xl border border-line bg-line"
-        style={{ gridTemplateColumns: `repeat(${family.steps}, minmax(0, 1fr))` }}
-      >
-        {ramp.map((hexValue, i) => {
+    <div
+      id={`family-${family.id}`}
+      className={`rounded-xl transition-shadow ${flash ? "ring-1 ring-inset ring-fg" : ""}`}
+    >
+      <CanvasSection title={family.name} hint={family.seed.toUpperCase()}>
+        <p className="-mt-1.5 mb-2.5 text-[12px] text-fg-mute">
+          {family.steps} shades · click a swatch to pin its exact value
+        </p>
+        <div
+          className="grid gap-px overflow-hidden rounded-xl border border-line bg-line"
+          style={{ gridTemplateColumns: `repeat(${family.steps}, minmax(0, 1fr))` }}
+        >
+          {ramp.map((hexValue, i) => {
           const label = labels[i];
           const text = bestTextOn(hexValue);
           const cr = Math.round(contrastRatio(hexValue, text) * 10) / 10;
@@ -242,47 +253,50 @@ function RampRow({ family }: { family: ColorFamily }) {
           )}
         </div>
       ) : null}
+      </CanvasSection>
     </div>
   );
 }
 
-export function ColourStep() {
+/** The Colour tab's aside (family editors + add-family + note). */
+export function ColourAside() {
   const families = useDesignSystem((s) => s.primitives.colorFamilies);
   const addFamily = useDesignSystem((s) => s.addFamily);
   const brandSeed = families.find((f) => f.id === "brand")?.seed ?? families[0]?.seed ?? "";
 
   return (
-    <StepScaffold
-      step="colour"
-      title="Seeds, shades and precise overrides"
-      lede="Enter one hex per family and the engine solves the rest against fixed luminance targets, so a 600 always carries the same visual weight. Add as many families as you need, tune each ramp's shade count, and pin any single swatch by hand — the override sits on top of the generated ramp without disturbing its siblings."
-      aside={
-        <>
-          {families.map((family) => (
-            <FamilyAside key={family.id} family={family} brandSeed={brandSeed} />
-          ))}
+    <>
+      {families.map((family) => (
+        <FamilyAside key={family.id} family={family} brandSeed={brandSeed} />
+      ))}
 
-          <button
-            type="button"
-            onClick={addFamily}
-            className="mb-6 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-line py-2 text-[12px] font-medium text-fg-mute transition-colors hover:border-line-strong hover:text-fg-dim"
-          >
-            <Plus size={13} />
-            Add family
-          </button>
+      <button
+        type="button"
+        onClick={addFamily}
+        className="mb-6 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-line py-2 text-[12px] font-medium text-fg-mute transition-colors hover:border-line-strong hover:text-fg-dim"
+      >
+        <Plus size={13} />
+        Add family
+      </button>
 
-          <AsideDivider />
+      <AsideDivider />
 
-          <AsideNote>
-            Suggestions are colour theory applied to <em>your</em> brand hex.
-            Every swatch is editable — a dot marks the ones you've pinned by hand.
-          </AsideNote>
-        </>
-      }
-    >
+      <AsideNote>
+        Suggestions are colour theory applied to <em>your</em> brand hex.
+        Every swatch is editable — a dot marks the ones you've pinned by hand.
+      </AsideNote>
+    </>
+  );
+}
+
+/** The Colour tab's canvas (one editable ramp per family). */
+export function ColourCanvas() {
+  const families = useDesignSystem((s) => s.primitives.colorFamilies);
+  return (
+    <>
       {families.map((family) => (
         <RampRow key={family.id} family={family} />
       ))}
-    </StepScaffold>
+    </>
   );
 }

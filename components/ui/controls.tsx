@@ -62,7 +62,7 @@ export function PrimaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-fg px-4 text-[13px] font-medium text-ink transition-colors hover:bg-neutral-300 disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-fg px-4 text-[13px] font-medium text-ink transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
         full ? "w-full" : ""
       }`}
     >

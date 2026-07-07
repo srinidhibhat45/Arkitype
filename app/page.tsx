@@ -10,12 +10,11 @@ import { useDesignSystem } from "@/store/useDesignSystem";
 import { Welcome } from "@/components/steps/Welcome";
 import { TopBar } from "@/components/shell/TopBar";
 import { StageRail } from "@/components/shell/StageRail";
-import { ColourStep } from "@/components/steps/ColourStep";
+import { FoundationStep } from "@/components/steps/FoundationStep";
 import { TypeStep } from "@/components/steps/TypeStep";
 import { SpaceStep } from "@/components/steps/SpaceStep";
 import { ShapeStep } from "@/components/steps/ShapeStep";
 import { MotionStep } from "@/components/steps/MotionStep";
-import { RolesStep } from "@/components/steps/RolesStep";
 import { ComponentsStep } from "@/components/steps/ComponentsStep";
 import { PreviewStep } from "@/components/steps/PreviewStep";
 import { ShipStep } from "@/components/steps/ShipStep";
@@ -28,6 +27,13 @@ export default function WorkspacePage() {
 
   const started = useDesignSystem((s) => s.meta.started);
   const activeStep = useDesignSystem((s) => s.journey.activeStep);
+  const chromeTheme = useDesignSystem((s) => s.chromeTheme);
+
+  // Reflect the chrome theme onto <html> so the CSS-var flip in globals.css
+  // (`:root` light ⇆ `.dark`) applies to the whole app, Welcome included.
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", chromeTheme === "dark");
+  }, [chromeTheme]);
 
   if (!ready) return <div className="h-screen bg-ink" />;
   if (!started) return <Welcome />;
@@ -38,8 +44,8 @@ export default function WorkspacePage() {
       <div className="flex min-h-0 flex-1">
         <StageRail />
         <main className="min-h-0 min-w-0 flex-1">
-          {activeStep === "colour" ? (
-            <ColourStep />
+          {activeStep === "colour" || activeStep === "roles" ? (
+            <FoundationStep initialTab={activeStep === "roles" ? "roles" : "colour"} />
           ) : activeStep === "type" ? (
             <TypeStep />
           ) : activeStep === "space" ? (
@@ -48,8 +54,6 @@ export default function WorkspacePage() {
             <ShapeStep />
           ) : activeStep === "motion" ? (
             <MotionStep />
-          ) : activeStep === "roles" ? (
-            <RolesStep />
           ) : activeStep === "components" ? (
             <ComponentsStep />
           ) : activeStep === "preview" ? (

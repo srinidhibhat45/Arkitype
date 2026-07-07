@@ -2,17 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Chrome theme tokens (channel form → `/opacity` modifiers keep working).
+ * Light is the default; `.dark` on <html> flips to the original dark chrome.
+ * `ink` = surfaces, `fg` = text. Luminance flips per theme by design.
+ */
+:root {
+  --c-ink: 247 247 245; /* page — warm near-white */
+  --c-ink-panel: 255 255 255; /* sunken panels, inputs */
+  --c-ink-raised: 255 255 255; /* raised cards, popovers */
+  --c-ink-hover: 240 240 238; /* interactive hover wash */
+  --c-line: 228 228 228; /* hairline dividers */
+  --c-line-strong: 208 208 208; /* emphasised borders */
+  --c-fg: 24 24 27; /* primary text */
+  --c-fg-dim: 82 82 91; /* secondary text */
+  --c-fg-mute: 122 122 128; /* tertiary / labels */
+  color-scheme: light;
+}
+
+.dark {
+  --c-ink: 12 12 13;
+  --c-ink-panel: 18 18 20;
+  --c-ink-raised: 24 24 27;
+  --c-ink-hover: 30 30 33;
+  --c-line: 35 35 39;
+  --c-line-strong: 46 46 51;
+  --c-fg: 244 244 245;
+  --c-fg-dim: 161 161 170;
+  --c-fg-mute: 110 110 118;
+  color-scheme: dark;
+}
+
 html,
 body {
   height: 100%;
-  background: #0c0c0d;
-  color: #f4f4f5;
+  background: rgb(var(--c-ink));
+  color: rgb(var(--c-fg));
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
+/* Fade the chrome when the appearance toggle flips themes. */
+body {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
 ::selection {
-  background: rgba(244, 244, 245, 0.16);
+  background: rgb(var(--c-fg) / 0.14);
 }
 
 /* Quiet scrollbars */
@@ -24,17 +62,17 @@ body {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #232327;
+  background: rgb(var(--c-line-strong));
   border-radius: 4px;
-  border: 2px solid #0c0c0d;
+  border: 2px solid rgb(var(--c-ink));
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #2e2e33;
+  background: rgb(var(--c-fg-mute));
 }
 
 /* Single, consistent focus treatment across the chrome */
 :focus-visible {
-  outline: 2px solid rgba(244, 244, 245, 0.45);
+  outline: 2px solid rgb(var(--c-fg) / 0.45);
   outline-offset: 2px;
 }
 
@@ -45,4 +83,55 @@ body {
 }
 .ark-spin {
   animation: ark-spin 0.8s linear infinite;
+}
+
+/* ── Component Studio: a live preview flanked by parameter clusters ──
+   Container queries so the layout tracks the studio's own width, not the
+   viewport (the rail + step aside eat ~600px before the studio even starts). */
+.studio-scope {
+  container-type: inline-size;
+}
+.studio-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+.studio-grid > .studio-canvas {
+  order: -1; /* the preview leads when everything is stacked */
+}
+
+/* cols-2 — preview + one docked rail (few clusters) */
+@container (min-width: 560px) {
+  .studio-grid.cols-2 {
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 240px);
+  }
+  .studio-grid.cols-2 > .studio-canvas {
+    order: 0;
+  }
+}
+
+/* cols-3 — preview on top of two rails, then a full left/right flank */
+@container (min-width: 500px) {
+  .studio-grid.cols-3 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .studio-grid.cols-3 > .studio-canvas {
+    grid-column: 1 / -1;
+  }
+}
+@container (min-width: 840px) {
+  .studio-grid.cols-3 {
+    grid-template-columns: minmax(184px, 224px) minmax(0, 1fr) minmax(184px, 224px);
+  }
+  .studio-grid.cols-3 > .studio-left {
+    grid-column: 1;
+  }
+  .studio-grid.cols-3 > .studio-canvas {
+    grid-column: 2;
+    order: 0;
+  }
+  .studio-grid.cols-3 > .studio-right {
+    grid-column: 3;
+  }
 }

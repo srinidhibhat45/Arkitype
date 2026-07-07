@@ -14,6 +14,7 @@ import {
 export function StageRail() {
   const activeStep = useDesignSystem((s) => s.journey.activeStep);
   const done = useDesignSystem((s) => s.journey.done);
+  const visited = useDesignSystem((s) => s.journey.visited ?? {});
   const goToStep = useDesignSystem((s) => s.goToStep);
 
   const doneCount = STEP_ORDER.filter((id) => done[id]).length;
@@ -24,11 +25,12 @@ export function StageRail() {
         <p className="px-3 pb-3 text-[11px] font-medium uppercase tracking-[0.1em] text-fg-mute">
           Build order
         </p>
-        <div className="space-y-0.5">
+        <div className="space-y-1">
           {STEP_ORDER.map((id) => {
             const m = STEP_META[id];
             const active = activeStep === id;
             const isDone = !!done[id];
+            const isVisited = !!visited[id];
             return (
               <button
                 key={id}
@@ -50,10 +52,11 @@ export function StageRail() {
                   className={`flex-1 text-[13px] ${
                     active
                       ? "font-medium text-fg"
-                      : isDone
+                      : isDone || isVisited
                         ? "text-fg-dim"
                         : "text-fg-mute"
                   }`}
+                  title={!active && isVisited && !isDone ? "Visited — not yet confirmed" : undefined}
                 >
                   {m.label}
                 </span>
@@ -61,6 +64,8 @@ export function StageRail() {
                   <Check size={13} className="shrink-0 text-fg-dim" />
                 ) : active ? (
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg" />
+                ) : isVisited ? (
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg-mute" />
                 ) : null}
               </button>
             );

@@ -2,6 +2,34 @@
 
 > Compressed memory checkpoint. Update after every compiled module.
 
+## Status: ✅ v9 THEMEABLE CHROME + FLANKED STUDIO + HOVER-LINK — the tool chrome
+is now theme-aware (light default + a proper dark) via CSS-var tokens (`--c-*`,
+channel form) that flip on `.dark`; new Appearance toggle in TopBar (persisted
+`chromeTheme`, distinct from the preview Light/Dark). The ComponentStudio was
+re-laid from a cramped docked inspector into a live preview flanked by grouped
+parameter clusters (container-query 3-zone → 2-zone → stack), and hovering a
+cluster now rings the matching part on the preview via `data-ark-part` tags + a
+measuring overlay (`useHighlight`). Priority controls tagged
+(button/input/textarea/select/checkbox/radio/switch); untagged parts degrade
+gracefully. `npx tsc --noEmit` clean; verified live on :3111 in both chrome
+themes, hover-link, and responsive collapse. Also decoupled from Hued (removed
+the stray `arkitype` entry from Hued's `.claude/launch.json`).
+
+### v9 change (theme system · studio layout · hover-highlight)
+- **Theme tokens** — `tailwind.config.ts` maps `ink/line/fg` to
+  `rgb(var(--c-*) / <alpha-value>)`; `app/globals.css` defines `:root` (light) +
+  `.dark` (dark) channel vars and moves body/scrollbar/focus/selection onto them.
+  `darkMode: "class"`. Primary-button hovers `bg-neutral-300` → `opacity-90`
+  (theme-neutral). Dotted canvas → `rgb(var(--c-fg)/0.07)`.
+- **Chrome theme state** — `store/useDesignSystem.ts`: persisted `chromeTheme`
+  (+ `setChromeTheme`/`toggleChromeTheme`), applied to `<html>` from
+  `app/page.tsx`. `TopBar` gained the Appearance toggle + a "Preview" label on
+  the existing preview segmented to disambiguate the two.
+- **Studio** — `ComponentStudio.tsx`: clusters (Options + one per part) flank the
+  preview; `useHighlight.tsx` (`usePartBox`, `[data-ark-part~=…]`) + an overlay
+  ring; `data-ark-part` tags in `CoreComponents`/`SelectionControls`;
+  `.studio-grid` container queries in globals.css; `ParamCard` restyled for light.
+
 ## Status: ✅ v8 STUDIO UX OVERHAUL COMPLETE — fixed the confusing colour picker,
 added a unified Variant/State bar so every component's states/variants are
 selectable-and-viewable, gave display comps (alert/toast/badge/banner) deep

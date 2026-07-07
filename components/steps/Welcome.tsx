@@ -38,9 +38,9 @@ export function Welcome() {
             before the screens.
           </h1>
           <p className="mt-4 text-[14px] leading-relaxed text-fg-dim">
-            Seven ordered steps, from a single brand colour to a shipped Figma
-            bundle. Each decision feeds the next — colour before roles, roles
-            before components, components before proof.
+            Six ordered steps, from a single brand colour to a shipped Figma
+            bundle. Each decision feeds the next — colour and roles before
+            components, components before proof.
           </p>
 
           <div className="mt-9">
@@ -52,7 +52,7 @@ export function Welcome() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") start();
                 }}
-                placeholder="e.g. Meridian, Hued, Northwind"
+                placeholder="e.g. Meridian, Northwind, Cobalt"
                 autoFocus
                 className="h-10 w-full rounded-lg border border-line bg-ink-panel px-3 text-[14px] text-fg placeholder:text-fg-mute focus:border-line-strong focus:outline-none"
               />
@@ -70,7 +70,7 @@ export function Welcome() {
             <button
               type="button"
               onClick={start}
-              className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-fg text-[14px] font-medium text-ink transition-colors hover:bg-neutral-300"
+              className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-fg text-[14px] font-medium text-ink transition hover:opacity-90"
             >
               Start building
               <ArrowRight size={15} />

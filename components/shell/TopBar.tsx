@@ -4,6 +4,7 @@
  * Top bar: identity + the two global concerns (preview mode, shipping).
  * Everything else lives inside its step — the bar stays quiet.
  */
+import { Moon, Sun } from "lucide-react";
 import { Segmented } from "@/components/ui/controls";
 import { STEP_ORDER, useDesignSystem } from "@/store/useDesignSystem";
 
@@ -12,6 +13,8 @@ export function TopBar() {
   const setSystemName = useDesignSystem((s) => s.setSystemName);
   const mode = useDesignSystem((s) => s.currentPreviewMode);
   const setPreviewMode = useDesignSystem((s) => s.setPreviewMode);
+  const chromeTheme = useDesignSystem((s) => s.chromeTheme);
+  const toggleChromeTheme = useDesignSystem((s) => s.toggleChromeTheme);
   const done = useDesignSystem((s) => s.journey.done);
   const goToStep = useDesignSystem((s) => s.goToStep);
 
@@ -40,20 +43,41 @@ export function TopBar() {
         <span className="hidden text-[11px] text-fg-mute sm:block">
           Autosaved
         </span>
-        <Segmented
-          options={[
-            { label: "Light", value: "light" as const },
-            { label: "Dark", value: "dark" as const },
-          ]}
-          value={mode}
-          onChange={setPreviewMode}
-        />
+
+        {/* Appearance: themes the tool chrome (distinct from the preview toggle) */}
+        <button
+          type="button"
+          onClick={toggleChromeTheme}
+          aria-label={`Appearance: ${chromeTheme}`}
+          title={`Appearance — ${chromeTheme === "light" ? "Light" : "Dark"} · click to switch`}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+        >
+          {chromeTheme === "light" ? <Sun size={14} /> : <Moon size={14} />}
+        </button>
+
+        <span className="h-4 w-px bg-line" aria-hidden />
+
+        {/* Preview: themes the component being designed, not the app */}
+        <div className="flex items-center gap-2">
+          <span className="hidden text-[10px] font-medium uppercase tracking-[0.08em] text-fg-mute md:block">
+            Preview
+          </span>
+          <Segmented
+            options={[
+              { label: "Light", value: "light" as const },
+              { label: "Dark", value: "dark" as const },
+            ]}
+            value={mode}
+            onChange={setPreviewMode}
+          />
+        </div>
+
         <button
           type="button"
           onClick={() => goToStep("ship")}
           className={`inline-flex h-8 items-center rounded-lg px-3.5 text-[12px] font-medium transition-colors ${
             readyToShip
-              ? "bg-fg text-ink hover:bg-neutral-300"
+              ? "bg-fg text-ink hover:opacity-90"
               : "border border-line text-fg-mute hover:border-line-strong hover:text-fg-dim"
           }`}
         >

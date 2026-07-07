@@ -22,6 +22,7 @@ export function StepScaffold({
   aside,
   children,
   footerNote,
+  tabs,
 }: {
   step: StepId;
   title: string;
@@ -29,6 +30,8 @@ export function StepScaffold({
   aside: ReactNode;
   children: ReactNode;
   footerNote?: ReactNode;
+  /** Optional tab switcher shown under the kicker (for merged sections). */
+  tabs?: ReactNode;
 }) {
   const goToStep = useDesignSystem((s) => s.goToStep);
   const completeStep = useDesignSystem((s) => s.completeStep);
@@ -51,6 +54,7 @@ export function StepScaffold({
             <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-fg-mute">
               Step {meta.n} — {meta.label}
             </p>
+            {tabs ? <div className="mb-1 mt-3">{tabs}</div> : null}
             <h1 className="mt-2 text-[26px] font-semibold leading-tight tracking-tight text-fg">
               {title}
             </h1>
@@ -83,7 +87,7 @@ export function StepScaffold({
         <button
           type="button"
           onClick={() => completeStep(step)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg px-4 text-[13px] font-medium text-ink transition-colors hover:bg-neutral-300"
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-fg px-4 text-[13px] font-medium text-ink transition hover:opacity-90"
         >
           {finished ? (
             <>

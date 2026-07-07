@@ -1,10 +1,19 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Chrome palette: strictly monochrome. The only colour on screen should be
- * the design system the user is building — never the tool itself.
+ * Chrome palette: strictly monochrome, and now theme-aware. Tokens resolve to
+ * CSS custom properties (channel form, so `/opacity` modifiers keep working)
+ * that flip between light (`:root`) and dark (`.dark`) in globals.css. The only
+ * *colour* on screen is still the design system the user is building — the tool
+ * itself stays greyscale, it just picks a light or dark greyscale.
+ *
+ * `ink`  = surfaces (page → panels → raised), lightest in light mode.
+ * `fg`   = text (primary → dim → mute), darkest in light mode.
+ * The luminance flips per theme, so semantic inverse pairs like `bg-fg text-ink`
+ * (primary buttons) stay high-contrast in both.
  */
 const config: Config = {
+  darkMode: "class",
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -15,19 +24,19 @@ const config: Config = {
     extend: {
       colors: {
         ink: {
-          DEFAULT: "#0c0c0d", // page
-          panel: "#121214", // sunken panels, inputs
-          raised: "#18181b", // raised cards, popovers
-          hover: "#1e1e21", // interactive hover wash
+          DEFAULT: "rgb(var(--c-ink) / <alpha-value>)", // page
+          panel: "rgb(var(--c-ink-panel) / <alpha-value>)", // sunken panels, inputs
+          raised: "rgb(var(--c-ink-raised) / <alpha-value>)", // raised cards, popovers
+          hover: "rgb(var(--c-ink-hover) / <alpha-value>)", // interactive hover wash
         },
         line: {
-          DEFAULT: "#232327", // hairline dividers
-          strong: "#2e2e33", // emphasised borders
+          DEFAULT: "rgb(var(--c-line) / <alpha-value>)", // hairline dividers
+          strong: "rgb(var(--c-line-strong) / <alpha-value>)", // emphasised borders
         },
         fg: {
-          DEFAULT: "#f4f4f5", // primary text
-          dim: "#a1a1aa", // secondary text
-          mute: "#6e6e76", // tertiary / labels
+          DEFAULT: "rgb(var(--c-fg) / <alpha-value>)", // primary text
+          dim: "rgb(var(--c-fg-dim) / <alpha-value>)", // secondary text
+          mute: "rgb(var(--c-fg-mute) / <alpha-value>)", // tertiary / labels
         },
       },
       fontFamily: {

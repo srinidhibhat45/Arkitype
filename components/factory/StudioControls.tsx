@@ -34,9 +34,9 @@ export function ParamCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-line bg-ink-panel/70 px-3 py-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.25)] backdrop-blur-sm">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
+    <div className="rounded-xl border border-line bg-ink-panel px-3 py-2.5 shadow-[0_1px_2px_rgb(var(--c-fg)/0.05)]">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
           {label}
         </span>
         {overridden && onReset ? (

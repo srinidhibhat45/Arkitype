@@ -18,6 +18,7 @@ import { MotionStep } from "@/components/steps/MotionStep";
 import { ComponentsStep } from "@/components/steps/ComponentsStep";
 import { PreviewStep } from "@/components/steps/PreviewStep";
 import { ShipStep } from "@/components/steps/ShipStep";
+import { GateKeeper } from "@/components/ui/GateKeeper";
 
 export default function WorkspacePage() {
   // Gate on client mount so the persisted store hydrates before first paint
@@ -36,33 +37,39 @@ export default function WorkspacePage() {
   }, [chromeTheme]);
 
   if (!ready) return <div className="h-screen bg-ink" />;
-  if (!started) return <Welcome />;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-ink">
-      <TopBar />
-      <div className="flex min-h-0 flex-1">
-        <StageRail />
-        <main className="min-h-0 min-w-0 flex-1">
-          {activeStep === "colour" || activeStep === "roles" ? (
-            <FoundationStep initialTab={activeStep === "roles" ? "roles" : "colour"} />
-          ) : activeStep === "type" ? (
-            <TypeStep />
-          ) : activeStep === "space" ? (
-            <SpaceStep />
-          ) : activeStep === "shape" ? (
-            <ShapeStep />
-          ) : activeStep === "motion" ? (
-            <MotionStep />
-          ) : activeStep === "components" ? (
-            <ComponentsStep />
-          ) : activeStep === "preview" ? (
-            <PreviewStep />
-          ) : (
-            <ShipStep />
-          )}
-        </main>
-      </div>
-    </div>
+    <GateKeeper>
+      {!started ? (
+        <Welcome />
+      ) : (
+        <div className="flex h-screen flex-col overflow-hidden bg-ink">
+          <TopBar />
+          <div className="flex min-h-0 flex-1">
+            <StageRail />
+            <main className="min-h-0 min-w-0 flex-1">
+              {activeStep === "colour" || activeStep === "roles" ? (
+                <FoundationStep initialTab={activeStep === "roles" ? "roles" : "colour"} />
+              ) : activeStep === "type" ? (
+                <TypeStep />
+              ) : activeStep === "space" ? (
+                <SpaceStep />
+              ) : activeStep === "shape" ? (
+                <ShapeStep />
+              ) : activeStep === "motion" ? (
+                <MotionStep />
+              ) : activeStep === "components" ? (
+                <ComponentsStep />
+              ) : activeStep === "preview" ? (
+                <PreviewStep />
+              ) : (
+                <ShipStep />
+              )}
+            </main>
+          </div>
+        </div>
+      )}
+    </GateKeeper>
   );
 }
+

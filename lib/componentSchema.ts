@@ -55,6 +55,21 @@ export interface PartSpec {
 }
 
 /**
+ * A named placement of one molecule inside an organism — e.g. Modal's
+ * "primaryAction" is an instance of "button". A slot's `content` may only
+ * hold content-level fields (text, icon name, which variant/size to render)
+ * — NEVER a colour/space/radius/border/font field. Style always comes from
+ * the molecule's own global ComponentConfig; slots have no way to override
+ * it, by construction (see `useSlotInstance`).
+ */
+export interface SlotSpec {
+  id: string;
+  componentId: string;
+  label: string;
+  content: OptionSpec[];
+}
+
+/**
  * A configurable *option* — a functional choice (not a token binding) that
  * changes what the component IS, not just its colours: tone/variant, whether it
  * shows an icon, is dismissible, its visual style, elevation, etc. Stored under
@@ -79,7 +94,10 @@ export interface ComponentSpec {
   states: CState[];
   parts: PartSpec[];
   options?: OptionSpec[];
+  /** @deprecated prefer `slots` — kept for organisms not yet migrated (see ATOMIC_DESIGN_PLAN.md). */
   children?: string[];
+  /** Named molecule instances this organism embeds. Replaces `children`. */
+  slots?: SlotSpec[];
 }
 
 /* ── authoring helpers ── */
@@ -1269,7 +1287,57 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "modal",
     tier: 2,
-    children: ["primaryButton", "secondaryButton", "iconButton", "input", "select", "alert"],
+    children: ["button", "iconButton", "input", "select", "alert"],
+    slots: [
+      {
+        id: "primaryAction",
+        componentId: "button",
+        label: "Primary action",
+        content: [
+          textOpt("label", "Label", "Confirm"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "filled"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "secondaryAction",
+        componentId: "button",
+        label: "Secondary action",
+        content: [
+          textOpt("label", "Label", "Cancel"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+          ], "outlined"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "closeButton",
+        componentId: "iconButton",
+        label: "Close icon",
+        content: [
+          enumOpt("variant", "Variant", [opt("solid", "Solid"), opt("outline", "Outline"), opt("ghost", "Ghost")], "ghost"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -1301,8 +1369,6 @@ const OTHER_SPECS: ComponentSpec[] = [
       enumOpt("shadow", "Elevation shadow", [opt("none", "None"), opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "lg"),
       numOpt("borderWidth", "Border thickness", 1, 0, 8),
       textOpt("bodyText", "Body text description", "Are you absolutely sure you want to proceed?"),
-      textOpt("primaryLabel", "Primary action text", "Confirm"),
-      textOpt("secondaryLabel", "Secondary action text", "Cancel"),
       boolOpt("showSecondary", "Show cancel action", true),
       enumOpt("width", "Modal size / width", [opt("xs", "Extra Small"), opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large")], "sm"),
       numOpt("overlayOpacity", "Backdrop opacity", 40, 0, 100),
@@ -1386,23 +1452,11 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
 ];
 
-const primaryButtonSpec: ComponentSpec = {
-  ...buttonSpec,
-  id: "primaryButton",
-};
-
-const secondaryButtonSpec: ComponentSpec = {
-  ...buttonSpec,
-  id: "secondaryButton",
-};
-
 /* ────────────────────────────── registry ────────────────────────────── */
 
 export const COMPONENT_SPECS: Record<string, ComponentSpec> = Object.fromEntries(
   [
     buttonSpec,
-    primaryButtonSpec,
-    secondaryButtonSpec,
     inputSpec,
     textareaSpec,
     selectSpec,
@@ -1573,7 +1627,35 @@ export function getComponentTier(id: string): 1 | 2 {
 }
 
 export function getComponentChildren(id: string): string[] {
-  return COMPONENT_SPECS[id]?.children ?? [];
+  const spec = COMPONENT_SPECS[id];
+  if (spec?.slots?.length) return Array.from(new Set(spec.slots.map((s) => s.componentId)));
+  return spec?.children ?? [];
+}
+
+/** The stored content overrides + schema defaults for one slot, keyed by content option key. */
+export function getSlotSpec(organismId: string, slotId: string): SlotSpec | undefined {
+  return COMPONENT_SPECS[organismId]?.slots?.find((s) => s.id === slotId);
+}
+
+/**
+ * Content-only resolver for one slot instance. `resolve` is the molecule's own
+ * global style resolver (never parameterized by the organism — an organism has
+ * no way to override a slot's colour/padding/radius/border, by construction).
+ * `content` merges the slot's schema defaults with any stored per-instance
+ * override (text/icon/variant/size — never a style field).
+ */
+export function useSlotInstance(
+  organismId: string,
+  slotId: string
+): { resolve: Resolver; content: Record<string, string | number | boolean> } {
+  const slot = getSlotSpec(organismId, slotId);
+  const stored = useDesignSystem((s) => s.components[organismId]?.instances?.[slotId]);
+  const resolve = useComponentBindings(slot?.componentId ?? "");
+  const content: Record<string, string | number | boolean> = {};
+  for (const o of slot?.content ?? []) {
+    content[o.key] = stored?.[o.key] ?? o.def;
+  }
+  return { resolve, content };
 }
 
 export function getParentComponents(childId: string): string[] {

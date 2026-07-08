@@ -391,6 +391,9 @@ export interface ComponentConfig {
   /** Per-part/per-state overrides — maps a schema property key to a binding
    *  string (see lib/binding.ts). Empty means "render from defaults". */
   bindings?: Record<string, string>;
+  /** Per-slot content overrides (text/icon/variant/size), keyed by SlotSpec.id.
+   *  Never holds a style value — see ATOMIC_DESIGN_PLAN.md. */
+  instances?: Record<string, Record<string, string | number | boolean>>;
 }
 
 export interface ProjectState {
@@ -1829,7 +1832,7 @@ export const useDesignSystem = create<ArkitypeState>()(
   },
   {
       name: "arkitype-system",
-      version: 8,
+      version: 9,
       // v2 → v3: dynamic colour families, per-mode elevation, typography
       // weights/roles/rounding/overrides, editable spacing/radii + overrides,
       // stored semantic groups + expanded roles.
@@ -1843,6 +1846,9 @@ export const useDesignSystem = create<ArkitypeState>()(
       // look unvisited.
       // v6 -> v7: dynamic radius names, radius steps and typography scale steps.
       // v7 -> v8: multi-project dashboard files registry, user auth, survey metadata.
+      // v8 -> v9: per-slot `instances` bag on ComponentConfig (atomic-design
+      // instance model, see ATOMIC_DESIGN_PLAN.md); lifts Modal's legacy
+      // "primaryButton.*" ad hoc properties into instances.primaryAction etc.
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as any;
         if (!state) return persisted as ArkitypeState;
@@ -2011,6 +2017,56 @@ export const useDesignSystem = create<ArkitypeState>()(
           state.survey = null;
           state.view = "landing";
           state.tutorialStep = null;
+        }
+
+        if (version < 9) {
+          const backfillInstances = (
+            comps: Record<string, ComponentConfig> | undefined
+          ): Record<string, ComponentConfig> => {
+            const out = comps ?? {};
+            for (const id of Object.keys(out)) {
+              out[id] = { ...out[id], instances: out[id].instances ?? {} };
+            }
+            return out;
+          };
+
+          // Lift Modal's legacy ad hoc "primaryButton.*"/"secondaryButton.*"
+          // string-prefixed properties into the new per-slot `instances` bag.
+          const migrateModalInstances = (comps: Record<string, ComponentConfig>) => {
+            const modal = comps.modal;
+            if (!modal) return;
+            const props = (modal.properties ?? {}) as Record<string, unknown>;
+            modal.instances = modal.instances ?? {};
+            const lift = (slotId: string, prefix: string, fields: string[]) => {
+              const bucket: Record<string, string | number | boolean> = {};
+              for (const f of fields) {
+                const v = props[`${prefix}.${f}`];
+                if (v !== undefined) bucket[f] = v as string | number | boolean;
+              }
+              if (Object.keys(bucket).length) {
+                modal.instances![slotId] = { ...bucket, ...(modal.instances![slotId] ?? {}) };
+              }
+            };
+            lift("primaryAction", "primaryButton", ["size", "variant", "prefixIcon", "suffixIcon"]);
+            lift("secondaryAction", "secondaryButton", ["size", "variant", "prefixIcon", "suffixIcon"]);
+            lift("closeButton", "iconButton", ["size", "variant"]);
+            if (props.primaryLabel !== undefined) {
+              modal.instances!.primaryAction = { ...modal.instances!.primaryAction, label: props.primaryLabel as string };
+            }
+            if (props.secondaryLabel !== undefined) {
+              modal.instances!.secondaryAction = { ...modal.instances!.secondaryAction, label: props.secondaryLabel as string };
+            }
+          };
+
+          state.components = backfillInstances(state.components);
+          migrateModalInstances(state.components);
+          if (state.projects) {
+            for (const pid of Object.keys(state.projects)) {
+              const proj = state.projects[pid];
+              proj.components = backfillInstances(proj.components);
+              migrateModalInstances(proj.components);
+            }
+          }
         }
 
         return state as ArkitypeState;

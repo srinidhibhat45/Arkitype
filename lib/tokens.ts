@@ -82,8 +82,10 @@ export function systemCssVars(
   });
 
   // Radii
+  const radiusNames = state.primitives.radiusNames ?? RADII_NAMES;
   state.primitives.radii.forEach((px, i) => {
-    vars[`--ark-radius-${RADII_NAMES[i]}`] = `${px}px`;
+    const name = radiusNames[i] || `step-${i}`;
+    vars[`--ark-radius-${name}`] = `${px}px`;
   });
 
   // Typography — sizes, leading and per-step resolved weight

@@ -230,18 +230,39 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
           mode={mode}
           radiusStep={radiusStep}
           resolve={resolve}
-        />
+        >
+          {os("label") || "Success"}
+        </TokenBadge>
       );
     case "tag":
       return (
-        <TokenTag mode={mode} radiusStep={radiusStep} resolve={resolve}>
-          engineering
+        <TokenTag
+          mode={mode}
+          radiusStep={radiusStep}
+          resolve={resolve}
+          removable={ob("removable") !== false}
+        >
+          {os("label") || "engineering"}
         </TokenTag>
       );
     case "avatar":
-      return <TokenAvatar size="lg" radiusStep={radiusStep} presence="online" resolve={resolve} />;
+      return (
+        <TokenAvatar
+          size={os("size") as any || "lg"}
+          radiusStep={radiusStep}
+          presence={os("presence") === "none" ? undefined : os("presence") as any || "online"}
+          initials={os("initials") || "JD"}
+          resolve={resolve}
+        />
+      );
     case "tooltip":
-      return <TokenTooltip radiusStep={radiusStep} resolve={resolve} />;
+      return (
+        <TokenTooltip
+          radiusStep={radiusStep}
+          label={os("label") || "Tooltip content"}
+          resolve={resolve}
+        />
+      );
     case "progress":
       return (
         <div className="w-64">
@@ -440,6 +461,9 @@ function useStudioData(id: string) {
   const resolve = useComponentBindings(id);
   const data = useInspectorData();
 
+  const canvasZoom = useDesignSystem((s) => s.canvasZoom);
+  const setCanvasZoom = useDesignSystem((s) => s.setCanvasZoom);
+
   const properties = cfg?.properties;
   const instances = cfg?.instances;
   const size = (properties?.size as SizeToken) ?? "md";
@@ -464,6 +488,8 @@ function useStudioData(id: string) {
     size,
     radiusStep,
     overrideCount,
+    canvasZoom,
+    setCanvasZoom,
   };
 }
 
@@ -498,6 +524,8 @@ export function ComponentStudioPreview({
     overrideCount,
     resetAll,
     properties,
+    canvasZoom,
+    setCanvasZoom,
   } = useStudioData(id);
 
   const [activeState, setActiveState] = useState<CState>(spec?.states[0] ?? "default");
@@ -564,7 +592,7 @@ export function ComponentStudioPreview({
           />
         ) : null}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-3">
           {overrideCount > 0 ? (
             <button
               type="button"
@@ -574,6 +602,24 @@ export function ComponentStudioPreview({
               <RotateCcw size={10} /> Reset all · {overrideCount}
             </button>
           ) : null}
+
+          {/* Zoom Controller */}
+          <div className="flex items-center gap-1.5 rounded-lg border border-line bg-ink-panel p-0.5 px-2.5 h-7">
+            <span className="text-[10px] font-semibold text-fg-mute uppercase tracking-wider">Zoom</span>
+            <input
+              type="range"
+              min={1}
+              max={5}
+              step={0.5}
+              value={canvasZoom}
+              onChange={(e) => setCanvasZoom(Number(e.target.value))}
+              className="w-16 accent-fg cursor-ew-resize"
+            />
+            <span className="font-mono text-[9.5px] font-bold text-fg-mute w-8 text-right">
+              {Math.round(canvasZoom * 100)}%
+            </span>
+          </div>
+
           <div className="inline-flex rounded-lg border border-line bg-ink-panel p-0.5">
             {(["light", "dark"] as PreviewMode[]).map((m) => (
               <button
@@ -595,11 +641,56 @@ export function ComponentStudioPreview({
 
       {/* enlarged live preview — full canvas width */}
       <div className="rounded-2xl border border-line p-6" style={dotted}>
-        <div className="flex items-center justify-center py-10">
+        <div className="flex items-center justify-center py-6">
           <div ref={previewRef} className="relative w-full">
             <ThemeFrame mode={mode} className="w-full">
-              <div className="flex min-h-[240px] items-center justify-center p-10">
-                {hero(activeState)}
+              <div className="relative border-b border-line bg-ink-panel/10 flex items-center justify-center min-h-[340px] overflow-hidden">
+                {/* Horizontal Ruler (Top) */}
+                <div 
+                  className="absolute top-0 left-8 right-0 h-6 border-b border-line flex items-end select-none pointer-events-none font-mono text-[8px] text-fg-mute bg-ink/90 z-10"
+                  style={{
+                    backgroundImage: "repeating-linear-gradient(90deg, var(--c-border) 0px, var(--c-border) 1px, transparent 1px, transparent 10px), repeating-linear-gradient(90deg, var(--c-border-strong) 0px, var(--c-border-strong) 1px, transparent 1px, transparent 50px)",
+                    backgroundSize: "100% 6px",
+                    backgroundPosition: "bottom",
+                    backgroundRepeat: "repeat-x",
+                  }}
+                >
+                  {Array.from({ length: 25 }).map((_, idx) => (
+                    <div key={idx} className="absolute font-semibold leading-none" style={{ left: `${idx * 50 + 4}px`, bottom: "7px" }}>
+                      {idx * 50}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Vertical Ruler (Left) */}
+                <div 
+                  className="absolute top-6 left-0 bottom-0 w-8 border-r border-line flex flex-col justify-start select-none pointer-events-none font-mono text-[8px] text-fg-mute bg-ink/90 z-10"
+                  style={{
+                    backgroundImage: "repeating-linear-gradient(180deg, var(--c-border) 0px, var(--c-border) 1px, transparent 1px, transparent 10px), repeating-linear-gradient(180deg, var(--c-border-strong) 0px, var(--c-border-strong) 1px, transparent 1px, transparent 50px)",
+                    backgroundSize: "6px 100%",
+                    backgroundPosition: "right",
+                    backgroundRepeat: "repeat-y",
+                  }}
+                >
+                  {Array.from({ length: 15 }).map((_, idx) => (
+                    <div key={idx} className="absolute font-semibold leading-none" style={{ top: `${idx * 50 + 4}px`, right: "7px" }}>
+                      {idx * 50}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Grid Content Sandbox */}
+                <div className="pl-8 pt-6 w-full h-full flex items-center justify-center min-h-[316px] relative">
+                  <div
+                    style={{
+                      transform: `scale(${canvasZoom})`,
+                      transformOrigin: "center",
+                      transition: "transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+                    }}
+                  >
+                    {hero(activeState)}
+                  </div>
+                </div>
               </div>
             </ThemeFrame>
 
@@ -935,7 +1026,8 @@ export function ComponentStudioControls({
   const getCurrentBindingForProp = (prop: PropSpec, st?: CState) => {
     const activeVariant = opts.variant as string ?? "filled";
     const isVariantColorProp = (id === "button" && activeVariant !== "filled" && COLOR_KEYS.has(prop.key));
-    const propKey = bindingKey(prop.key, st);
+    const resolvedState = prop.stateful ? st : undefined;
+    const propKey = bindingKey(prop.key, resolvedState);
 
     if (isVariantColorProp) {
       const variantStorageKey = `${activeVariant}.${propKey}`;

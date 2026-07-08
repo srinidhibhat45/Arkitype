@@ -636,6 +636,7 @@ const OTHER_SPECS: ComponentSpec[] = [
       },
     ],
     options: [
+      textOpt("label", "Label text", "Success"),
       enumOpt("tone", "Tone", BADGE_TONES, "brand", true),
       enumOpt("style", "Style", STYLE_OPTS, "subtle"),
       boolOpt("dot", "Status dot", true),
@@ -663,6 +664,10 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
       iconPart("removeIcon", "Remove icon", { color: "role:text-muted", size: "px:11" }),
+    ],
+    options: [
+      textOpt("label", "Tag label", "engineering"),
+      boolOpt("removable", "Removable", true),
     ],
   },
   {
@@ -695,6 +700,11 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      textOpt("initials", "Initials", "JD"),
+      enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large")], "lg"),
+      enumOpt("presence", "Presence status", [opt("online", "Online"), opt("away", "Away"), opt("none", "None")], "online"),
+    ],
   },
   {
     id: "tooltip",
@@ -717,6 +727,9 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("text.font", "Font role", "fontRole", "font:body"),
         ],
       },
+    ],
+    options: [
+      textOpt("label", "Tooltip text", "Tooltip content"),
     ],
   },
   {
@@ -1741,10 +1754,11 @@ export function useComponentBindings(
   id: string
 ): (key: string, state?: CState) => string | undefined {
   const bindings = useDesignSystem((s) => s.components[id]?.bindings);
+  const radiusNames = useDesignSystem((s) => s.primitives.radiusNames);
   return (key, state) => {
     if (!bindings) return undefined;
     const b = (state ? bindings[bindingKey(key, state)] : undefined) ?? bindings[key];
-    return b ? resolveBinding(b) : undefined;
+    return b ? resolveBinding(b, radiusNames) : undefined;
   };
 }
 
@@ -1760,6 +1774,7 @@ export function useVariantComponentBindings(
   variant: string
 ): (key: string, state?: CState) => string | undefined {
   const bindings = useDesignSystem((s) => s.components[id]?.bindings);
+  const radiusNames = useDesignSystem((s) => s.primitives.radiusNames);
   const VARIANT_COLOR_KEYS = new Set([
     "container.bg",
     "container.border",
@@ -1777,13 +1792,13 @@ export function useVariantComponentBindings(
         : `${variant}.${key}`;
       const variantFallbackKey = `${variant}.${key}`;
       const vb = bindings[variantKey] ?? bindings[variantFallbackKey];
-      if (vb) return resolveBinding(vb);
+      if (vb) return resolveBinding(vb, radiusNames);
       // Don't fall through to shared color bindings for non-filled variants
       return undefined;
     }
     // For non-color props or filled variant, use shared bindings as normal
     const b = (state ? bindings[bindingKey(key, state)] : undefined) ?? bindings[key];
-    return b ? resolveBinding(b) : undefined;
+    return b ? resolveBinding(b, radiusNames) : undefined;
   };
 }
 

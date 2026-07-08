@@ -5,17 +5,67 @@
 > executed without this conversation's context. Read this file top to bottom
 > before touching code. For general orientation read `HANDOFF.md` first.
 >
-> **Status:** Phase 0 done (2026-07-08) — `SlotSpec`/`slots` added to
-> `lib/componentSchema.ts`, `ComponentConfig.instances` + persist v8→v9
-> migration added to `store/useDesignSystem.ts`, dead `primaryButtonSpec`/
-> `secondaryButtonSpec` clones deleted, `modal` migrated to `slots`
-> (`primaryAction`/`secondaryAction`/`closeButton`), `useSlotInstance` hook
-> added. `npx tsc --noEmit` clean. **Not yet done:** `ModalSkeletons.tsx` still
-> reads the old `parentProperties?.["primaryButton.*"]` pattern instead of
-> calling `useSlotInstance` (Phase 1 step 7) — the migration lifts old data
-> into `instances` but the renderer doesn't consume it yet, so wire that up
-> next. No inspector UI section for slots yet (Phase 1 step 8). Tabs/Table and
-> the rest of Phase 3 are untouched.
+> **Status (2026-07-08, updated):** Phase 0 done, Phase 1 partly done.
+>
+> **Done:**
+> - Phase 0 (foundations): `SlotSpec`/`slots` added to `lib/componentSchema.ts`;
+>   `ComponentConfig.instances` + persist v8→v9 migration added to
+>   `store/useDesignSystem.ts` (lifts Modal's legacy `"primaryButton.*"` ad hoc
+>   properties into `instances.primaryAction` etc, both at top-level
+>   `state.components` and inside every `state.projects[id].components`);
+>   dead `primaryButtonSpec`/`secondaryButtonSpec` clones deleted from the
+>   registry; `useSlotInstance(organismId, slotId)` hook added — it resolves
+>   style purely through the molecule's own global binding (no parameter
+>   exists for an organism to override it) and merges the slot's schema
+>   defaults with any stored content override.
+> - Phase 1 step 6-7 (Modal): `modal` spec now declares `slots`:
+>   `primaryAction`→button, `secondaryAction`→button, `closeButton`→iconButton,
+>   each with `content` = label/variant/size/prefixIcon/suffixIcon (all
+>   content-typed `OptionSpec`s, no style fields). Removed the now-redundant
+>   `primaryLabel`/`secondaryLabel` from `modal.options` (label lives on the
+>   slot now). Rewrote `components/factory/ModalSkeletons.tsx` to call
+>   `useSlotInstance("modal", "primaryAction"|"secondaryAction"|"closeButton")`
+>   instead of manually indexing `parentProperties?.["primaryButton.*"]`;
+>   `ModalChrome` now takes explicit `closeIconSize`/`closeIconVariant` props
+>   instead of re-deriving them from a passed-through `parentProperties` blob.
+>   The repeated per-item icon buttons in the bottom-sheet file grid were
+>   deliberately left as plain `useComponentBindings("iconButton")` (styled
+>   repeated data, not a fixed instance — see the Phase 3 judgment call in §5).
+> - `npx tsc --noEmit` is clean after every step above.
+>
+> **Not yet done / next steps for whoever continues this:**
+> - Phase 1 step 8: no inspector UI section for slots yet. Right now there is
+>   **no on-screen way to edit** `primaryAction`/`secondaryAction`/`closeButton`
+>   content (label/variant/size/icon) — the data model and renderer are wired,
+>   but nothing writes to `components.modal.instances` yet. Find where the
+>   Components-step inspector renders a tier-2 spec's `options` (search
+>   `ComponentsStep.tsx` / `ComponentStudio.tsx` / `StudioControls.tsx` for
+>   how `option` controls are auto-generated) and add one collapsible section
+>   per `spec.slots[i]`, generating controls from `slot.content` the same way,
+>   writing to `setComponentProperty`-style action but targeting
+>   `instances[slotId][key]` instead of `properties[key]` (you will need a new
+>   store action, e.g. `setSlotContent(componentId, slotId, key, value)` —
+>   there is no such action yet; `store/useDesignSystem.ts` only has
+>   `setComponentProperty`/`setComponentBinding` today).
+> - **Live browser verification has not been run for this change.** The
+>   `preview_*` MCP tools are scoped to whatever `.claude/launch.json` the
+>   session's primary working directory has, and this session's primary
+>   directory is Hued, not Arkitype — Arkitype's own `.claude/launch.json`
+>   (which has its own `arkitype` entry) isn't visible to that tooling from
+>   here. A prior session **deliberately removed** an `arkitype` entry from
+>   Hued's `launch.json` to keep the two projects decoupled (see
+>   `project-arkitype.md` memory, 2026-07-07 v9 note #4) — re-adding it would
+>   reverse that decision, so it wasn't done here. **Before trusting this
+>   change, run `cd ~/Desktop/Arkitype && npm run dev` and manually click
+>   through the Modal skeletons (all 4 layouts) in the Components step**, or
+>   open Arkitype as its own Claude Code project so the preview tools attach
+>   to its own `launch.json` directly. Check specifically: (a) primary/secondary
+>   button labels still say what they said before (or the schema defaults
+>   "Confirm"/"Cancel" if this is a fresh project), (b) changing the Button
+>   molecule's global style in the Components step still ripples into both
+>   modal action buttons, (c) no console errors on any of the 4 modal
+>   skeletons.
+> - Phase 2 (Tabs, Table) and Phase 3 (remaining 13 organisms) are untouched.
 
 ---
 

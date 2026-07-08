@@ -2096,7 +2096,8 @@ export const useDesignSystem = create<ArkitypeState>()(
         }
 
         if (version < 10) {
-          const migrateLegacyInstances = (comps: Record<string, ComponentConfig>) => {
+          const migrateLegacyInstances = (comps?: Record<string, ComponentConfig>) => {
+            if (!comps) return;
             const tabs = comps.tabs;
             if (tabs) {
               tabs.instances = tabs.instances ?? {};

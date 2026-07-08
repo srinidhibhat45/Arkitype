@@ -39,6 +39,9 @@ import {
   Lock,
   Eye,
   Sliders,
+  Paintbrush,
+  Type,
+  PaintBucket,
 } from "lucide-react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
@@ -261,6 +264,7 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
             accent={os("accent") as AlertAccent}
             icon={ob("icon")}
             dismissible={ob("dismissible")}
+            action={ob("action")}
             mode={mode}
             radiusStep={radiusStep}
             resolve={resolve}
@@ -429,12 +433,14 @@ function useStudioData(id: string) {
   const clearBinding = useDesignSystem((s) => s.clearComponentBinding);
   const resetAll = useDesignSystem((s) => s.resetComponentBindings);
   const setProperty = useDesignSystem((s) => s.setComponentProperty);
+  const setSlotContent = useDesignSystem((s) => s.setSlotContent);
   const currentMode = useDesignSystem((s) => s.currentPreviewMode);
   const setPreviewMode = useDesignSystem((s) => s.setPreviewMode);
   const resolve = useComponentBindings(id);
   const data = useInspectorData();
 
   const properties = cfg?.properties;
+  const instances = cfg?.instances;
   const size = (properties?.size as SizeToken) ?? "md";
   const radiusStep = Number(properties?.radiusStep ?? 2);
   const overrideCount = bindings ? Object.keys(bindings).length : 0;
@@ -447,11 +453,13 @@ function useStudioData(id: string) {
     clearBinding,
     resetAll,
     setProperty,
+    setSlotContent,
     currentMode,
     setPreviewMode,
     resolve,
     data,
     properties,
+    instances,
     size,
     radiusStep,
     overrideCount,
@@ -900,9 +908,11 @@ export function ComponentStudioControls({
     setBinding,
     clearBinding,
     setProperty,
+    setSlotContent,
     resolve,
     data,
     properties,
+    instances,
     size,
   } = useStudioData(id);
 
@@ -913,7 +923,7 @@ export function ComponentStudioControls({
   const opts = resolveOptions(id, properties);
   const options = componentOptions(id).filter((o) => !o.previewAxis);
 
-  /* compact inline row for part properties */
+  /* compact vertical stacked row for part properties with figma-style icons */
   const renderPropRow = (prop: PropSpec): ReactNode => {
     const st = prop.stateful ? activeState : undefined;
     const key = bindingKey(prop.key, st);
@@ -922,10 +932,28 @@ export function ComponentStudioControls({
 
     let control: ReactNode;
     if (prop.type === "color") {
+      let counterpartHex: string | undefined;
+      let counterpartLabel: string | undefined;
+      if (prop.contrastAgainst) {
+        const counterpartPropSpec = spec.parts.flatMap(p => p.props).find(pr => pr.key === prop.contrastAgainst);
+        if (counterpartPropSpec) {
+          const { binding: counterpartBinding } = currentBinding(bindings, counterpartPropSpec, activeState);
+          counterpartHex = data.swatch(counterpartBinding);
+          counterpartLabel = counterpartPropSpec.label;
+        }
+      }
+      const contrastContext = (prop.key.includes("label") || prop.key.includes("text") || prop.key.includes("value")) ? "text-normal" : "ui-component";
+
       control = (
-        <div className="w-28 flex justify-end">
-          <TokenSwatchCard data={data} binding={binding} onPick={(b) => setBinding(id, key, b)} align="right" />
-        </div>
+        <TokenSwatchCard
+          data={data}
+          binding={binding}
+          onPick={(b) => setBinding(id, key, b)}
+          align="right"
+          contrastAgainstHex={counterpartHex}
+          contrastAgainstLabel={counterpartLabel}
+          contrastContext={contrastContext}
+        />
       );
     } else if (prop.type === "space") {
       const spaceOpts = data.spaceOptions;
@@ -941,22 +969,21 @@ export function ComponentStudioControls({
           }))}
           value={`space:${idx + 1}`}
           onChange={(v) => setBinding(id, key, v)}
+          className="w-full"
         />
       );
     } else if (prop.type === "dimension") {
       const n = binding.startsWith("px:") ? Number(binding.slice(3)) : Number(binding) || 0;
       control = (
-        <div className="w-20">
-          <ScrubberInput
-            label=""
-            value={n}
-            min={prop.min ?? 0}
-            max={prop.max ?? 64}
-            step={1}
-            onChange={(v) => setBinding(id, key, `px:${v}`)}
-            unit="px"
-          />
-        </div>
+        <ScrubberInput
+          label=""
+          value={n}
+          min={prop.min ?? 0}
+          max={prop.max ?? 64}
+          step={1}
+          onChange={(v) => setBinding(id, key, `px:${v}`)}
+          unit="px"
+        />
       );
     } else {
       const scaleOpts =
@@ -972,26 +999,50 @@ export function ComponentStudioControls({
           options={scaleOpts}
           value={binding}
           onChange={(v) => setBinding(id, key, v)}
+          className="w-full"
         />
       );
     }
 
+    const getPropIcon = (kKey: string): ReactNode => {
+      const k = kKey.toLowerCase();
+      if (k.endsWith(".bg") || k.includes("bg") || k.includes("color")) {
+        return <Paintbrush size={10} className="text-fg-mute" />;
+      }
+      if (k.includes("radius")) {
+        return <CornerUpRight size={10} className="text-fg-mute" />;
+      }
+      if (k.includes("border") || k.includes("thickness")) {
+        return <Square size={10} className="text-fg-mute" />;
+      }
+      if (k.includes("pad") || k.includes("space")) {
+        return <Sliders size={10} className="text-fg-mute" />;
+      }
+      if (k.includes("font") || k.includes("text") || k.includes("size") || k.includes("weight")) {
+        return <Type size={10} className="text-fg-mute" />;
+      }
+      return <Sliders size={10} className="text-fg-mute" />;
+    };
+
     return (
-      <div key={key} className="flex items-center justify-between py-1.5 border-b border-line last:border-0 pb-1.5">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[11px] text-fg-dim font-medium truncate">{prop.label}</span>
+      <div key={key} className="flex flex-col gap-1 min-w-0 pb-1">
+        <div className="flex items-center justify-between text-[9px] text-fg-mute font-semibold uppercase tracking-wider min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {getPropIcon(prop.key)}
+            <span className="truncate" title={prop.label}>{prop.label}</span>
+          </div>
           {overridden && (
             <button
               type="button"
               title="Reset to default"
               onClick={() => clearBinding(id, key)}
-              className="rounded p-0.5 text-fg-mute transition-colors hover:text-fg shrink-0 animate-pulse"
+              className="rounded p-0.5 text-fg-mute transition-colors hover:text-fg shrink-0"
             >
-              <RotateCcw size={10} />
+              <RotateCcw size={9} />
             </button>
           )}
         </div>
-        <div className="shrink-0">
+        <div className="w-full">
           {control}
           {prop.type === "color" && prop.stateful && propStates.length > 1 ? (
             <button
@@ -999,7 +1050,7 @@ export function ComponentStudioControls({
               onClick={() => {
                 for (const s of propStates) setBinding(id, bindingKey(prop.key, s), binding);
               }}
-              className="block mt-0.5 text-[8.5px] text-fg-mute text-right underline decoration-dotted underline-offset-2 hover:text-fg-dim"
+              className="block mt-0.5 text-[8px] text-fg-mute text-right underline decoration-dotted underline-offset-2 hover:text-fg-dim"
             >
               apply to all states
             </button>
@@ -1087,11 +1138,14 @@ export function ComponentStudioControls({
       title: "Options",
       part: null,
       content: (
-        <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
           {/* Size segmented option */}
           {SIZABLE.has(id) && (
-            <div className="flex items-center justify-between py-1 border-b border-line pb-2">
-              <span className="text-[11px] text-fg-dim font-medium">Size</span>
+            <div className="col-span-2 flex flex-col gap-1">
+              <div className="flex items-center gap-1 text-[10px] text-fg-mute font-semibold uppercase tracking-wider">
+                <Sliders size={10} />
+                <span>Size</span>
+              </div>
               <TokenSegmented
                 options={SIZE_OPTIONS}
                 value={size}
@@ -1102,10 +1156,13 @@ export function ComponentStudioControls({
 
           {/* Alignment & Position Row */}
           {(hasAlign || hasPosition) && (
-            <div className="flex items-center justify-between gap-4 py-1.5 border-b border-line pb-2">
+            <div className="col-span-2 grid grid-cols-2 gap-3">
               {hasAlign && (
-                <div className="flex flex-col gap-1 flex-1">
-                  <span className="text-[9.5px] text-fg-mute font-semibold uppercase tracking-wide">Text Align</span>
+                <div className="flex flex-col gap-1 min-w-0">
+                  <span className="text-[9.5px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1">
+                    <AlignLeft size={10} />
+                    <span>Text Align</span>
+                  </span>
                   <IconSegmented
                     options={[
                       { label: "Left", value: "left", icon: <AlignLeft size={11} /> },
@@ -1117,8 +1174,11 @@ export function ComponentStudioControls({
                 </div>
               )}
               {hasPosition && (
-                <div className="flex flex-col gap-1 flex-1 items-end">
-                  <span className="text-[9.5px] text-fg-mute font-semibold uppercase tracking-wide self-start">Positioning</span>
+                <div className="flex flex-col gap-1 min-w-0">
+                  <span className="text-[9.5px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1">
+                    <ArrowUpToLine size={10} />
+                    <span>Positioning</span>
+                  </span>
                   <IconSegmented
                     options={[
                       { label: "Top", value: "top", icon: <ArrowUpToLine size={11} /> },
@@ -1139,8 +1199,11 @@ export function ComponentStudioControls({
             const choices = o.options ?? [];
             const hasIcons = choices.every((c) => !!getEnumIcon(o.key, c.value));
             return (
-              <div key={o.key} className="flex items-center justify-between py-1 border-b border-line last:border-0 pb-1.5">
-                <span className="text-[11px] text-fg-dim font-medium">{o.label}</span>
+              <div key={o.key} className="flex flex-col gap-1 min-w-0">
+                <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                  <Sliders size={10} />
+                  <span>{o.label}</span>
+                </span>
                 {hasIcons ? (
                   <IconSegmented
                     options={choices.map((c) => ({
@@ -1162,7 +1225,7 @@ export function ComponentStudioControls({
                     options={choices.map((c) => ({ label: c.label, value: c.value }))}
                     value={val}
                     onChange={(v) => setProperty(id, o.key, v)}
-                    className="w-32"
+                    className="w-full"
                   />
                 )}
               </div>
@@ -1171,14 +1234,14 @@ export function ComponentStudioControls({
 
           {/* Paired Numeric settings */}
           {numPairs.length > 0 && (
-            <div className="space-y-2 py-1.5 border-b border-line pb-2">
+            <div className="col-span-2 grid grid-cols-2 gap-2">
               {numPairs}
             </div>
           )}
 
           {/* Remaining Number options */}
           {remainingNumOpts.length > 0 && (
-            <div className="grid grid-cols-2 gap-2 py-1.5 border-b border-line last:border-0 pb-2">
+            <div className="col-span-2 grid grid-cols-2 gap-2">
               {remainingNumOpts.map((o) => {
                 const val = opts[o.key] as number;
                 return (
@@ -1197,11 +1260,11 @@ export function ComponentStudioControls({
 
           {/* Boolean switch options in 2-column grid */}
           {boolOpts.length > 0 && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 py-1.5 border-b border-line last:border-0 pb-2">
+            <div className="col-span-2 grid grid-cols-2 gap-x-4 gap-y-2">
               {boolOpts.map((o) => {
                 const val = opts[o.key] as boolean;
                 return (
-                  <div key={o.key} className="flex items-center justify-between text-[11px] gap-2">
+                  <div key={o.key} className="flex items-center justify-between text-[11px] gap-2 h-7 rounded-lg border border-line bg-ink px-2">
                     <span className="text-fg-dim font-medium truncate" title={o.label}>{o.label}</span>
                     <OptionToggle value={val} onChange={(v) => setProperty(id, o.key, v)} />
                   </div>
@@ -1214,32 +1277,34 @@ export function ComponentStudioControls({
           {colorOpts.map((o) => {
             const val = opts[o.key] as string;
             return (
-              <div key={o.key} className="flex items-center justify-between py-1.5 border-b border-line last:border-0 pb-1.5">
-                <span className="text-[11px] text-fg-dim font-medium">{o.label}</span>
+              <div key={o.key} className="flex flex-col gap-1 min-w-0">
+                <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                  <Paintbrush size={10} />
+                  <span>{o.label}</span>
+                </span>
                 <HexInput value={val} onChange={(v) => setProperty(id, o.key, v)} size="sm" />
               </div>
             );
           })}
 
           {/* Inline Text options */}
-          {textOpts.length > 0 && (
-            <div className="space-y-2 py-1.5 last:border-0 pb-1">
-              {textOpts.map((o) => {
-                const val = opts[o.key] as string;
-                return (
-                  <div key={o.key} className="flex items-center justify-between gap-3 py-1 border-b border-line last:border-0 pb-1.5">
-                    <span className="text-[11px] text-fg-dim font-medium w-24 shrink-0 truncate">{o.label}</span>
-                    <input
-                      type="text"
-                      value={val}
-                      onChange={(e) => setProperty(id, o.key, e.target.value)}
-                      className="flex-1 rounded-md border border-line bg-ink px-2 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono text-right"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {textOpts.map((o) => {
+            const val = opts[o.key] as string;
+            return (
+              <div key={o.key} className="col-span-2 flex flex-col gap-1">
+                <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                  <Type size={10} />
+                  <span>{o.label}</span>
+                </span>
+                <input
+                  type="text"
+                  value={val}
+                  onChange={(e) => setProperty(id, o.key, e.target.value)}
+                  className="w-full h-7 rounded-md border border-line bg-ink px-2.5 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono"
+                />
+              </div>
+            );
+          })}
         </div>
       ),
     });
@@ -1251,11 +1316,137 @@ export function ComponentStudioControls({
       title: part.label,
       count: part.props.length,
       part: part.id,
-      content: <>{part.props.map(renderPropRow)}</>,
+      content: (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+          {part.props.map(renderPropRow)}
+        </div>
+      ),
     });
   }
 
-  if (spec.children && spec.children.length > 0) {
+  if (spec.slots && spec.slots.length > 0) {
+    for (const slot of spec.slots) {
+      const childSpec = COMPONENT_SPECS[slot.componentId];
+      if (!childSpec) continue;
+
+      const slotOptions = slot.content;
+      const numOpts = slotOptions.filter((o) => o.type === "number");
+      const boolOpts = slotOptions.filter((o) => o.type === "boolean");
+      const textOpts = slotOptions.filter((o) => o.type === "text");
+      const colorOpts = slotOptions.filter((o) => o.type === "color"); // should stay empty per the hard rule in §3.1
+      const enumOpts = slotOptions.filter(
+        (o) => o.type !== "number" && o.type !== "boolean" && o.type !== "text" && o.type !== "color"
+      );
+
+      const getSlotVal = (key: string, def: string | boolean | number) => {
+        const stored = instances?.[slot.id]?.[key];
+        return typeof stored !== "undefined" ? stored : def;
+      };
+
+      clusters.push({
+        key: `slot.${slot.id}.content`,
+        title: `${slot.label} — ${childSpec.id}`,
+        part: null,
+        content: (
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+            {enumOpts.map((o) => {
+              const val = getSlotVal(o.key, o.def) as string;
+              const choices = o.options ?? [];
+              return (
+                <div key={o.key} className="flex flex-col gap-1 min-w-0">
+                  <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                    <Sliders size={10} />
+                    <span>{o.label}</span>
+                  </span>
+                  {choices.length <= 3 ? (
+                    <TokenSegmented
+                      options={choices.map((c) => ({ label: c.label, value: c.value }))}
+                      value={val}
+                      onChange={(v) => setSlotContent(id, slot.id, o.key, v)}
+                    />
+                  ) : (
+                    <CompactSelect
+                      options={choices.map((c) => ({ label: c.label, value: c.value }))}
+                      value={val}
+                      onChange={(v) => setSlotContent(id, slot.id, o.key, v)}
+                      className="w-full"
+                    />
+                  )}
+                </div>
+              );
+            })}
+
+            {boolOpts.length > 0 && (
+              <div className="col-span-2 grid grid-cols-2 gap-x-4 gap-y-2">
+                {boolOpts.map((o) => {
+                  const val = getSlotVal(o.key, o.def) as boolean;
+                  return (
+                    <div key={o.key} className="flex items-center justify-between text-[11px] gap-2 h-7 rounded-lg border border-line bg-ink px-2">
+                      <span className="text-fg-dim font-medium truncate" title={o.label}>{o.label}</span>
+                      <OptionToggle value={val} onChange={(v) => setSlotContent(id, slot.id, o.key, v)} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {numOpts.length > 0 && (
+              <div className="col-span-2 grid grid-cols-2 gap-2">
+                {numOpts.map((o) => {
+                  const val = getSlotVal(o.key, o.def) as number;
+                  return (
+                    <ScrubberInput
+                      key={o.key}
+                      label={o.label}
+                      value={val}
+                      min={o.min ?? 0}
+                      max={o.max ?? 100}
+                      onChange={(v) => setSlotContent(id, slot.id, o.key, v)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
+            {colorOpts.map((o) => {
+              const val = getSlotVal(o.key, o.def) as string;
+              return (
+                <div key={o.key} className="flex flex-col gap-1 min-w-0">
+                  <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                    <Paintbrush size={10} />
+                    <span>{o.label}</span>
+                  </span>
+                  <HexInput value={val} onChange={(v) => setSlotContent(id, slot.id, o.key, v)} size="sm" />
+                </div>
+              );
+            })}
+
+            {textOpts.length > 0 && (
+              <div className="col-span-2 flex flex-col gap-1">
+                {textOpts.map((o) => {
+                  const val = getSlotVal(o.key, o.def) as string;
+                  return (
+                    <div key={o.key} className="flex flex-col gap-1">
+                      <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                        <Type size={10} />
+                        <span>{o.label}</span>
+                      </span>
+                      <input
+                        type="text"
+                        value={val}
+                        onChange={(e) => setSlotContent(id, slot.id, o.key, e.target.value)}
+                        className="w-full h-7 rounded-md border border-line bg-ink px-2.5 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ),
+      });
+    }
+  } else if (spec.children && spec.children.length > 0) {
     for (const childId of spec.children) {
       const childSpec = COMPONENT_SPECS[childId];
       if (!childSpec) continue;

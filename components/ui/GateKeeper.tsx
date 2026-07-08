@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Eye, EyeOff, ArrowRight, ShieldAlert, Layers } from "lucide-react";
 
 interface GateKeeperProps {
@@ -16,6 +16,7 @@ export function GateKeeper({ children }: GateKeeperProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
+  const prefersReduced = useReducedMotion();
 
   useEffect(() => {
     setIsMounted(true);
@@ -58,13 +59,13 @@ export function GateKeeper({ children }: GateKeeperProps) {
 
         <AnimatePresence>
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={prefersReduced ? { opacity: 0 } : { opacity: 0, y: 20 }}
             animate={{ 
               opacity: 1, 
               y: 0,
-              x: shake ? [-10, 10, -10, 10, 0] : 0 
+              x: !prefersReduced && shake ? [-10, 10, -10, 10, 0] : 0 
             }}
-            transition={{ duration: shake ? 0.4 : 0.6, type: "spring" }}
+            transition={prefersReduced ? { duration: 0 } : { duration: shake ? 0.4 : 0.6, type: "spring" }}
             className="z-10 w-full max-w-md p-6"
           >
             {/* Logo/Branding */}
@@ -80,21 +81,25 @@ export function GateKeeper({ children }: GateKeeperProps) {
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl backdrop-blur-xl">
               <form onSubmit={handlePasswordSubmit} className="space-y-6">
                 <div>
-                  <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
+                  <label htmlFor="gate-password" className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
                     Enter Workspace Password
                   </label>
                   <div className="relative mt-2">
                     <input
+                      id="gate-password"
                       type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
                       autoFocus
+                      aria-invalid={error}
+                      aria-describedby={error ? "gate-password-error" : undefined}
                       className="h-11 w-full rounded-xl border border-white/10 bg-white/5 pl-4 pr-10 text-[14px] text-white placeholder:text-zinc-600 focus:border-white/30 focus:bg-white/10 focus:outline-none transition-all duration-200"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
                     >
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -102,6 +107,8 @@ export function GateKeeper({ children }: GateKeeperProps) {
                   </div>
                   {error && (
                     <motion.p
+                      id="gate-password-error"
+                      role="alert"
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="mt-2 text-xs font-medium text-rose-500"
@@ -138,9 +145,9 @@ export function GateKeeper({ children }: GateKeeperProps) {
 
         <AnimatePresence>
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
+            initial={prefersReduced ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, type: "spring" }}
+            transition={prefersReduced ? { duration: 0 } : { duration: 0.4, type: "spring" }}
             className="z-10 w-full max-w-lg p-6"
           >
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl backdrop-blur-xl">

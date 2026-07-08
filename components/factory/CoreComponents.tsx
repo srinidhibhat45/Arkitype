@@ -21,7 +21,8 @@ import {
 } from "lucide-react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
-import { CState, NO_BINDINGS, Resolver } from "@/lib/componentSchema";
+import { CState, NO_BINDINGS, Resolver, createChildResolver, useComponentBindings } from "@/lib/componentSchema";
+import { TokenIconButton } from "./FormControls";
 
 export type InteractionState =
   | "default"
@@ -369,7 +370,7 @@ export function TokenSelect({
   };
 
   return (
-    <div data-ark-part="container" style={style} role="combobox" aria-expanded={state === "active"} aria-disabled={disabled}>
+    <div data-ark-part="container" style={style} role="combobox" aria-expanded={state === "active"} aria-disabled={disabled} tabIndex={disabled ? -1 : 0}>
       <span data-ark-part="text">{state === "loading" ? "Loading options…" : value}</span>
       {state === "loading" ? (
         <Loader2 data-ark-part="chevron" size={pxNum(r("chevron.size"), 13)} className="ark-spin" style={{ color: chevronColor }} />
@@ -411,8 +412,9 @@ export function TokenAlert({
   body,
   style = "subtle",
   accent = "left",
-  icon = false,
+  icon = true,
   dismissible = false,
+  action = false,
   resolve = NO_BINDINGS,
 }: {
   variant?: AlertVariant;
@@ -424,10 +426,30 @@ export function TokenAlert({
   accent?: AlertAccent;
   icon?: boolean;
   dismissible?: boolean;
+  action?: boolean;
   resolve?: Resolver;
 }) {
   const r = resolve;
   const colors = useDesignSystem((s) => s.primitives.colors);
+  const cfg = useDesignSystem((s) => s.components.alert);
+  const instances = cfg?.instances;
+
+  const actionOpts = instances?.action ?? {};
+  const actionLabel = (actionOpts.label as string) ?? "Learn more";
+  const actionVariant = (actionOpts.variant as any) ?? "outlined";
+  const actionSize = (actionOpts.size as any) ?? "sm";
+  const actionPrefix = (actionOpts.prefixIcon as string) ?? "";
+  const actionSuffix = (actionOpts.suffixIcon as string) ?? "";
+
+  const dismissOpts = instances?.dismiss ?? {};
+  const dismissVariant = (dismissOpts.variant as any) ?? "ghost";
+  const dismissSize = (dismissOpts.size as any) ?? "sm";
+
+  const buttonResolve = useComponentBindings("button");
+  const iconButtonResolve = useComponentBindings("iconButton");
+  const childButtonResolve = createChildResolver("button", resolve, buttonResolve);
+  const childIconButtonResolve = createChildResolver("iconButton", resolve, iconButtonResolve);
+
   const slot =
     variant === "info"
       ? "secondary"
@@ -474,14 +496,15 @@ export function TokenAlert({
         color: text,
         fontFamily: r("text.font") ?? "var(--ark-font-sans)",
         display: "flex",
-        alignItems: "flex-start",
+        alignItems: "center",
         gap: sv(2),
+        width: "100%",
       }}
     >
       {icon ? (
-        <Icon size={16} style={{ color: glyph, flexShrink: 0, marginTop: 1 }} />
+        <Icon size={16} style={{ color: glyph, flexShrink: 0 }} />
       ) : null}
-      <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: sv(1) }}>
+      <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: sv(0.5) }}>
         <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: 700 }}>
           {title ?? `${variant.charAt(0).toUpperCase()}${variant.slice(1)} signal`}
         </span>
@@ -490,12 +513,31 @@ export function TokenAlert({
             "Token-mapped alert surface. Wash, border and accent resolve from the primitive ramp per mode."}
         </span>
       </span>
+      {action ? (
+        <div style={{ flexShrink: 0, marginLeft: "4px" }}>
+          <TokenButton
+            variant={actionVariant}
+            size={actionSize}
+            prefixIcon={actionPrefix}
+            suffixIcon={actionSuffix}
+            resolve={childButtonResolve}
+          >
+            {actionLabel}
+          </TokenButton>
+        </div>
+      ) : null}
       {dismissible ? (
-        <X
-          size={14}
-          style={{ color: text, opacity: 0.6, cursor: "pointer", flexShrink: 0 }}
-          aria-label="Dismiss"
-        />
+        <div style={{ flexShrink: 0, marginLeft: "4px" }}>
+          <TokenIconButton
+            variant={dismissVariant}
+            size={dismissSize}
+            resolve={childIconButtonResolve}
+            aria-label="Dismiss alert"
+            onClick={() => {}}
+          >
+            <X size={14} />
+          </TokenIconButton>
+        </div>
       ) : null}
     </div>
   );

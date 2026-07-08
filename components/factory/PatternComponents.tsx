@@ -108,14 +108,23 @@ export function TokenBanner({
   const r = resolve;
 
   const cfg = useDesignSystem((s) => s.components.banner);
-  const parentProperties = cfg?.properties;
+  const instances = cfg?.instances;
 
   const buttonResolve = useComponentBindings("button");
   const iconButtonResolve = useComponentBindings("iconButton");
   const childButtonResolve = createChildResolver("button", resolve, buttonResolve);
   const childIconButtonResolve = createChildResolver("iconButton", resolve, iconButtonResolve);
 
-  const btnSize = (parentProperties?.["button.size"] as any) ?? "sm";
+  const actionOpts = instances?.action ?? {};
+  const actionLabel = (actionOpts.label as string) ?? "Review now";
+  const actionVariant = (actionOpts.variant as any) ?? "filled";
+  const actionSize = (actionOpts.size as any) ?? "sm";
+  const actionPrefix = (actionOpts.prefixIcon as string) ?? "";
+  const actionSuffix = (actionOpts.suffixIcon as string) ?? "";
+
+  const dismissOpts = instances?.dismiss ?? {};
+  const dismissVariant = (dismissOpts.variant as any) ?? "ghost";
+  const dismissSize = (dismissOpts.size as any) ?? "sm";
 
   return (
     <div
@@ -130,6 +139,7 @@ export function TokenBanner({
         border: `1px solid ${tone.border}`,
         color: tone.text,
         fontFamily: "var(--ark-font-sans)",
+        width: "100%",
       }}
     >
       {icon ? (
@@ -144,15 +154,27 @@ export function TokenBanner({
         </span>
       </span>
       {action ? (
-        <div style={{ flexShrink: 0 }}>
-          <TokenButton size={btnSize} resolve={childButtonResolve}>
-            Review now
+        <div style={{ flexShrink: 0, marginLeft: "4px" }}>
+          <TokenButton
+            variant={actionVariant}
+            size={actionSize}
+            prefixIcon={actionPrefix}
+            suffixIcon={actionSuffix}
+            resolve={childButtonResolve}
+          >
+            {actionLabel}
           </TokenButton>
         </div>
       ) : null}
       {dismissible ? (
-        <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
-          <TokenIconButton variant="ghost" size="sm" resolve={childIconButtonResolve}>
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", marginLeft: "4px" }}>
+          <TokenIconButton
+            variant={dismissVariant}
+            size={dismissSize}
+            resolve={childIconButtonResolve}
+            aria-label="Dismiss banner"
+            onClick={() => {}}
+          >
             <X size={15} />
           </TokenIconButton>
         </div>
@@ -178,12 +200,13 @@ export function TokenField({
   const r = resolve;
 
   const cfg = useDesignSystem((s) => s.components.field);
-  const parentProperties = cfg?.properties;
+  const instances = cfg?.instances;
 
   const inputResolve = useComponentBindings("input");
   const childInputResolve = createChildResolver("input", resolve, inputResolve);
 
-  const inputSize = (parentProperties?.["input.size"] as any) ?? "md";
+  const controlOpts = instances?.control ?? {};
+  const controlSize = (controlOpts.size as any) ?? "md";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: sv(1), width: "100%", maxWidth: 340, fontFamily: "var(--ark-font-sans)" }}>
@@ -203,7 +226,7 @@ export function TokenField({
       >
         <TokenInput
           state="default"
-          size={inputSize}
+          size={controlSize}
           radiusStep={radiusStep}
           placeholder="name@company.com"
           resolve={childInputResolve}

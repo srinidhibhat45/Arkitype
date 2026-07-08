@@ -384,21 +384,30 @@ export function TokenToast({
   const Glyph = toastGlyph(variant);
 
   const cfg = useDesignSystem((s) => s.components.toast);
-  const properties = cfg?.properties;
+  const instances = cfg?.instances;
 
   const buttonResolve = useComponentBindings("button");
   const iconButtonResolve = useComponentBindings("iconButton");
   const childButtonResolve = createChildResolver("button", resolve, buttonResolve);
   const childIconButtonResolve = createChildResolver("iconButton", resolve, iconButtonResolve);
 
-  const btnSize = (properties?.["button.size"] as any) ?? "sm";
+  const actionOpts = instances?.action ?? {};
+  const actionLabel = (actionOpts.label as string) ?? "Undo";
+  const actionVariant = (actionOpts.variant as any) ?? "outlined";
+  const actionSize = (actionOpts.size as any) ?? "sm";
+  const actionPrefix = (actionOpts.prefixIcon as string) ?? "";
+  const actionSuffix = (actionOpts.suffixIcon as string) ?? "";
+
+  const dismissOpts = instances?.dismiss ?? {};
+  const dismissVariant = (dismissOpts.variant as any) ?? "ghost";
+  const dismissSize = (dismissOpts.size as any) ?? "sm";
 
   return (
     <div
       role="status"
       style={{
         display: "flex",
-        alignItems: "flex-start",
+        alignItems: "center",
         gap: sv(2),
         padding: `${sv(2)} ${sv(3)}`,
         borderRadius: r("container.radius") ?? rv(radiusStep),
@@ -407,6 +416,7 @@ export function TokenToast({
         boxShadow: `var(--ark-shadow-${elevation})`,
         fontFamily: "var(--ark-font-sans)",
         maxWidth: 360,
+        width: "100%",
       }}
     >
       {icon ? (
@@ -449,15 +459,27 @@ export function TokenToast({
         </span>
       </span>
       {action ? (
-        <div style={{ flexShrink: 0, alignSelf: "center", marginLeft: "4px" }}>
-          <TokenButton size={btnSize} resolve={childButtonResolve}>
-            Undo
+        <div style={{ flexShrink: 0, marginLeft: "4px" }}>
+          <TokenButton
+            variant={actionVariant}
+            size={actionSize}
+            prefixIcon={actionPrefix}
+            suffixIcon={actionSuffix}
+            resolve={childButtonResolve}
+          >
+            {actionLabel}
           </TokenButton>
         </div>
       ) : null}
       {dismissible ? (
-        <div style={{ flexShrink: 0, alignSelf: "center", marginLeft: "4px" }}>
-          <TokenIconButton variant="ghost" size="sm" resolve={childIconButtonResolve}>
+        <div style={{ flexShrink: 0, marginLeft: "4px" }}>
+          <TokenIconButton
+            variant={dismissVariant}
+            size={dismissSize}
+            resolve={childIconButtonResolve}
+            aria-label="Dismiss notification"
+            onClick={() => {}}
+          >
             <X size={13} />
           </TokenIconButton>
         </div>

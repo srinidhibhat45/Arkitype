@@ -46,6 +46,7 @@ export interface PropSpec {
   def: string | Partial<Record<CState, string>>; // default binding(s)
   min?: number; // for dimension inputs
   max?: number;
+  contrastAgainst?: string; // key of counterpart prop
 }
 
 export interface PartSpec {
@@ -107,7 +108,7 @@ const prop = (
   label: string,
   type: BindingType,
   def: PropSpec["def"],
-  opts: Partial<Pick<PropSpec, "stateful" | "states" | "min" | "max">> = {}
+  opts: Partial<Pick<PropSpec, "stateful" | "states" | "min" | "max" | "contrastAgainst">> = {}
 ): PropSpec => ({ key, label, type, def, ...opts });
 
 /* ── option-authoring helpers ── */
@@ -211,10 +212,11 @@ function labelPart(
     weight?: string;
     size?: string;
     states?: CState[];
+    contrastAgainst?: string;
   }
 ): PartSpec {
   const props: PropSpec[] = [
-    prop(`${id}.color`, "Colour", "color", o.color, { stateful: true, states: o.states }),
+    prop(`${id}.color`, "Colour", "color", o.color, { stateful: true, states: o.states, contrastAgainst: o.contrastAgainst }),
   ];
   if (o.font !== undefined) props.push(prop(`${id}.font`, "Font role", "fontRole", o.font));
   if (o.weight !== undefined) props.push(prop(`${id}.weight`, "Weight", "weight", o.weight));
@@ -226,13 +228,13 @@ function labelPart(
 function iconPart(
   id: string,
   label: string,
-  o: { color: PropSpec["def"]; size?: string; states?: CState[] }
+  o: { color: PropSpec["def"]; size?: string; states?: CState[]; contrastAgainst?: string }
 ): PartSpec {
   return {
     id,
     label,
     props: [
-      prop(`${id}.color`, "Colour", "color", o.color, { stateful: true, states: o.states }),
+      prop(`${id}.color`, "Colour", "color", o.color, { stateful: true, states: o.states, contrastAgainst: o.contrastAgainst }),
       prop(`${id}.size`, "Size", "dimension", o.size ?? "px:14", { min: 8, max: 48 }),
     ],
   };
@@ -267,14 +269,17 @@ const buttonSpec: ComponentSpec = {
       font: "font:body",
       weight: "weight:semibold",
       size: "text:sm",
+      contrastAgainst: "container.bg",
     }),
     iconPart("prefixIcon", "Prefix icon", {
       color: { default: "role:text-on-action", disabled: "role:text-muted" },
       size: "px:14",
+      contrastAgainst: "container.bg",
     }),
     iconPart("suffixIcon", "Suffix icon", {
       color: { default: "role:text-on-action", disabled: "role:text-muted" },
       size: "px:14",
+      contrastAgainst: "container.bg",
     }),
   ],
   options: [
@@ -319,6 +324,7 @@ const inputSpec: ComponentSpec = {
       color: { default: "role:text-primary", disabled: "role:text-muted" },
       font: "font:body",
       size: "text:sm",
+      contrastAgainst: "container.bg",
     }),
   ],
 };
@@ -456,7 +462,6 @@ const sliderSpec: ComponentSpec = {
 const buttonGroupSpec: ComponentSpec = {
   id: "buttonGroup",
   tier: 2,
-  children: ["button"],
   states: ["default", "active"],
   parts: [
     {
@@ -771,7 +776,38 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "alert",
     tier: 2,
-    children: ["button", "iconButton"],
+    slots: [
+      {
+        id: "action",
+        componentId: "button",
+        label: "Action button",
+        content: [
+          textOpt("label", "Label", "Learn more"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "outlined"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "dismiss",
+        componentId: "iconButton",
+        label: "Dismiss button",
+        content: [
+          enumOpt("variant", "Variant", [opt("solid", "Solid"), opt("outline", "Outline"), opt("ghost", "Ghost")], "ghost"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -797,7 +833,38 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "toast",
     tier: 2,
-    children: ["button", "iconButton"],
+    slots: [
+      {
+        id: "action",
+        componentId: "button",
+        label: "Action button",
+        content: [
+          textOpt("label", "Label", "Undo"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "outlined"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "dismiss",
+        componentId: "iconButton",
+        label: "Dismiss button",
+        content: [
+          enumOpt("variant", "Variant", [opt("solid", "Solid"), opt("outline", "Outline"), opt("ghost", "Ghost")], "ghost"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -882,7 +949,29 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "emptyState",
     tier: 2,
-    children: ["button"],
+    slots: [
+      {
+        id: "action",
+        componentId: "button",
+        label: "Action button",
+        content: [
+          textOpt("label", "Label", "Record transaction"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "filled"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -935,7 +1024,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "navbar",
     tier: 2,
-    children: ["button", "iconButton", "avatar", "badge"],
     states: ["default"],
     parts: [
       {
@@ -968,7 +1056,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "sidebar",
     tier: 2,
-    children: ["badge", "avatar", "link"],
     states: ["default"],
     parts: [
       {
@@ -1044,7 +1131,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "pagination",
     tier: 2,
-    children: ["button", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -1063,7 +1149,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "dropdown",
     tier: 2,
-    children: ["iconButton", "divider"],
     states: ["default"],
     parts: [
       {
@@ -1107,7 +1192,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "card",
     tier: 2,
-    children: ["badge", "avatar", "button", "divider"],
     states: ["default"],
     parts: [
       {
@@ -1134,7 +1218,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "listItem",
     tier: 2,
-    children: ["avatar", "badge"],
     states: ["default"],
     parts: [
       {
@@ -1160,7 +1243,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "feedItem",
     tier: 2,
-    children: ["avatar", "badge", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -1187,7 +1269,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "accordion",
     tier: 2,
-    children: ["iconButton", "divider"],
     states: ["default"],
     parts: [
       {
@@ -1213,7 +1294,38 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "banner",
     tier: 2,
-    children: ["button", "iconButton"],
+    slots: [
+      {
+        id: "action",
+        componentId: "button",
+        label: "Action button",
+        content: [
+          textOpt("label", "Label", "Action"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "filled"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "dismiss",
+        componentId: "iconButton",
+        label: "Dismiss button",
+        content: [
+          enumOpt("variant", "Variant", [opt("solid", "Solid"), opt("outline", "Outline"), opt("ghost", "Ghost")], "ghost"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -1236,7 +1348,16 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "field",
     tier: 2,
-    children: ["input", "badge"],
+    slots: [
+      {
+        id: "control",
+        componentId: "input",
+        label: "Input field",
+        content: [
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "md"),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -1253,24 +1374,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "statGrid",
     tier: 2,
-    children: ["divider"],
-    states: ["default"],
-    parts: [
-      {
-        id: "cell",
-        label: "Cells",
-        props: [
-          prop("cell.bg", "Background", "color", "role:surface-elevated"),
-          prop("cell.border", "Border", "color", "role:border-muted"),
-          prop("cell.radius", "Corner radius", "radius", "radius:4"),
-        ],
-      },
-    ],
-  },
-  {
-    id: "statGrid",
-    tier: 2,
-    children: ["divider"],
     states: ["default"],
     parts: [
       {
@@ -1379,7 +1482,29 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "tabs",
     tier: 2,
-    children: ["button", "input", "alert", "searchField", "stepper", "badge"],
+    slots: [
+      {
+        id: "panelAction",
+        componentId: "button",
+        label: "Panel action button",
+        content: [
+          textOpt("label", "Label", "Create new"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "filled"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", "add"),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -1409,9 +1534,6 @@ const OTHER_SPECS: ComponentSpec[] = [
       ], "1", true),
       numOpt("radius", "Corner radius", 6, 0, 32),
       numOpt("borderWidth", "Border thickness", 1, 0, 8),
-      colorOpt("borderColor", "Border color", "#e4e4e7"),
-      colorOpt("activeBg", "Active background", "#f4f4f5"),
-      colorOpt("activeTextColor", "Active text color", "#18181b"),
       numOpt("padding", "Tab spacing padding", 8, 0, 32),
       boolOpt("showIcons", "Show icons", true),
     ],
@@ -1419,7 +1541,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "table",
     tier: 2,
-    children: ["badge", "avatar", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -1429,6 +1550,13 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("container.bg", "Table background", "color", "role:surface-elevated"),
           prop("container.border", "Table border", "color", "role:border-muted"),
           prop("container.radius", "Corner radius", "radius", "radius:3"),
+        ],
+      },
+      {
+        id: "cell",
+        label: "Table Cells",
+        props: [
+          prop("cell.accent", "Accent highlight", "color", "role:action-primary-default"),
         ],
       },
     ],
@@ -1441,13 +1569,10 @@ const OTHER_SPECS: ComponentSpec[] = [
       ], "1", true),
       boolOpt("showHeader", "Show table header", true),
       numOpt("borderWidth", "Border thickness", 1, 0, 8),
-      colorOpt("borderColor", "Border color", "#e4e4e7"),
-      colorOpt("bg", "Table background fill", "#ffffff"),
       numOpt("radius", "Corner radius", 8, 0, 32),
       numOpt("padding", "Cell padding", 12, 0, 48),
       boolOpt("striped", "Striped row background", true),
       numOpt("rowHeight", "Row height limit", 44, 24, 80),
-      colorOpt("accentColor", "Accent color highlight", "#4f46e5"),
     ],
   },
 ];

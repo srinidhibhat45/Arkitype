@@ -112,13 +112,15 @@ export function AuthAndSurvey() {
                     placeholder="jane.doe@company.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    aria-invalid={!!authError}
+                    aria-describedby={authError ? "auth-error-msg" : undefined}
                     className="w-full rounded-lg border border-line bg-ink px-9 py-2.5 text-xs text-fg placeholder:text-fg-mute focus:border-indigo-500 focus:outline-none transition-all"
                   />
                 </div>
               </div>
 
               {authError && (
-                <span className="text-[11px] text-red-400 font-medium">{authError}</span>
+                <span id="auth-error-msg" role="alert" className="text-[11px] text-red-400 font-medium">{authError}</span>
               )}
 
               <button

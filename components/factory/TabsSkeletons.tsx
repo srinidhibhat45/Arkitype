@@ -26,9 +26,6 @@ const DEFAULT_TABS = ["Overview", "Allocations", "Forecast", "Audit"];
 interface TabsResolvedOpts {
   radius: number;
   borderWidth: number;
-  borderColor: string;
-  activeBg: string;
-  activeTextColor: string;
   padding: number;
   showIcons: boolean;
   skeletonId: string;
@@ -40,9 +37,6 @@ function useResolvedTabsOptions(): TabsResolvedOpts {
   return {
     radius: Number(opts.radius ?? 6),
     borderWidth: Number(opts.borderWidth ?? 1),
-    borderColor: (opts.borderColor ?? "#e4e4e7") as string,
-    activeBg: (opts.activeBg ?? "#f4f4f5") as string,
-    activeTextColor: (opts.activeTextColor ?? "#18181b") as string,
     padding: Number(opts.padding ?? 8),
     showIcons: opts.showIcons !== false,
     skeletonId: (cfg?.skeletonId ?? "1") as string,
@@ -58,6 +52,7 @@ function PanelBody({
   childSearchFieldResolve,
   childStepperResolve,
   parentProperties,
+  parentInstances,
 }: {
   active: string;
   mode: PreviewMode;
@@ -67,11 +62,14 @@ function PanelBody({
   childSearchFieldResolve: Resolver;
   childStepperResolve: Resolver;
   parentProperties?: Record<string, any>;
+  parentInstances?: Record<string, any>;
 }) {
-  const btnSize = (parentProperties?.["button.size"] as any) ?? "sm";
-  const btnVariant = (parentProperties?.["button.variant"] as any) ?? "filled";
-  const btnPrefix = (parentProperties?.["button.prefixIcon"] as string) ?? "";
-  const btnSuffix = (parentProperties?.["button.suffixIcon"] as string) ?? "";
+  const panelActionOpts = parentInstances?.panelAction ?? {};
+  const btnSize = (panelActionOpts.size as any) ?? "sm";
+  const btnVariant = (panelActionOpts.variant as any) ?? "filled";
+  const btnPrefix = (panelActionOpts.prefixIcon as string) ?? "add";
+  const btnSuffix = (panelActionOpts.suffixIcon as string) ?? "";
+  const btnLabel = (panelActionOpts.label as string) ?? "Create new";
 
   const inputSize = (parentProperties?.["input.size"] as any) ?? "sm";
   const searchSize = (parentProperties?.["searchField.size"] as any) ?? "sm";
@@ -104,9 +102,14 @@ function PanelBody({
       {active === "Overview" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           <TokenSearchField state="active" value="Marketing" placeholder="Search allocations..." size={searchSize} resolve={childSearchFieldResolve} />
-          <p style={{ color: tv("text-muted"), fontSize: "var(--ark-text-xs)", margin: 0 }}>
-            Enter a query to search transactions across all departments.
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ flex: 1 }}>
+              <TokenInput state="active" value="DEPT-402" placeholder="Department code (e.g. DEPT-402)" size={inputSize} resolve={childInputResolve} />
+            </div>
+            <div style={{ width: "90px", flexShrink: 0 }}>
+              <TokenStepper value={5} size={stepperSize} resolve={childStepperResolve} />
+            </div>
+          </div>
         </div>
       )}
 
@@ -145,15 +148,30 @@ function PanelBody({
       )}
 
       {active === "Audit" && (
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <TokenAlert
+            variant={alertVariant}
+            style={alertStyle}
+            accent={alertAccent}
+            icon={alertIcon}
+            title="Warning Signal"
+            body="Review required. 3 sub-packages exceed budgeted weights."
+            mode={mode}
+            resolve={childAlertResolve}
+          />
+        </div>
+      )}
+
+      {active === "Settings" && (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <TokenButton
-            size={btnSize}
             variant={btnVariant}
+            size={btnSize}
             prefixIcon={btnPrefix}
             suffixIcon={btnSuffix}
             resolve={childButtonResolve}
           >
-            Start Audit Cycle
+            {btnLabel}
           </TokenButton>
         </div>
       )}
@@ -191,6 +209,10 @@ export function TabsSkeleton({
   const childSearchFieldResolve = createChildResolver("searchField", parentResolve, searchFieldResolve);
   const childStepperResolve = createChildResolver("stepper", parentResolve, stepperResolve);
 
+  const borderColor = parentResolve("container.borderColor") ?? tv("border-default");
+  const activeBg = parentResolve("tab.activeBg") ?? tv("surface-subtle");
+  const activeTextColor = parentResolve("tab.activeText") ?? tv("text-primary");
+
   const body = children ? children(active) : (
     <PanelBody
       active={active}
@@ -201,6 +223,7 @@ export function TabsSkeleton({
       childSearchFieldResolve={childSearchFieldResolve}
       childStepperResolve={childStepperResolve}
       parentProperties={parentProperties}
+      parentInstances={cfg?.instances}
     />
   );
   
@@ -221,6 +244,31 @@ export function TabsSkeleton({
     );
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const isVertical = skeletonId === "4";
+    const nextKeys = isVertical ? ["ArrowDown", "ArrowRight"] : ["ArrowRight"];
+    const prevKeys = isVertical ? ["ArrowUp", "ArrowLeft"] : ["ArrowLeft"];
+    const currentIndex = tabs.indexOf(active);
+
+    if (nextKeys.includes(e.key)) {
+      e.preventDefault();
+      const nextIndex = (currentIndex + 1) % tabs.length;
+      setActive(tabs[nextIndex]);
+      setTimeout(() => {
+        const btn = document.getElementById(`tab-${skeletonId}-${tabs[nextIndex]}`);
+        btn?.focus();
+      }, 0);
+    } else if (prevKeys.includes(e.key)) {
+      e.preventDefault();
+      const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+      setActive(tabs[prevIndex]);
+      setTimeout(() => {
+        const btn = document.getElementById(`tab-${skeletonId}-${tabs[prevIndex]}`);
+        btn?.focus();
+      }, 0);
+    }
+  };
+
   const baseBtn = {
     background: "transparent",
     border: "none",
@@ -235,21 +283,31 @@ export function TabsSkeleton({
     // Contained pills styled dynamically
     return (
       <div>
-        <div style={{ display: "flex", gap: "8px", padding: `${opts.padding}px` }}>
+        <div
+          role="tablist"
+          aria-label="Component preview tabs"
+          onKeyDown={handleKeyDown}
+          style={{ display: "flex", gap: "8px", padding: `${opts.padding}px` }}
+        >
           {tabs.map((t) => {
             const on = t === active;
             return (
               <button
                 key={t}
+                id={`tab-${skeletonId}-${t}`}
+                role="tab"
+                aria-selected={on}
+                aria-controls={`panel-${skeletonId}-${t}`}
+                tabIndex={on ? 0 : -1}
                 type="button"
                 onClick={() => setActive(t)}
                 style={{
                   ...baseBtn,
                   padding: "6px 12px",
                   borderRadius: `${opts.radius}px`,
-                  backgroundColor: on ? opts.activeBg : "transparent",
-                  color: on ? opts.activeTextColor : tv("text-secondary"),
-                  border: `${opts.borderWidth}px solid ${on ? opts.borderColor : "transparent"}`,
+                  backgroundColor: on ? activeBg : "transparent",
+                  color: on ? activeTextColor : tv("text-secondary"),
+                  border: `${opts.borderWidth}px solid ${on ? borderColor : "transparent"}`,
                 }}
               >
                 {renderTabLabel(t)}
@@ -257,7 +315,14 @@ export function TabsSkeleton({
             );
           })}
         </div>
-        {body}
+        <div
+          role="tabpanel"
+          id={`panel-${skeletonId}-${active}`}
+          aria-labelledby={`tab-${skeletonId}-${active}`}
+          style={{ width: "100%" }}
+        >
+          {body}
+        </div>
       </div>
     );
   }
@@ -267,10 +332,13 @@ export function TabsSkeleton({
     return (
       <div>
         <div
+          role="tablist"
+          aria-label="Component preview tabs"
+          onKeyDown={handleKeyDown}
           style={{
             display: "grid",
             gridTemplateColumns: `repeat(${tabs.length}, 1fr)`,
-            border: `${opts.borderWidth}px solid ${opts.borderColor}`,
+            border: `${opts.borderWidth}px solid ${borderColor}`,
             borderRadius: `${opts.radius}px`,
             overflow: "hidden",
             margin: `${opts.padding}px`,
@@ -281,14 +349,19 @@ export function TabsSkeleton({
             return (
               <button
                 key={t}
+                id={`tab-${skeletonId}-${t}`}
+                role="tab"
+                aria-selected={on}
+                aria-controls={`panel-${skeletonId}-${t}`}
+                tabIndex={on ? 0 : -1}
                 type="button"
                 onClick={() => setActive(t)}
                 style={{
                   ...baseBtn,
                   padding: "8px 12px",
-                  backgroundColor: on ? opts.activeBg : "transparent",
-                  color: on ? opts.activeTextColor : tv("text-secondary"),
-                  borderLeft: i > 0 ? `${opts.borderWidth}px solid ${opts.borderColor}` : "none",
+                  backgroundColor: on ? activeBg : "transparent",
+                  color: on ? activeTextColor : tv("text-secondary"),
+                  borderLeft: i > 0 ? `${opts.borderWidth}px solid ${borderColor}` : "none",
                 }}
               >
                 {renderTabLabel(t)}
@@ -296,7 +369,14 @@ export function TabsSkeleton({
             );
           })}
         </div>
-        {body}
+        <div
+          role="tabpanel"
+          id={`panel-${skeletonId}-${active}`}
+          aria-labelledby={`tab-${skeletonId}-${active}`}
+          style={{ width: "100%" }}
+        >
+          {body}
+        </div>
       </div>
     );
   }
@@ -306,12 +386,16 @@ export function TabsSkeleton({
     return (
       <div style={{ display: "flex", minHeight: 140 }}>
         <div
+          role="tablist"
+          aria-label="Component preview tabs"
+          aria-orientation="vertical"
+          onKeyDown={handleKeyDown}
           style={{
             display: "flex",
             flexDirection: "column",
             gap: "4px",
             padding: `${opts.padding}px`,
-            borderRight: `${opts.borderWidth}px solid ${opts.borderColor}`,
+            borderRight: `${opts.borderWidth}px solid ${borderColor}`,
             minWidth: 120,
           }}
         >
@@ -320,6 +404,11 @@ export function TabsSkeleton({
             return (
               <button
                 key={t}
+                id={`tab-${skeletonId}-${t}`}
+                role="tab"
+                aria-selected={on}
+                aria-controls={`panel-${skeletonId}-${t}`}
+                tabIndex={on ? 0 : -1}
                 type="button"
                 onClick={() => setActive(t)}
                 style={{
@@ -327,8 +416,8 @@ export function TabsSkeleton({
                   textAlign: "left",
                   padding: "6px 12px",
                   borderRadius: `${opts.radius}px`,
-                  backgroundColor: on ? opts.activeBg : "transparent",
-                  color: on ? opts.activeTextColor : tv("text-muted"),
+                  backgroundColor: on ? activeBg : "transparent",
+                  color: on ? activeTextColor : tv("text-muted"),
                 }}
               >
                 {renderTabLabel(t)}
@@ -336,7 +425,14 @@ export function TabsSkeleton({
             );
           })}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>{body}</div>
+        <div
+          role="tabpanel"
+          id={`panel-${skeletonId}-${active}`}
+          aria-labelledby={`tab-${skeletonId}-${active}`}
+          style={{ flex: 1, minWidth: 0 }}
+        >
+          {body}
+        </div>
       </div>
     );
   }
@@ -345,11 +441,14 @@ export function TabsSkeleton({
   return (
     <div>
       <div
+        role="tablist"
+        aria-label="Component preview tabs"
+        onKeyDown={handleKeyDown}
         style={{
           display: "flex",
           gap: "16px",
           padding: `0 ${opts.padding * 1.5}px`,
-          borderBottom: `${opts.borderWidth}px solid ${opts.borderColor}`,
+          borderBottom: `${opts.borderWidth}px solid ${borderColor}`,
         }}
       >
         {tabs.map((t) => {
@@ -357,13 +456,18 @@ export function TabsSkeleton({
           return (
             <button
               key={t}
+              id={`tab-${skeletonId}-${t}`}
+              role="tab"
+              aria-selected={on}
+              aria-controls={`panel-${skeletonId}-${t}`}
+              tabIndex={on ? 0 : -1}
               type="button"
               onClick={() => setActive(t)}
               style={{
                 ...baseBtn,
                 padding: "10px 0",
-                color: on ? opts.activeTextColor : tv("text-muted"),
-                borderBottom: `2px solid ${on ? opts.activeBg : "transparent"}`,
+                color: on ? activeTextColor : tv("text-muted"),
+                borderBottom: `2px solid ${on ? activeBg : "transparent"}`,
                 marginBottom: -1,
               }}
             >
@@ -372,7 +476,14 @@ export function TabsSkeleton({
           );
         })}
       </div>
-      {body}
+      <div
+        role="tabpanel"
+        id={`panel-${skeletonId}-${active}`}
+        aria-labelledby={`tab-${skeletonId}-${active}`}
+        style={{ width: "100%" }}
+      >
+        {body}
+      </div>
     </div>
   );
 }

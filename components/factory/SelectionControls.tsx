@@ -92,7 +92,7 @@ export function TokenCheckbox({
         cursor: disabled ? "not-allowed" : "pointer",
       }}
     >
-      <span data-ark-part="box" style={box} role="checkbox" aria-checked={indeterminate ? "mixed" : checked} aria-disabled={disabled}>
+      <span data-ark-part="box" style={box} role="checkbox" aria-checked={indeterminate ? "mixed" : checked} aria-disabled={disabled} tabIndex={disabled ? -1 : 0}>
         {indeterminate ? (
           <Minus data-ark-part="check" size={checkSize} strokeWidth={3} />
         ) : checked ? (
@@ -159,7 +159,7 @@ export function TokenRadio({
         cursor: disabled ? "not-allowed" : "pointer",
       }}
     >
-      <span data-ark-part="dot" style={outer} role="radio" aria-checked={checked} aria-disabled={disabled}>
+      <span data-ark-part="dot" style={outer} role="radio" aria-checked={checked} aria-disabled={disabled} tabIndex={disabled ? -1 : 0}>
         <span style={dot} />
       </span>
       <span style={labelStyle(disabled)}>{label}</span>
@@ -221,7 +221,7 @@ export function TokenSwitch({
         cursor: disabled ? "not-allowed" : "pointer",
       }}
     >
-      <span data-ark-part="switchTrack" style={track} role="switch" aria-checked={checked} aria-disabled={disabled}>
+      <span data-ark-part="switchTrack" style={track} role="switch" aria-checked={checked} aria-disabled={disabled} tabIndex={disabled ? -1 : 0}>
         <span data-ark-part="switchThumb" style={{ display: "block", ...thumb }} />
       </span>
       <span style={labelStyle(disabled)}>{label}</span>

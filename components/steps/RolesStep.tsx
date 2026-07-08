@@ -1,21 +1,11 @@
 "use client";
 
-/**
- * Step 06 — Roles. The semantic layer, and the one you'll edit and preview most.
- *  • Expansive: roles and groups live in state — add, rename and remove them, and
- *    the defaults now cover surfaces, text, two action tiers, borders and full
- *    feedback families (info / success / warning / error).
- *  • Controllable: a role can point at a ramp step OR carry a raw hex — pick a
- *    swatch to bind, or open the colour well for a literal value.
- *  • Felt immediately: a live in-context card renders in both modes beside the
- *    matrix, and the WCAG audit re-checks contrast on every change.
- */
 import { useEffect, useMemo, useState } from "react";
 import {
   PreviewMode,
   useDesignSystem,
 } from "@/store/useDesignSystem";
-import { isValidHex, rampStepLabels, wcagVerdict } from "@/lib/color";
+import { isValidHex, rampStepLabels } from "@/lib/color";
 import { resolveRef, resolveToken, rv, sv, tv } from "@/lib/tokens";
 import {
   AsideDivider,
@@ -26,17 +16,8 @@ import {
 } from "@/components/ui/controls";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
 import { Plus, Trash2 } from "lucide-react";
-
-const A11Y_PAIRS: Array<[bg: string, fg: string, context: string]> = [
-  ["surface-base", "text-primary", "Body on base"],
-  ["surface-base", "text-secondary", "Secondary on base"],
-  ["surface-base", "text-muted", "Muted on base"],
-  ["surface-elevated", "text-primary", "Body on cards"],
-  ["surface-subtle", "text-secondary", "Secondary on subtle"],
-  ["action-primary-default", "text-on-action", "Button label"],
-  ["action-primary-hover", "text-on-action", "Button label, hover"],
-  ["action-primary-active", "text-on-action", "Button label, active"],
-];
+import { checkContrast } from "@/lib/a11y";
+import { ROLE_CONTRAST_PAIRS, pairsInvolving } from "@/lib/a11yPairs";
 
 function useRefOptions() {
   const families = useDesignSystem((s) => s.primitives.colorFamilies);
@@ -54,7 +35,8 @@ function useRefOptions() {
 
 function TokenCell({ mode, token }: { mode: PreviewMode; token: string }) {
   const primitives = useDesignSystem((s) => s.primitives);
-  const value = useDesignSystem((s) => s.semantics.modes[mode][token]);
+  const currentModeSemantics = useDesignSystem((s) => s.semantics.modes[mode]);
+  const value = currentModeSemantics[token];
   const setSemantic = useDesignSystem((s) => s.setSemantic);
   const refOptions = useRefOptions();
   const hex = resolveRef(primitives, value);
@@ -63,29 +45,105 @@ function TokenCell({ mode, token }: { mode: PreviewMode; token: string }) {
     ? [{ label: `Custom ${value.toUpperCase()}`, value }, ...refOptions]
     : refOptions;
 
+  const [pendingValue, setPendingValue] = useState<string | null>(null);
+  const [pendingWarning, setPendingWarning] = useState<{ label: string; ratio: number } | null>(null);
+
+  const handleUpdate = (newVal: string) => {
+    // Resolve hex for the new value
+    const newHex = newVal.startsWith("#") ? newVal : resolveRef(primitives, newVal);
+    
+    // Find all contrast pairs involving this semantic token
+    const pairs = pairsInvolving(token);
+    let firstFail: { label: string; ratio: number } | null = null;
+    
+    for (const pair of pairs) {
+      const counterpartToken = pair.fg === token ? pair.bg : pair.fg;
+      const counterpartVal = currentModeSemantics[counterpartToken];
+      const counterpartHex = resolveRef(primitives, counterpartVal);
+      
+      const fgHex = pair.fg === token ? newHex : counterpartHex;
+      const bgHex = pair.bg === token ? newHex : counterpartHex;
+      
+      const check = checkContrast(fgHex, bgHex, pair.context);
+      if (check.level === "fail") {
+        firstFail = { label: pair.label, ratio: check.ratio };
+        break;
+      }
+    }
+
+    if (firstFail) {
+      setPendingValue(newVal);
+      setPendingWarning(firstFail);
+    } else {
+      setSemantic(mode, token, newVal);
+      setPendingValue(null);
+      setPendingWarning(null);
+    }
+  };
+
+  const confirmPending = () => {
+    if (pendingValue) {
+      setSemantic(mode, token, pendingValue);
+    }
+    setPendingValue(null);
+    setPendingWarning(null);
+  };
+
+  const cancelPending = () => {
+    setPendingValue(null);
+    setPendingWarning(null);
+  };
+
+  const activeHex = pendingValue 
+    ? (pendingValue.startsWith("#") ? pendingValue : resolveRef(primitives, pendingValue))
+    : hex;
+
   return (
-    <div className="flex items-center gap-2">
-      <label
-        className="h-8 w-8 shrink-0 cursor-pointer overflow-hidden rounded-lg border border-line-strong"
-        style={{ background: hex }}
-        title={`${hex} — click for a raw hex value`}
-      >
-        <input
-          type="color"
-          aria-label={`${token} ${mode} colour`}
-          value={isValidHex(hex) ? hex : "#000000"}
-          onChange={(e) => setSemantic(mode, token, e.target.value)}
-          className="h-0 w-0 opacity-0"
-        />
-      </label>
-      <div className="min-w-0 flex-1">
-        <SelectControl
-          compact
-          value={value ?? ""}
-          options={options}
-          onChange={(v) => setSemantic(mode, token, v)}
-        />
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <label
+          className="h-8 w-8 shrink-0 cursor-pointer overflow-hidden rounded-lg border border-line-strong"
+          style={{ background: activeHex }}
+          title={`${hex} — click for a raw hex value`}
+        >
+          <input
+            type="color"
+            aria-label={`${token} ${mode} colour`}
+            value={isValidHex(activeHex) ? activeHex : "#000000"}
+            onChange={(e) => handleUpdate(e.target.value)}
+            className="h-0 w-0 opacity-0"
+          />
+        </label>
+        <div className="min-w-0 flex-1">
+          <SelectControl
+            compact
+            value={pendingValue ?? value ?? ""}
+            options={options}
+            onChange={(v) => handleUpdate(v)}
+          />
+        </div>
       </div>
+      {pendingWarning && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2 text-[11px] text-red-400">
+          <div className="mb-1 font-medium">
+            ⚠️ Drops contrast to {pendingWarning.ratio}:1 (Fail) for: {pendingWarning.label}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={confirmPending}
+              className="rounded bg-red-500/20 px-2 py-0.5 font-semibold text-red-300 hover:bg-red-500/30 transition-colors"
+            >
+              Use anyway
+            </button>
+            <button
+              onClick={cancelPending}
+              className="rounded bg-zinc-800 px-2 py-0.5 font-semibold text-zinc-300 hover:bg-zinc-700 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -214,18 +272,24 @@ export function useRolesAudit() {
   return useMemo(() => {
     const stateSlice = { primitives, semantics };
     const verdicts = (["light", "dark"] as PreviewMode[]).flatMap((mode) =>
-      A11Y_PAIRS.map(([bg, fg, context]) => ({
-        mode,
-        bg,
-        fg,
-        context,
-        verdict: wcagVerdict(
-          resolveToken(stateSlice, mode, bg),
-          resolveToken(stateSlice, mode, fg)
-        ),
-        bgHex: resolveToken(stateSlice, mode, bg),
-        fgHex: resolveToken(stateSlice, mode, fg),
-      }))
+      ROLE_CONTRAST_PAIRS.map((pair) => {
+        const bgHex = resolveToken(stateSlice, mode, pair.bg);
+        const fgHex = resolveToken(stateSlice, mode, pair.fg);
+        const check = checkContrast(fgHex, bgHex, pair.context);
+        return {
+          mode,
+          bg: pair.bg,
+          fg: pair.fg,
+          context: pair.label,
+          verdict: {
+            ratio: check.ratio,
+            aa: check.level === "AA" || check.level === "AAA",
+            aaa: check.level === "AAA",
+          },
+          bgHex,
+          fgHex,
+        };
+      })
     );
     const aaPass = verdicts.filter((v) => v.verdict.aa).length;
     const aaaPass = verdicts.filter((v) => v.verdict.aaa).length;

@@ -8,9 +8,9 @@
  */
 import type { CSSProperties, ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Inbox, Loader2 } from "lucide-react";
-import { PreviewMode } from "@/store/useDesignSystem";
+import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
-import { NO_BINDINGS, Resolver, useComponentBindings } from "@/lib/componentSchema";
+import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver } from "@/lib/componentSchema";
 import { useTone } from "./DisplayComponents";
 import { TokenButton } from "./CoreComponents";
 
@@ -193,7 +193,19 @@ export function TokenEmptyState({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const cfg = useDesignSystem((s) => s.components.emptyState);
+  const instances = cfg?.instances;
+
+  const actionOpts = instances?.action ?? {};
+  const actionLabel = (actionOpts.label as string) ?? "Record transaction";
+  const actionVariant = (actionOpts.variant as any) ?? "filled";
+  const actionSize = (actionOpts.size as any) ?? "sm";
+  const actionPrefix = (actionOpts.prefixIcon as string) ?? "";
+  const actionSuffix = (actionOpts.suffixIcon as string) ?? "";
+
   const buttonResolve = useComponentBindings("button");
+  const childButtonResolve = createChildResolver("button", resolve, buttonResolve);
+
   return (
     <div
       style={{
@@ -228,8 +240,15 @@ export function TokenEmptyState({
         Once activity posts to this ledger it will show up here, newest first.
       </span>
       <div style={{ marginTop: sv(1) }}>
-        <TokenButton size="sm" radiusStep={radiusStep} resolve={buttonResolve}>
-          Record transaction
+        <TokenButton
+          variant={actionVariant}
+          size={actionSize}
+          radiusStep={radiusStep}
+          prefixIcon={actionPrefix}
+          suffixIcon={actionSuffix}
+          resolve={childButtonResolve}
+        >
+          {actionLabel}
         </TokenButton>
       </div>
     </div>

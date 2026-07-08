@@ -168,6 +168,7 @@ function ModalChrome({
               variant={iconBtnVariant}
               size={iconBtnSize}
               resolve={iconButtonResolve}
+              aria-label="Close dialog"
               onClick={onClose}
             >
               <X size={14} />
@@ -481,7 +482,7 @@ export function ModalSkeleton({
                   </span>
                   
                   <div style={{ position: "absolute", top: 4, right: 4 }}>
-                    <TokenIconButton variant={iconBtnVariant} size={iconBtnSize} resolve={iconButtonResolve}>
+                    <TokenIconButton variant={iconBtnVariant} size={iconBtnSize} resolve={iconButtonResolve} aria-label="Delete file">
                       <Trash size={10} style={{ color: tv("text-muted") }} />
                     </TokenIconButton>
                   </div>

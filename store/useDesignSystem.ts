@@ -597,6 +597,12 @@ export interface ArkitypeState {
   setComponentBinding: (componentId: string, key: string, binding: string) => void;
   clearComponentBinding: (componentId: string, key: string) => void;
   resetComponentBindings: (componentId: string) => void;
+  setSlotContent: (
+    componentId: string,
+    slotId: string,
+    key: string,
+    value: string | number | boolean
+  ) => void;
 
   setPreviewMode: (mode: PreviewMode) => void;
   togglePreviewMode: () => void;
@@ -607,7 +613,7 @@ export interface ArkitypeState {
 
 /* ────────────────────────────── defaults ────────────────────────────── */
 
-const DEFAULT_FAMILIES: ColorFamily[] = [
+export const DEFAULT_FAMILIES: ColorFamily[] = [
   { id: "brand", name: "Brand", seed: "#4f46e5", steps: 10, overrides: {} },
   { id: "secondary", name: "Secondary", seed: "#06b6d4", steps: 10, overrides: {} },
   { id: "neutral", name: "Neutral", seed: "#71717a", steps: 10, overrides: {} },
@@ -619,7 +625,7 @@ const DEFAULT_FAMILIES: ColorFamily[] = [
 const cloneFamilies = (fams: ColorFamily[]): ColorFamily[] =>
   fams.map((f) => ({ ...f, overrides: { ...f.overrides } }));
 
-const DEFAULT_LIGHT: Record<string, string> = {
+export const DEFAULT_LIGHT: Record<string, string> = {
   "surface-base": "neutral-50",
   "surface-elevated": "neutral-100",
   "surface-subtle": "neutral-200",
@@ -627,7 +633,7 @@ const DEFAULT_LIGHT: Record<string, string> = {
   "surface-overlay": "neutral-900",
   "text-primary": "neutral-900",
   "text-secondary": "neutral-700",
-  "text-muted": "neutral-500",
+  "text-muted": "neutral-600",
   "text-on-action": "neutral-50",
   "text-link": "brand-600",
   "text-link-hover": "brand-700",
@@ -656,7 +662,7 @@ const DEFAULT_LIGHT: Record<string, string> = {
   "feedback-error-border": "error-200",
 };
 
-const DEFAULT_DARK: Record<string, string> = {
+export const DEFAULT_DARK: Record<string, string> = {
   "surface-base": "neutral-900",
   "surface-elevated": "neutral-800",
   "surface-subtle": "neutral-700",
@@ -668,9 +674,9 @@ const DEFAULT_DARK: Record<string, string> = {
   "text-on-action": "neutral-50",
   "text-link": "brand-400",
   "text-link-hover": "brand-300",
-  "action-primary-default": "brand-500",
-  "action-primary-hover": "brand-400",
-  "action-primary-active": "brand-300",
+  "action-primary-default": "brand-600",
+  "action-primary-hover": "brand-500",
+  "action-primary-active": "brand-400",
   "action-primary-disabled": "neutral-700",
   "action-secondary-default": "neutral-700",
   "action-secondary-hover": "neutral-600",
@@ -1770,6 +1776,26 @@ export const useDesignSystem = create<ArkitypeState>()(
           },
         })),
 
+      setSlotContent: (componentId, slotId, key, value) =>
+        set((state) => {
+          const cfg = state.components[componentId] ?? { skeletonId: "1", properties: {} };
+          return {
+            components: {
+              ...state.components,
+              [componentId]: {
+                ...cfg,
+                instances: {
+                  ...(cfg.instances ?? {}),
+                  [slotId]: {
+                    ...(cfg.instances?.[slotId] ?? {}),
+                    [key]: value,
+                  },
+                },
+              },
+            },
+          };
+        }),
+
       setComponentBinding: (componentId, key, binding) =>
         set((state) => {
           const cfg = state.components[componentId] ?? {
@@ -1832,7 +1858,7 @@ export const useDesignSystem = create<ArkitypeState>()(
   },
   {
       name: "arkitype-system",
-      version: 9,
+      version: 10,
       // v2 → v3: dynamic colour families, per-mode elevation, typography
       // weights/roles/rounding/overrides, editable spacing/radii + overrides,
       // stored semantic groups + expanded roles.
@@ -2065,6 +2091,62 @@ export const useDesignSystem = create<ArkitypeState>()(
               const proj = state.projects[pid];
               proj.components = backfillInstances(proj.components);
               migrateModalInstances(proj.components);
+            }
+          }
+        }
+
+        if (version < 10) {
+          const migrateLegacyInstances = (comps: Record<string, ComponentConfig>) => {
+            const tabs = comps.tabs;
+            if (tabs) {
+              tabs.instances = tabs.instances ?? {};
+              const props = (tabs.properties ?? {}) as Record<string, unknown>;
+              const bucket: Record<string, string | number | boolean> = {};
+              if (props["button.size"] !== undefined) bucket.size = props["button.size"] as string;
+              if (props["button.variant"] !== undefined) bucket.variant = props["button.variant"] as string;
+              if (props["button.prefixIcon"] !== undefined) bucket.prefixIcon = props["button.prefixIcon"] as string;
+              if (props["button.suffixIcon"] !== undefined) bucket.suffixIcon = props["button.suffixIcon"] as string;
+              if (Object.keys(bucket).length) {
+                tabs.instances.panelAction = { ...bucket, ...(tabs.instances.panelAction ?? {}) };
+              }
+            }
+
+            const toast = comps.toast;
+            if (toast) {
+              toast.instances = toast.instances ?? {};
+              const props = (toast.properties ?? {}) as Record<string, unknown>;
+              if (props["button.size"] !== undefined) {
+                toast.instances.action = { size: props["button.size"] as string, ...(toast.instances.action ?? {}) };
+              }
+            }
+
+            const banner = comps.banner;
+            if (banner) {
+              banner.instances = banner.instances ?? {};
+              const props = (banner.properties ?? {}) as Record<string, unknown>;
+              if (props["button.size"] !== undefined) {
+                banner.instances.action = { size: props["button.size"] as string, ...(banner.instances.action ?? {}) };
+              }
+            }
+
+            const field = comps.field;
+            if (field) {
+              field.instances = field.instances ?? {};
+              const props = (field.properties ?? {}) as Record<string, unknown>;
+              if (props["input.size"] !== undefined) {
+                field.instances.control = { size: props["input.size"] as string, ...(field.instances.control ?? {}) };
+              }
+            }
+          };
+
+          state.components = state.components || {};
+          migrateLegacyInstances(state.components);
+          if (state.projects) {
+            for (const pid of Object.keys(state.projects)) {
+              const proj = state.projects[pid];
+              if (proj.components) {
+                migrateLegacyInstances(proj.components);
+              }
             }
           }
         }

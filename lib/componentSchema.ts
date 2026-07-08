@@ -65,17 +65,21 @@ export interface PartSpec {
 export interface OptionSpec {
   key: string;
   label: string;
-  type: "enum" | "boolean";
+  type: "enum" | "boolean" | "text" | "number" | "color";
   options?: Array<{ value: string; label: string }>; // enum choices
-  def: string | boolean; // read-time default when nothing is stored
+  def: string | boolean | number; // read-time default when nothing is stored
+  min?: number;
+  max?: number;
   previewAxis?: boolean; // enum that drives the Variant selector + strip
 }
 
 export interface ComponentSpec {
   id: string;
+  tier: 1 | 2;
   states: CState[];
   parts: PartSpec[];
   options?: OptionSpec[];
+  children?: string[];
 }
 
 /* ── authoring helpers ── */
@@ -102,6 +106,29 @@ const boolOpt = (key: string, label: string, def: boolean): OptionSpec => ({
   key,
   label,
   type: "boolean",
+  def,
+});
+
+const textOpt = (key: string, label: string, def: string): OptionSpec => ({
+  key,
+  label,
+  type: "text",
+  def,
+});
+
+const numOpt = (key: string, label: string, def: number, min?: number, max?: number): OptionSpec => ({
+  key,
+  label,
+  type: "number",
+  def,
+  min,
+  max,
+});
+
+const colorOpt = (key: string, label: string, def: string): OptionSpec => ({
+  key,
+  label,
+  type: "color",
   def,
 });
 
@@ -200,6 +227,7 @@ const NO_ACTIVE: CState[] = ["default", "hover", "focus", "disabled"];
 
 const buttonSpec: ComponentSpec = {
   id: "button",
+  tier: 1,
   states: ALL,
   parts: [
     containerPart({
@@ -231,6 +259,20 @@ const buttonSpec: ComponentSpec = {
       size: "px:14",
     }),
   ],
+  options: [
+    enumOpt("variant", "Style Variant", [
+      opt("filled", "Filled"),
+      opt("tonal", "Filled Tonal"),
+      opt("elevated", "Elevated"),
+      opt("outlined", "Outlined"),
+      opt("text", "Text"),
+      opt("error", "Error Tone"),
+      opt("warning", "Warning Tone"),
+      opt("success", "Success Tone"),
+    ], "filled", true),
+    textOpt("prefixIcon", "Prefix Icon (Material name)", ""),
+    textOpt("suffixIcon", "Suffix Icon (Material name)", ""),
+  ],
 };
 
 const inputLikeContainer = () =>
@@ -251,6 +293,7 @@ const inputLikeContainer = () =>
 
 const inputSpec: ComponentSpec = {
   id: "input",
+  tier: 1,
   states: ALL,
   parts: [
     inputLikeContainer(),
@@ -262,10 +305,11 @@ const inputSpec: ComponentSpec = {
   ],
 };
 
-const textareaSpec: ComponentSpec = { ...inputSpec, id: "textarea" };
+const textareaSpec: ComponentSpec = { ...inputSpec, id: "textarea", tier: 1 };
 
 const selectSpec: ComponentSpec = {
   id: "select",
+  tier: 1,
   states: ALL,
   parts: [
     containerPart({
@@ -292,6 +336,7 @@ const selectSpec: ComponentSpec = {
 
 const searchSpec: ComponentSpec = {
   id: "searchField",
+  tier: 1,
   states: ALL,
   parts: [
     containerPart({
@@ -318,6 +363,7 @@ const searchSpec: ComponentSpec = {
 
 const stepperSpec: ComponentSpec = {
   id: "stepper",
+  tier: 1,
   states: NO_ACTIVE,
   parts: [
     containerPart({
@@ -353,6 +399,7 @@ const stepperSpec: ComponentSpec = {
 
 const sliderSpec: ComponentSpec = {
   id: "slider",
+  tier: 1,
   states: NO_ACTIVE,
   parts: [
     {
@@ -390,6 +437,8 @@ const sliderSpec: ComponentSpec = {
 
 const buttonGroupSpec: ComponentSpec = {
   id: "buttonGroup",
+  tier: 2,
+  children: ["button"],
   states: ["default", "active"],
   parts: [
     {
@@ -423,6 +472,7 @@ const buttonGroupSpec: ComponentSpec = {
 
 const iconButtonSpec: ComponentSpec = {
   id: "iconButton",
+  tier: 1,
   states: NO_ACTIVE,
   parts: [
     {
@@ -488,6 +538,7 @@ const iconButtonSpec: ComponentSpec = {
 
 const checkboxSpec: ComponentSpec = {
   id: "checkbox",
+  tier: 1,
   states: NO_ACTIVE,
   parts: [
     {
@@ -506,6 +557,7 @@ const checkboxSpec: ComponentSpec = {
 
 const radioSpec: ComponentSpec = {
   id: "radio",
+  tier: 1,
   states: NO_ACTIVE,
   parts: [
     {
@@ -522,6 +574,7 @@ const radioSpec: ComponentSpec = {
 
 const switchSpec: ComponentSpec = {
   id: "switch",
+  tier: 1,
   states: NO_ACTIVE,
   parts: [
     {
@@ -546,6 +599,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   /* display */
   {
     id: "badge",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -566,6 +620,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "tag",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -589,6 +644,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "avatar",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -619,6 +675,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "tooltip",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -641,6 +698,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "progress",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -664,6 +722,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "spinner",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -678,6 +737,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "skeleton",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -692,6 +752,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "alert",
+    tier: 2,
+    children: ["button", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -711,10 +773,13 @@ const OTHER_SPECS: ComponentSpec[] = [
       enumOpt("accent", "Accent", ACCENT_OPTS, "left"),
       boolOpt("icon", "Leading icon", true),
       boolOpt("dismissible", "Dismissible", false),
+      boolOpt("action", "Action button", false),
     ],
   },
   {
     id: "toast",
+    tier: 2,
+    children: ["button", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -745,6 +810,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "stat",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -760,6 +826,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "divider",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -774,6 +841,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "kbd",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -795,6 +863,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "emptyState",
+    tier: 2,
+    children: ["button"],
     states: ["default"],
     parts: [
       {
@@ -819,6 +889,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "codeBlock",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -845,6 +916,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   /* navigation */
   {
     id: "navbar",
+    tier: 2,
+    children: ["button", "iconButton", "avatar", "badge"],
     states: ["default"],
     parts: [
       {
@@ -876,6 +949,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "sidebar",
+    tier: 2,
+    children: ["badge", "avatar", "link"],
     states: ["default"],
     parts: [
       {
@@ -901,6 +976,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "breadcrumbs",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -916,6 +992,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "steps",
+    tier: 1,
     states: ["default"],
     parts: [
       {
@@ -948,6 +1025,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "pagination",
+    tier: 2,
+    children: ["button", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -965,6 +1044,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "dropdown",
+    tier: 2,
+    children: ["iconButton", "divider"],
     states: ["default"],
     parts: [
       {
@@ -989,6 +1070,7 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "link",
+    tier: 1,
     states: ["default", "hover", "disabled"],
     parts: [
       {
@@ -1006,6 +1088,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   /* patterns */
   {
     id: "card",
+    tier: 2,
+    children: ["badge", "avatar", "button", "divider"],
     states: ["default"],
     parts: [
       {
@@ -1031,6 +1115,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "listItem",
+    tier: 2,
+    children: ["avatar", "badge"],
     states: ["default"],
     parts: [
       {
@@ -1055,6 +1141,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "feedItem",
+    tier: 2,
+    children: ["avatar", "badge", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -1080,6 +1168,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "accordion",
+    tier: 2,
+    children: ["iconButton", "divider"],
     states: ["default"],
     parts: [
       {
@@ -1104,6 +1194,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "banner",
+    tier: 2,
+    children: ["button", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -1125,6 +1217,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "field",
+    tier: 2,
+    children: ["input", "badge"],
     states: ["default"],
     parts: [
       {
@@ -1140,6 +1234,8 @@ const OTHER_SPECS: ComponentSpec[] = [
   },
   {
     id: "statGrid",
+    tier: 2,
+    children: ["divider"],
     states: ["default"],
     parts: [
       {
@@ -1153,13 +1249,160 @@ const OTHER_SPECS: ComponentSpec[] = [
       },
     ],
   },
+  {
+    id: "statGrid",
+    tier: 2,
+    children: ["divider"],
+    states: ["default"],
+    parts: [
+      {
+        id: "cell",
+        label: "Cells",
+        props: [
+          prop("cell.bg", "Background", "color", "role:surface-elevated"),
+          prop("cell.border", "Border", "color", "role:border-muted"),
+          prop("cell.radius", "Corner radius", "radius", "radius:4"),
+        ],
+      },
+    ],
+  },
+  {
+    id: "modal",
+    tier: 2,
+    children: ["primaryButton", "secondaryButton", "iconButton", "input", "select", "alert"],
+    states: ["default"],
+    parts: [
+      {
+        id: "container",
+        label: "Layout Properties",
+        props: [
+          prop("container.bg", "Background", "color", "role:surface-elevated"),
+          prop("overlay.bg", "Overlay background", "color", "raw:rgba(9, 9, 11, 0.4)"),
+          prop("container.border", "Border colour", "color", "role:border-default"),
+          prop("container.radius", "Corner radius", "radius", "radius:4"),
+        ],
+      },
+    ],
+    options: [
+      enumOpt("skeletonId", "Structure / Layout", [
+        opt("1", "Centered Overlay"),
+        opt("2", "Right Side-Sheet"),
+        opt("3", "Full-Screen Overlay"),
+        opt("4", "Bottom-Sheet"),
+      ], "1", true),
+      textOpt("title", "Title", "Confirm deletion"),
+      textOpt("subtitle", "Subtitle", "This action cannot be undone"),
+      enumOpt("align", "Text alignment", [opt("left", "Left"), opt("center", "Center")], "left"),
+      boolOpt("showClose", "Show close icon", true),
+      boolOpt("forcedAction", "Forced Action (No Close Icon)", false),
+      enumOpt("position", "Overlay positioning", [opt("center", "Center-Screen"), opt("top", "Top-Aligned"), opt("bottom", "Bottom-Aligned")], "center"),
+      boolOpt("showDivider", "Show header line", true),
+      numOpt("radius", "Corner radius", 12, 0, 32),
+      enumOpt("shadow", "Elevation shadow", [opt("none", "None"), opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "lg"),
+      numOpt("borderWidth", "Border thickness", 1, 0, 8),
+      textOpt("bodyText", "Body text description", "Are you absolutely sure you want to proceed?"),
+      textOpt("primaryLabel", "Primary action text", "Confirm"),
+      textOpt("secondaryLabel", "Secondary action text", "Cancel"),
+      boolOpt("showSecondary", "Show cancel action", true),
+      enumOpt("width", "Modal size / width", [opt("xs", "Extra Small"), opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large")], "sm"),
+      numOpt("overlayOpacity", "Backdrop opacity", 40, 0, 100),
+      numOpt("paddingH", "Padding · Horizontal", 24, 0, 64),
+      numOpt("paddingV", "Padding · Vertical", 24, 0, 64),
+    ],
+  },
+  {
+    id: "tabs",
+    tier: 2,
+    children: ["button", "input", "alert", "searchField", "stepper", "badge"],
+    states: ["default"],
+    parts: [
+      {
+        id: "container",
+        label: "Layout Properties",
+        props: [
+          prop("container.radius", "Corner radius", "radius", "radius:2"),
+          prop("container.borderWidth", "Border width", "dimension", "px:1"),
+          prop("container.borderColor", "Border color", "color", "role:border-default"),
+        ],
+      },
+      {
+        id: "tab",
+        label: "Tab items",
+        props: [
+          prop("tab.activeBg", "Active background", "color", "role:surface-subtle"),
+          prop("tab.activeText", "Active text", "color", "role:text-primary"),
+        ],
+      },
+    ],
+    options: [
+      enumOpt("skeletonId", "Structure / Layout", [
+        opt("1", "Standard Underline"),
+        opt("2", "Contained Pills"),
+        opt("3", "Segmented Matrix"),
+        opt("4", "Vertical Sidebar Stack"),
+      ], "1", true),
+      numOpt("radius", "Corner radius", 6, 0, 32),
+      numOpt("borderWidth", "Border thickness", 1, 0, 8),
+      colorOpt("borderColor", "Border color", "#e4e4e7"),
+      colorOpt("activeBg", "Active background", "#f4f4f5"),
+      colorOpt("activeTextColor", "Active text color", "#18181b"),
+      numOpt("padding", "Tab spacing padding", 8, 0, 32),
+      boolOpt("showIcons", "Show icons", true),
+    ],
+  },
+  {
+    id: "table",
+    tier: 2,
+    children: ["badge", "avatar", "iconButton"],
+    states: ["default"],
+    parts: [
+      {
+        id: "container",
+        label: "Layout Properties",
+        props: [
+          prop("container.bg", "Table background", "color", "role:surface-elevated"),
+          prop("container.border", "Table border", "color", "role:border-muted"),
+          prop("container.radius", "Corner radius", "radius", "radius:3"),
+        ],
+      },
+    ],
+    options: [
+      enumOpt("skeletonId", "Structure / Layout", [
+        opt("1", "Dense Financial Ledger"),
+        opt("2", "Card Grid Layout"),
+        opt("3", "Borderless Clean List"),
+        opt("4", "Timeline Audit Log"),
+      ], "1", true),
+      boolOpt("showHeader", "Show table header", true),
+      numOpt("borderWidth", "Border thickness", 1, 0, 8),
+      colorOpt("borderColor", "Border color", "#e4e4e7"),
+      colorOpt("bg", "Table background fill", "#ffffff"),
+      numOpt("radius", "Corner radius", 8, 0, 32),
+      numOpt("padding", "Cell padding", 12, 0, 48),
+      boolOpt("striped", "Striped row background", true),
+      numOpt("rowHeight", "Row height limit", 44, 24, 80),
+      colorOpt("accentColor", "Accent color highlight", "#4f46e5"),
+    ],
+  },
 ];
+
+const primaryButtonSpec: ComponentSpec = {
+  ...buttonSpec,
+  id: "primaryButton",
+};
+
+const secondaryButtonSpec: ComponentSpec = {
+  ...buttonSpec,
+  id: "secondaryButton",
+};
 
 /* ────────────────────────────── registry ────────────────────────────── */
 
 export const COMPONENT_SPECS: Record<string, ComponentSpec> = Object.fromEntries(
   [
     buttonSpec,
+    primaryButtonSpec,
+    secondaryButtonSpec,
     inputSpec,
     textareaSpec,
     selectSpec,
@@ -1220,6 +1463,9 @@ export const WIRED_COMPONENTS = new Set<string>([
   "link",
   // Patterns
   "card",
+  "modal",
+  "tabs",
+  "table",
   "listItem",
   "feedItem",
   "accordion",
@@ -1239,9 +1485,10 @@ export function componentOptions(id: string): OptionSpec[] {
 export function optionValue(
   properties: Record<string, string | number | boolean> | undefined,
   o: OptionSpec
-): string | boolean {
+): string | boolean | number {
   const v = properties?.[o.key];
   if (o.type === "boolean") return typeof v === "boolean" ? v : (o.def as boolean);
+  if (o.type === "number") return typeof v === "number" ? v : (o.def as number);
   return typeof v === "string" ? v : (o.def as string);
 }
 
@@ -1249,8 +1496,8 @@ export function optionValue(
 export function resolveOptions(
   id: string,
   properties: Record<string, string | number | boolean> | undefined
-): Record<string, string | boolean> {
-  const out: Record<string, string | boolean> = {};
+): Record<string, string | boolean | number> {
+  const out: Record<string, string | boolean | number> = {};
   for (const o of componentOptions(id)) out[o.key] = optionValue(properties, o);
   return out;
 }
@@ -1306,3 +1553,35 @@ export type Resolver = (key: string, state?: CState) => string | undefined;
 
 /** A no-op resolver for standalone component usage (renders from fallbacks). */
 export const NO_BINDINGS: Resolver = () => undefined;
+
+/**
+ * Creates a child resolver. Enforces Atomic Design by bypassing parent overrides
+ * and returning the child component's own global resolver directly.
+ */
+export function createChildResolver(
+  childId: string,
+  parentResolve: Resolver,
+  childResolve: Resolver
+): Resolver {
+  return childResolve;
+}
+
+/* ────────────────────────────── helper exports ────────────────────────────── */
+
+export function getComponentTier(id: string): 1 | 2 {
+  return COMPONENT_SPECS[id]?.tier ?? 1;
+}
+
+export function getComponentChildren(id: string): string[] {
+  return COMPONENT_SPECS[id]?.children ?? [];
+}
+
+export function getParentComponents(childId: string): string[] {
+  const parents: string[] = [];
+  for (const spec of Object.values(COMPONENT_SPECS)) {
+    if (spec.children?.includes(childId)) {
+      parents.push(spec.id);
+    }
+  }
+  return parents;
+}

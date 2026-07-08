@@ -48,6 +48,10 @@ const config: Config = {
           "Helvetica Neue",
           "sans-serif",
         ],
+        display: [
+          "var(--font-display)",
+          "sans-serif",
+        ],
         mono: [
           "var(--font-mono)",
           "ui-monospace",
@@ -56,6 +60,16 @@ const config: Config = {
           "monospace",
         ],
       },
+      keyframes: {
+        'rotate-mesh': {
+          '0%': { transform: 'rotate(0deg) scale(1)' },
+          '50%': { transform: 'rotate(180deg) scale(1.15)' },
+          '100%': { transform: 'rotate(360deg) scale(1)' },
+        }
+      },
+      animation: {
+        'mesh-spin': 'rotate-mesh 30s linear infinite',
+      }
     },
   },
   plugins: [],

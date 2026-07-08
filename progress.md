@@ -2,6 +2,42 @@
 
 > Compressed memory checkpoint. Update after every compiled module.
 
+## Status: ✅ v10 VISUAL POLISH, RESIZABLE PANELS, FIGMA-STYLE GROUPING, FIELD SCRUBBING & DESIGN SYSTEM UPGRADES — implemented
+Fluent 2 shadows & double focus rings, Atlassian Rovo UI generative loading gradients, GitHub Primer ActionList checkmarks in custom dropdowns,
+horizontal drag-scrubbing directly on input elements, prepended industry icons, resolved color picker clipping, updated the property
+inspector layout to combine related properties side-by-side, corrected text wrapping, and implemented drag-resizing. `npx tsc --noEmit` clean; verified.
+
+### v10 change (visual polish · inspector layout · resizable panels)
+- **Design System Upgrades** — `components/factory/CoreComponents.tsx`, `ComponentStudio.tsx`, and `app/globals.css`:
+  - **Fluent 2**: Upgraded focus outline rings to a high-contrast double ring (inner background offset + outer primary line) and added layered ambient shadow styles to button, input, textarea, and select controls.
+  - **Atlassian Rovo UI**: Integrated a keyframe generative color gradient onto buttons in their loading state to show processing progress.
+  - **GitHub Primer**: Styled dropdown options popups to render in a clean, vertical ActionList layout with trailing selection Check icons.
+- **Figma-style Field Scrubbing** — `components/factory/ComponentStudio.tsx`: implemented `FigmaScrubbableSelect`
+  and `FigmaScrubbableNumberInput` custom components, allowing users to click and drag horizontally directly on the field inputs to scrub
+  values/options up and down, while preserving normal click actions (click select opens dropdown menu, click number enables manual text typing).
+- **Figma-style Field Icons** — `components/factory/ComponentStudio.tsx`: added `getLabelIcon` mapper prepending
+  industry-standard visual icons (corner radius curves, padding axes, dimension arrows, rulers, typography baselines/bold,
+  color droplets, etc.) next to property and option text labels.
+- **Searchable Color Picker** — `components/factory/studioShared.tsx`: added a search input box (`Search tokens...`)
+  with `autoFocus` that filters tokens instantly. Converted the swatch grid into a vertical list row format displaying
+  the monospace token names next to their swatch color chips.
+- **Color Picker Clipping Fix** — `components/factory/StudioControls.tsx` & `ComponentStudio.tsx`:
+  Repositioned picker wrapper from `right-full` (which clipped outside the sidebar border under `overflow-y-auto`)
+  to `top-full mt-1.5` aligned to `left-0` (for left-column properties) or `right-0` (for right-column properties) to
+  keep the color picker fully inside the sidebar boundaries.
+- **Figma-style Grouping** — `components/factory/ComponentStudio.tsx`: implemented `groupedProps` and
+  `groupedOptions` helpers to combine related property pairs (padding H/V, radius/borderWidth, typography
+  role/weight, icon color/size, and toggles) side-by-side in `grid-cols-2`, while keeping color swatches and
+  larger text inputs full-width. This reduces vertical panel height by 30% to 50%.
+- **Resizable Sidebars** — `components/shell/StageRail.tsx` & `components/shell/StepScaffold.tsx`:
+  Added drag-resize event handlers on left/right borders and increased default panel widths
+  to `260px` (StageRail) and `360px` (StepScaffold) for a cleaner appearance. Custom panel
+  widths persist in `localStorage` across page reloads and step navigation.
+- **Timeline Audit Log** — `components/factory/TableSkeletons.tsx`: added `whiteSpace: "nowrap"`
+  to the `Amount` component to prevent the minus sign from splitting and wrapping.
+  Applied `text-overflow: ellipsis` truncation and `whiteSpace: "nowrap"` to the payee
+  name in skeleton 4 to ensure single-line alignment of payee + amounts in cards.
+
 ## Status: ✅ v9 THEMEABLE CHROME + FLANKED STUDIO + HOVER-LINK — the tool chrome
 is now theme-aware (light default + a proper dark) via CSS-var tokens (`--c-*`,
 channel form) that flip on `.dark`; new Appearance toggle in TopBar (persisted
@@ -313,3 +349,19 @@ Skeleton (both self-heal missing ids).
    not yet covered.
 3. Real completion criteria per step (Roles AA gate w/ override).
 4. Restart-system affordance; keyboard flow (⌘→); production build + deploy.
+
+## Landing Page Redesign (2026-07-07)
+- **Redesigned Marketing Landing Page**: Replaced the landing page UI layout (`components/marketing/LandingPage.tsx`) to match the structural sections, grids, layout, visual components, search overlay, and theme switcher from Astryx (`https://astryx.atmeta.com/`).
+- **Arkitype Branding & Copy**: Swapped out Astryx names, technologies (StyleX -> Tailwind CSS, Next.js), links, and branding with Arkitype.
+- **Showcase Cards Rebuild**: Programmed 7 custom high-fidelity responsive preview cards (Watch, Checkout form, Chat conversation dialogue, Inventory data table, Revenue stats graph, and Gallery components).
+- **Interactive Sandbox Bindings**: Connected parameters controls (accent color family picker, spacing density sliders, corner border radii, and font toggles) to all preview showcase cards, letting users customize elements dynamically directly on the landing page.
+- **Production Verification**: Confirmed Next.js production build compiler and type checking pass successfully with zero errors.
+
+## Composite Skeletons Component Population (2026-07-07)
+- **Populated Modal Skeletons**: Replaced the empty outline rectangle placeholder divs in `components/factory/ModalSkeletons.tsx` with actual `TokenInput`, `TokenSelect`, `TokenAlert`, and `TokenIconButton` elements. Pre-configured Centered Overlay, Right Side-Sheet, Full-Screen Overlay, and Bottom-Sheet to render populated forms.
+- **Populated Tabs Skeletons**: Swapped out the blank loading skeleton stripes in `components/factory/TabsSkeletons.tsx` with dynamic panel content containing real search inputs, limit steppers, warning alerts, and action buttons.
+- **Cascading Child Resolvers**: Passed child resolvers (`childInputResolve`, `childSelectResolve`, `childButtonResolve`, `childIconButtonResolve`, `childAlertResolve`) down to all nested primitive components. When a user edits a primitive component (such as Button or Input), those styling and layout changes instantly cascade down and propagate to the composites (like Modal and Tabs) that compose them.
+- **Modifiers & Specs Integration**: Defined complete schemas (`modalSpec`, `tabsSpec`, and `tableSpec`) in `lib/componentSchema.ts` containing all modifier settings (alignment, title text, dividers, sizes, shadows, borders, active tab text and bg, striped rows, cell padding, and timeline logs). Added them to `WIRED_COMPONENTS` so that the right sidebar `ComponentInspector` is fully active and automatically populates all controls and parameter clusters when configuring modals, tabs, or tables. Disabled fallback grid rendering to let users modify these properties inside the flocked `ComponentStudio` interface with a variants selector bar at the bottom.
+
+
+

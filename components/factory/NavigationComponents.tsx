@@ -9,7 +9,7 @@
 import type { CSSProperties } from "react";
 import { BarChart3, Check, CreditCard, Home, Search, Settings } from "lucide-react";
 import { rv, sv, tv } from "@/lib/tokens";
-import { NO_BINDINGS, Resolver } from "@/lib/componentSchema";
+import { NO_BINDINGS, Resolver, useComponentBindings } from "@/lib/componentSchema";
 import { TokenAvatar } from "./DisplayComponents";
 
 /* ── Navbar (top app bar) ── */
@@ -24,6 +24,7 @@ export function TokenNavbar({
   const links = ["Overview", "Ledgers", "Reports"];
   const active = 1;
   const r = resolve;
+  const avatarResolve = useComponentBindings("avatar");
   return (
     <header
       style={{
@@ -81,7 +82,7 @@ export function TokenNavbar({
         >
           <Search size={15} />
         </span>
-        <TokenAvatar size="sm" radiusStep={radiusStep} initials="AK" />
+        <TokenAvatar size="sm" radiusStep={radiusStep} initials="AK" resolve={avatarResolve} />
       </span>
     </header>
   );

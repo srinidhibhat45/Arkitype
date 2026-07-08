@@ -12,9 +12,10 @@ import {
   PreviewMode,
   RADII_NAMES,
   shadowToCss,
+  useDesignSystem,
 } from "@/store/useDesignSystem";
 import { isValidHex, rampStepLabels } from "@/lib/color";
-import { generateTypeScale } from "@/lib/typography";
+import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 
 const FALLBACK = "#ff00ff"; // loud magenta = broken reference, on purpose
 
@@ -92,7 +93,7 @@ export function systemCssVars(
     sizeOverrides: t.sizeOverrides,
     leadingOverrides: t.leadingOverrides,
     stepAssign: t.stepAssign,
-  });
+  }, t.stepDefs ?? STEP_DEFS);
   const weightValue = (name: string): number =>
     t.weights.find((w) => w.name === name)?.value ?? 400;
   steps.forEach((s) => {
@@ -101,15 +102,14 @@ export function systemCssVars(
     vars[`--ark-weight-${s.name}`] = `${weightValue(s.weight)}`;
   });
 
-  // Weight tokens + font-role families (with back-compat sans/mono aliases)
+  // Weight tokens + font-role families
   t.weights.forEach((w) => {
     vars[`--ark-font-weight-${w.name}`] = `${w.value}`;
   });
-  vars["--ark-font-display"] = t.fontRoles.display.family;
-  vars["--ark-font-heading"] = t.fontRoles.heading.family;
-  vars["--ark-font-body"] = t.fontRoles.body.family;
-  vars["--ark-font-mono"] = t.fontRoles.mono.family;
-  vars["--ark-font-sans"] = t.fontRoles.body.family;
+  Object.entries(t.fontRoles).forEach(([role, r]) => {
+    vars[`--ark-font-${role}`] = r.family;
+  });
+  vars["--ark-font-sans"] = t.fontRoles.body?.family ?? "";
 
   // Shadows — per mode, compiled from structured definitions
   state.primitives.elevation[mode].forEach((def) => {
@@ -138,6 +138,10 @@ export const tv = (token: string): string => `var(--ark-${token})`;
 /** var() accessor for a spacing step (1–8). */
 export const sv = (step: number): string => `var(--ark-space-${step})`;
 
-/** var() accessor for a radius step index (0–7). */
-export const rv = (stepIndex: number): string =>
-  `var(--ark-radius-${RADII_NAMES[Math.min(Math.max(stepIndex, 0), RADII_NAMES.length - 1)]})`;
+/** var() accessor for a radius step index. */
+export const rv = (stepIndex: number): string => {
+  const state = typeof useDesignSystem?.getState === "function" ? useDesignSystem.getState() : null;
+  const radiusNames = state?.primitives?.radiusNames ?? RADII_NAMES;
+  const name = radiusNames[Math.min(Math.max(stepIndex, 0), radiusNames.length - 1)] || "none";
+  return `var(--ark-radius-${name})`;
+};

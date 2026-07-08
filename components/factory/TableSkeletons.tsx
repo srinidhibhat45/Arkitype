@@ -1,13 +1,16 @@
 "use client";
 
 /**
- * The Complex Data Table — strict 4-skeleton rule.
- *  1 Dense Financial Ledger · 2 Card Grid · 3 Borderless Clean List · 4 Timeline Audit Log
- * All structure/color/spacing resolves from --ark-* variables; row data is the
- * shared budget dataset consumed by the Stress-Test Canvas too.
+ * The Complex Data Table — fully customizable styling.
+ * Renders Dense Financial Ledger, Card Grid, Borderless Clean List, or Timeline Audit Log
+ * based on selected skeletonId, styled dynamically via properties from the store.
  */
+import { CSSProperties } from "react";
 import { MoreHorizontal } from "lucide-react";
-import { rv, sv, tv } from "@/lib/tokens";
+import { useDesignSystem } from "@/store/useDesignSystem";
+import { resolveOptions, useComponentBindings } from "@/lib/componentSchema";
+import { sv, tv } from "@/lib/tokens";
+import { TokenBadge, TokenAvatar } from "./DisplayComponents";
 
 export const TABLE_SKELETONS = [
   { id: "1", name: "Dense Financial Ledger", desc: "Numeric right-align · frozen header · badges" },
@@ -42,39 +45,55 @@ const fmt = (n: number): string =>
     maximumFractionDigits: 2,
   })}`;
 
+interface TableResolvedOpts {
+  showHeader: boolean;
+  borderWidth: number;
+  borderColor: string;
+  bg: string;
+  radius: number;
+  padding: number;
+  striped: boolean;
+  rowHeight: number;
+  accentColor: string;
+}
+
+function useResolvedTableOptions(): TableResolvedOpts {
+  const cfg = useDesignSystem((s) => s.components.table);
+  const opts = resolveOptions("table", cfg?.properties);
+  return {
+    showHeader: opts.showHeader !== false,
+    borderWidth: Number(opts.borderWidth ?? 1),
+    borderColor: (opts.borderColor ?? "#e4e4e7") as string,
+    bg: (opts.bg ?? "#ffffff") as string,
+    radius: Number(opts.radius ?? 8),
+    padding: Number(opts.padding ?? 12),
+    striped: opts.striped !== false,
+    rowHeight: Number(opts.rowHeight ?? 44),
+    accentColor: (opts.accentColor ?? "#4f46e5") as string,
+  };
+}
+
 function StatusBadge({ status }: { status: Txn["status"] }) {
-  const token =
-    status === "Cleared"
-      ? "action-primary-default"
-      : status === "Pending"
-        ? "text-muted"
-        : "border-focus";
+  const mode = useDesignSystem((s) => s.currentPreviewMode);
+  const badgeResolve = useComponentBindings("badge");
+  const variant = status === "Cleared" ? "success" : status === "Pending" ? "neutral" : "warning";
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: `2px ${sv(2)}`,
-        borderRadius: rv(7),
-        border: `1px solid ${tv(token)}`,
-        color: tv(token),
-        fontSize: "var(--ark-text-xs)",
-        fontFamily: "var(--ark-font-mono)",
-        lineHeight: 1.3,
-      }}
-    >
+    <TokenBadge variant={variant} mode={mode} resolve={badgeResolve}>
       {status}
-    </span>
+    </TokenBadge>
   );
 }
 
-function Amount({ value }: { value: number }) {
+function Amount({ value, accentColor }: { value: number; accentColor: string }) {
   return (
     <span
       style={{
         fontFamily: "var(--ark-font-mono)",
         fontVariantNumeric: "tabular-nums",
-        color: value >= 0 ? tv("action-primary-default") : tv("text-primary"),
+        color: value >= 0 ? accentColor : tv("text-primary"),
         fontWeight: 600,
+        fontSize: "var(--ark-text-xs)",
+        whiteSpace: "nowrap",
       }}
     >
       {fmt(value)}
@@ -84,59 +103,56 @@ function Amount({ value }: { value: number }) {
 
 export function TableSkeleton({
   skeletonId,
-  radiusStep,
   rows = TRANSACTIONS,
   maxRows,
 }: {
   skeletonId: string;
-  radiusStep: number;
+  radiusStep?: number;
   rows?: Txn[];
   maxRows?: number;
 }) {
+  const opts = useResolvedTableOptions();
   const data = maxRows ? rows.slice(0, maxRows) : rows;
+  const avatarResolve = useComponentBindings("avatar");
+
+  const wrapperStyle: CSSProperties = {
+    backgroundColor: opts.bg,
+    border: `${opts.borderWidth}px solid ${opts.borderColor}`,
+    borderRadius: `${opts.radius}px`,
+    overflow: "hidden",
+    overflowX: "auto",
+    width: "100%",
+  };
 
   if (skeletonId === "2") {
-    // Card grid
+    // Card grid layout styled dynamically
     return (
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-          gap: sv(2),
-          padding: sv(2),
+          gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+          gap: `${opts.padding}px`,
+          padding: `${opts.padding}px`,
+          backgroundColor: opts.bg,
+          border: `${opts.borderWidth}px solid ${opts.borderColor}`,
+          borderRadius: `${opts.radius}px`,
         }}
       >
         {data.map((t) => (
           <div
             key={t.id}
             style={{
-              background: tv("surface-elevated"),
-              border: `1px solid ${tv("border-muted")}`,
-              borderRadius: rv(radiusStep),
-              padding: sv(2),
+              backgroundColor: tv("surface-elevated"),
+              border: `1px solid ${opts.borderColor}`,
+              borderRadius: `${opts.radius - 2 > 0 ? opts.radius - 2 : 4}px`,
+              padding: `${opts.padding}px`,
               display: "flex",
               flexDirection: "column",
-              gap: sv(1),
+              gap: "8px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: sv(2) }}>
-              <div
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: rv(7),
-                  background: tv("action-primary-default"),
-                  color: tv("text-on-action"),
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "var(--ark-text-xs)",
-                  fontWeight: 700,
-                  flexShrink: 0,
-                }}
-              >
-                {t.payee.charAt(0)}
-              </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <TokenAvatar initials={t.payee.charAt(0)} size="sm" resolve={avatarResolve} />
               <span
                 style={{
                   color: tv("text-primary"),
@@ -154,16 +170,16 @@ export function TableSkeleton({
                 style={{ marginLeft: "auto", color: tv("text-muted"), flexShrink: 0 }}
               />
             </div>
-            <Amount value={t.amount} />
-            <div style={{ display: "flex", gap: sv(1), flexWrap: "wrap" }}>
+            <Amount value={t.amount} accentColor={opts.accentColor} />
+            <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
               <StatusBadge status={t.status} />
               <span
                 style={{
-                  padding: `2px ${sv(2)}`,
-                  borderRadius: rv(7),
-                  background: tv("surface-subtle"),
+                  padding: "2px 6px",
+                  borderRadius: "9999px",
+                  backgroundColor: tv("surface-subtle"),
                   color: tv("text-secondary"),
-                  fontSize: "var(--ark-text-xs)",
+                  fontSize: "10px",
                 }}
               >
                 {t.category}
@@ -176,18 +192,20 @@ export function TableSkeleton({
   }
 
   if (skeletonId === "3") {
-    // Borderless clean list
+    // Borderless clean list styled dynamically
     return (
-      <div style={{ padding: `${sv(2)} ${sv(4)}` }}>
-        {data.map((t) => (
+      <div style={{ ...wrapperStyle, padding: `8px ${opts.padding * 1.5}px` }}>
+        <div style={{ minWidth: "500px" }}>
+          {data.map((t, idx) => (
           <div
             key={t.id}
             className="group"
             style={{
               display: "flex",
               alignItems: "center",
-              gap: sv(3),
-              padding: `${sv(3)} 0`,
+              gap: "16px",
+              height: `${opts.rowHeight}px`,
+              borderBottom: idx === data.length - 1 ? "none" : `1px solid ${opts.borderColor}`,
             }}
           >
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -203,53 +221,54 @@ export function TableSkeleton({
               <div
                 style={{
                   color: tv("text-muted"),
-                  fontSize: "var(--ark-text-xs)",
+                  fontSize: "10px",
                   fontFamily: "var(--ark-font-mono)",
                 }}
               >
                 {t.id} · {t.date} · {t.category}
               </div>
             </div>
-            <Amount value={t.amount} />
+            <Amount value={t.amount} accentColor={opts.accentColor} />
             <MoreHorizontal
               size={14}
-              className="opacity-0 transition-opacity group-hover:opacity-100"
-              style={{ color: tv("text-muted") }}
+              style={{ color: tv("text-muted"), cursor: "pointer" }}
             />
           </div>
         ))}
+        </div>
       </div>
     );
   }
 
   if (skeletonId === "4") {
-    // Timeline audit log
+    // Timeline audit log styled dynamically
     return (
-      <div style={{ padding: sv(3), position: "relative" }}>
+      <div style={{ ...wrapperStyle, padding: `${opts.padding * 1.5}px`, position: "relative" }}>
         <div
           style={{
             position: "absolute",
-            left: `calc(${sv(3)} + 44px)`,
-            top: sv(3),
-            bottom: sv(3),
+            left: `calc(${opts.padding * 1.5}px + 44px)`,
+            top: `${opts.padding * 1.5}px`,
+            bottom: `${opts.padding * 1.5}px`,
             width: 1,
-            background: tv("border-muted"),
+            backgroundColor: opts.borderColor,
           }}
         />
-        <div style={{ display: "flex", flexDirection: "column", gap: sv(3) }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {data.map((t) => (
             <div
               key={t.id}
-              style={{ display: "flex", alignItems: "flex-start", gap: sv(3) }}
+              style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}
             >
               <span
                 style={{
                   width: 44,
                   flexShrink: 0,
                   color: tv("text-muted"),
-                  fontSize: "var(--ark-text-xs)",
+                  fontSize: "10px",
                   fontFamily: "var(--ark-font-mono)",
                   textAlign: "right",
+                  lineHeight: "18px",
                 }}
               >
                 {t.date.slice(5)}
@@ -258,45 +277,45 @@ export function TableSkeleton({
                 style={{
                   width: 9,
                   height: 9,
-                  marginTop: 3,
-                  borderRadius: rv(7),
-                  background:
-                    t.status === "Flagged"
-                      ? tv("border-focus")
-                      : tv("action-primary-default"),
+                  marginTop: 5,
+                  borderRadius: "50%",
+                  backgroundColor: t.status === "Flagged" ? "#ef4444" : opts.accentColor,
                   flexShrink: 0,
                   position: "relative",
                   zIndex: 1,
-                  boxShadow: `0 0 0 3px ${tv("surface-base")}`,
+                  boxShadow: `0 0 0 3px ${opts.bg}`,
                 }}
               />
               <div
                 style={{
                   flex: 1,
                   minWidth: 0,
-                  background: tv("surface-elevated"),
-                  border: `1px solid ${tv("border-muted")}`,
-                  borderRadius: rv(radiusStep),
-                  padding: sv(2),
+                  backgroundColor: tv("surface-elevated"),
+                  border: `1px solid ${opts.borderColor}`,
+                  borderRadius: `${opts.radius - 2 > 0 ? opts.radius - 2 : 4}px`,
+                  padding: "8px 12px",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: sv(2) }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
                   <span
                     style={{
                       color: tv("text-primary"),
                       fontSize: "var(--ark-text-xs)",
                       fontWeight: 600,
+                      textOverflow: "ellipsis",
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {t.payee}
                   </span>
-                  <Amount value={t.amount} />
+                  <Amount value={t.amount} accentColor={opts.accentColor} />
                 </div>
                 <div
                   style={{
                     marginTop: 2,
                     color: tv("text-muted"),
-                    fontSize: "var(--ark-text-xs)",
+                    fontSize: "10px",
                     fontFamily: "var(--ark-font-mono)",
                   }}
                 >
@@ -310,82 +329,90 @@ export function TableSkeleton({
     );
   }
 
-  // 1 — Dense financial ledger
+  // 1 — Dense financial ledger (standard table layout) styled dynamically
   const cols = "5.5rem 1fr 6.5rem 5.5rem 7rem";
   return (
-    <div style={{ maxHeight: 320, overflowY: "auto", position: "relative" }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: cols,
-          gap: sv(2),
-          padding: `${sv(1)} ${sv(3)}`,
-          background: tv("surface-subtle"),
-          position: "sticky",
-          top: 0,
-          zIndex: 1,
-          borderBottom: `1px solid ${tv("border-default")}`,
-        }}
-      >
-        {["ID", "Payee", "Category", "Status", "Amount"].map((h, i) => (
-          <span
-            key={h}
+    <div style={wrapperStyle}>
+      <div style={{ minWidth: "500px" }}>
+        {opts.showHeader && (
+          <div
             style={{
-              color: tv("text-muted"),
-              fontSize: "var(--ark-text-xs)",
-              fontFamily: "var(--ark-font-mono)",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              textAlign: i === 4 ? "right" : "left",
+              display: "grid",
+              gridTemplateColumns: cols,
+              gap: "8px",
+              padding: `8px ${opts.padding}px`,
+              backgroundColor: tv("surface-subtle"),
+              borderBottom: `${opts.borderWidth}px solid ${opts.borderColor}`,
+              height: "36px",
+              alignItems: "center",
             }}
           >
-            {h}
-          </span>
+            {["ID", "Payee", "Category", "Status", "Amount"].map((h, i) => (
+              <span
+                key={h}
+                style={{
+                  color: tv("text-muted"),
+                  fontSize: "10px",
+                  fontFamily: "var(--ark-font-mono)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  textAlign: i === 4 ? "right" : "left",
+                }}
+              >
+                {h}
+              </span>
+            ))}
+          </div>
+        )}
+        <div style={{ maxHeight: "280px", overflowY: "auto" }}>
+          {data.map((t, idx) => (
+          <div
+            key={t.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: cols,
+              gap: "8px",
+              alignItems: "center",
+              padding: `0 ${opts.padding}px`,
+              height: `${opts.rowHeight}px`,
+              borderBottom: idx === data.length - 1 ? "none" : `1px solid ${opts.borderColor}`,
+              backgroundColor: opts.striped && idx % 2 === 1 ? tv("surface-elevated") : "transparent",
+            }}
+          >
+            <span
+              style={{
+                color: tv("text-muted"),
+                fontSize: "10px",
+                fontFamily: "var(--ark-font-mono)",
+              }}
+            >
+              {t.id}
+            </span>
+            <span
+              style={{
+                color: tv("text-primary"),
+                fontSize: "var(--ark-text-xs)",
+                fontWeight: 500,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {t.payee}
+            </span>
+            <span style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)" }}>
+              {t.category}
+            </span>
+            <span>
+              <StatusBadge status={t.status} />
+            </span>
+            <span style={{ textAlign: "right" }}>
+              <Amount value={t.amount} accentColor={opts.accentColor} />
+            </span>
+          </div>
         ))}
-      </div>
-      {data.map((t, idx) => (
-        <div
-          key={t.id}
-          style={{
-            display: "grid",
-            gridTemplateColumns: cols,
-            gap: sv(2),
-            alignItems: "center",
-            padding: `${sv(1)} ${sv(3)}`,
-            borderBottom: `1px solid ${tv("border-muted")}`,
-            background: idx % 2 === 1 ? tv("surface-elevated") : "transparent",
-          }}
-        >
-          <span
-            style={{
-              color: tv("text-muted"),
-              fontSize: "var(--ark-text-xs)",
-              fontFamily: "var(--ark-font-mono)",
-            }}
-          >
-            {t.id}
-          </span>
-          <span
-            style={{
-              color: tv("text-primary"),
-              fontSize: "var(--ark-text-xs)",
-              fontWeight: 500,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {t.payee}
-          </span>
-          <span style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)" }}>
-            {t.category}
-          </span>
-          <StatusBadge status={t.status} />
-          <span style={{ textAlign: "right" }}>
-            <Amount value={t.amount} />
-          </span>
         </div>
-      ))}
+      </div>
     </div>
   );
 }

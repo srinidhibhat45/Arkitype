@@ -40,13 +40,14 @@ export const INTERACTION_STATES: InteractionState[] = [
   "disabled",
 ];
 
-export type SizeToken = "sm" | "md" | "lg";
+export type SizeToken = "sm" | "md" | "lg" | "xl";
 
 /** size → [paddingY step, paddingX step, type step] against system scales */
 export const SIZE_MAP: Record<SizeToken, { py: number; px: number; text: string }> = {
   sm: { py: 1, px: 2, text: "xs" },
   md: { py: 1, px: 3, text: "sm" },
   lg: { py: 2, px: 4, text: "base" },
+  xl: { py: 3, px: 5, text: "lg" },
 };
 
 export function focusRing(): CSSProperties {
@@ -70,6 +71,7 @@ export function pxNum(value: string | undefined, fallback: number): number {
 /* ── Button ── */
 
 export function TokenButton({
+  variant = "filled",
   state = "default",
   size = "md",
   radiusStep = 2,
@@ -77,9 +79,10 @@ export function TokenButton({
   fullWidth = false,
   onClick,
   resolve = NO_BINDINGS,
-  prefixIcon = false,
-  suffixIcon = false,
+  prefixIcon,
+  suffixIcon,
 }: {
+  variant?: "filled" | "tonal" | "elevated" | "outlined" | "text" | "error" | "warning" | "success";
   state?: InteractionState;
   size?: SizeToken;
   radiusStep?: number;
@@ -87,44 +90,86 @@ export function TokenButton({
   fullWidth?: boolean;
   onClick?: () => void;
   resolve?: Resolver;
-  prefixIcon?: boolean;
-  suffixIcon?: boolean;
+  prefixIcon?: string | ReactNode;
+  suffixIcon?: string | ReactNode;
 }) {
   const s = SIZE_MAP[size];
   const disabled = state === "disabled";
   const cst = bindState(state);
   const r = resolve;
+  const mode = useDesignSystem((s) => s.currentPreviewMode);
 
-  const defBg =
-    state === "hover"
-      ? tv("action-primary-hover")
-      : state === "active"
-        ? tv("action-primary-active")
-        : disabled
-          ? tv("action-primary-disabled")
-          : tv("action-primary-default");
-  const onAction = disabled ? tv("text-muted") : tv("text-on-action");
-  const prefixColor = r("prefixIcon.color", cst) ?? onAction;
-  const suffixColor = r("suffixIcon.color", cst) ?? onAction;
+  let defBg = "transparent";
+  let defBorder = "transparent";
+  let defColor = tv("action-primary-default");
+  let defShadow = "none";
+
+  if (disabled) {
+    if (variant === "filled" || variant === "error" || variant === "warning" || variant === "success") {
+      defBg = mode === "dark" ? tv("neutral-700") : tv("neutral-300");
+      defColor = tv("text-muted");
+    } else if (variant === "tonal" || variant === "elevated") {
+      defBg = tv("surface-subtle");
+      defColor = tv("text-muted");
+    } else {
+      defBg = "transparent";
+      defBorder = tv("border-default");
+      defColor = tv("text-muted");
+    }
+  } else {
+    // Normal states
+    if (variant === "filled") {
+      defBg = state === "hover" ? tv("action-primary-hover") : state === "active" ? tv("action-primary-active") : tv("action-primary-default");
+      defColor = tv("text-on-action");
+    } else if (variant === "tonal") {
+      defBg = state === "hover" ? tv("ink-panel") : state === "active" ? tv("ink-hover") : tv("surface-subtle");
+      defColor = tv("text-dim");
+    } else if (variant === "elevated") {
+      defBg = state === "hover" ? tv("surface-subtle") : state === "active" ? tv("ink-hover") : tv("surface-elevated");
+      defColor = tv("action-primary-default");
+      defShadow = state === "hover" ? "var(--ark-shadow-medium)" : "var(--ark-shadow-low)";
+    } else if (variant === "outlined") {
+      defBg = state === "hover" ? tv("surface-subtle") : "transparent";
+      defBorder = tv("border-default");
+      defColor = tv("action-primary-default");
+    } else if (variant === "text") {
+      defBg = state === "hover" ? tv("surface-subtle") : "transparent";
+      defColor = tv("action-primary-default");
+    } else if (variant === "error") {
+      defBg = state === "hover" ? (mode === "dark" ? tv("error-400") : tv("error-700")) : state === "active" ? (mode === "dark" ? tv("error-300") : tv("error-800")) : (mode === "dark" ? tv("error-500") : tv("error-600"));
+      defColor = tv("text-on-action");
+    } else if (variant === "warning") {
+      defBg = state === "hover" ? (mode === "dark" ? tv("warning-400") : tv("warning-700")) : (mode === "dark" ? tv("warning-500") : tv("warning-600"));
+      defColor = tv("text-on-action");
+    } else if (variant === "success") {
+      defBg = state === "hover" ? (mode === "dark" ? tv("success-400") : tv("success-700")) : (mode === "dark" ? tv("success-500") : tv("success-600"));
+      defColor = tv("text-on-action");
+    }
+  }
+
+  const prefixColor = r("prefixIcon.color", cst) ?? defColor;
+  const suffixColor = r("suffixIcon.color", cst) ?? defColor;
+  const prefixIconSize = r("prefixIcon.size") ?? "16px";
+  const suffixIconSize = r("suffixIcon.size") ?? "16px";
 
   const style: CSSProperties = {
     background: r("container.bg", cst) ?? defBg,
-    color: r("label.color", cst) ?? onAction,
+    color: r("label.color", cst) ?? defColor,
     padding: `${r("container.padY") ?? sv(s.py)} ${r("container.padX") ?? sv(s.px)}`,
     borderRadius: r("container.radius") ?? rv(radiusStep),
     fontSize: r("label.size") ?? `var(--ark-text-${s.text})`,
     fontFamily: r("label.font") ?? "var(--ark-font-sans)",
     fontWeight: r("label.weight") ?? 600,
     border: `${r("container.borderWidth") ?? "1px"} solid ${
-      r("container.border", cst) ?? "transparent"
+      r("container.border", cst) ?? defBorder
     }`,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: sv(1),
+    gap: sv(1.5),
     cursor: disabled ? "not-allowed" : "pointer",
     width: fullWidth ? "100%" : undefined,
-    boxShadow: state === "hover" ? "var(--ark-shadow-low)" : "none",
+    boxShadow: defShadow,
     transition:
       "background var(--ark-duration-fast) var(--ark-ease-out), box-shadow var(--ark-duration-fast) var(--ark-ease-out)",
     ...(state === "focus" ? focusRing() : {}),
@@ -135,11 +180,23 @@ export function TokenButton({
       {state === "loading" ? (
         <Loader2 data-ark-part="prefixIcon" size={pxNum(r("prefixIcon.size"), 14)} className="ark-spin" style={{ color: prefixColor }} />
       ) : prefixIcon ? (
-        <Sparkles data-ark-part="prefixIcon" size={pxNum(r("prefixIcon.size"), 14)} style={{ color: prefixColor }} />
+        typeof prefixIcon === "string" ? (
+          <span className="material-icons select-none shrink-0" style={{ fontSize: prefixIconSize, color: prefixColor }}>
+            {prefixIcon}
+          </span>
+        ) : (
+          prefixIcon
+        )
       ) : null}
       <span data-ark-part="label">{children}</span>
       {suffixIcon ? (
-        <ArrowRight data-ark-part="suffixIcon" size={pxNum(r("suffixIcon.size"), 14)} style={{ color: suffixColor }} />
+        typeof suffixIcon === "string" ? (
+          <span className="material-icons select-none shrink-0" style={{ fontSize: suffixIconSize, color: suffixColor }}>
+            {suffixIcon}
+          </span>
+        ) : (
+          suffixIcon
+        )
       ) : null}
     </button>
   );
@@ -152,12 +209,14 @@ export function TokenInput({
   size = "md",
   radiusStep = 2,
   placeholder = "Amount, e.g. 1,240.00",
+  value,
   resolve = NO_BINDINGS,
 }: {
   state?: InteractionState;
   size?: SizeToken;
   radiusStep?: number;
   placeholder?: string;
+  value?: string;
   resolve?: Resolver;
 }) {
   const s = SIZE_MAP[size];
@@ -196,7 +255,7 @@ export function TokenInput({
       disabled={disabled}
       style={style}
       placeholder={placeholder}
-      value={state === "active" || state === "loading" ? "1,240.00" : ""}
+      value={value !== undefined ? value : (state === "active" || state === "loading" ? "1,240.00" : "")}
       aria-busy={state === "loading"}
     />
   );

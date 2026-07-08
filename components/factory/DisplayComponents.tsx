@@ -9,8 +9,9 @@ import { AlertTriangle, Bell, CheckCircle2, Info, X, XCircle } from "lucide-reac
 import type { CSSProperties } from "react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
-import { NO_BINDINGS, Resolver } from "@/lib/componentSchema";
-import { pxNum } from "./CoreComponents";
+import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver } from "@/lib/componentSchema";
+import { pxNum, TokenButton } from "./CoreComponents";
+import { TokenIconButton } from "./FormControls";
 
 export type ToneVariant = "neutral" | "brand" | "info" | "success" | "warning" | "error";
 
@@ -381,6 +382,17 @@ export function TokenToast({
   const tone = useTone(variant, mode);
   const r = resolve;
   const Glyph = toastGlyph(variant);
+
+  const cfg = useDesignSystem((s) => s.components.toast);
+  const properties = cfg?.properties;
+
+  const buttonResolve = useComponentBindings("button");
+  const iconButtonResolve = useComponentBindings("iconButton");
+  const childButtonResolve = createChildResolver("button", resolve, buttonResolve);
+  const childIconButtonResolve = createChildResolver("iconButton", resolve, iconButtonResolve);
+
+  const btnSize = (properties?.["button.size"] as any) ?? "sm";
+
   return (
     <div
       role="status"
@@ -437,25 +449,18 @@ export function TokenToast({
         </span>
       </span>
       {action ? (
-        <span
-          style={{
-            flexShrink: 0,
-            alignSelf: "center",
-            padding: `${sv(1)} ${sv(2)}`,
-            borderRadius: rv(Math.max(radiusStep - 1, 0)),
-            border: `1px solid ${tone.border}`,
-            color: tone.accent,
-            fontSize: "var(--ark-text-xs)",
-            fontWeight: 600,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Undo
-        </span>
+        <div style={{ flexShrink: 0, alignSelf: "center", marginLeft: "4px" }}>
+          <TokenButton size={btnSize} resolve={childButtonResolve}>
+            Undo
+          </TokenButton>
+        </div>
       ) : null}
       {dismissible ? (
-        <X size={13} style={{ color: tv("text-muted"), cursor: "pointer", flexShrink: 0 }} />
+        <div style={{ flexShrink: 0, alignSelf: "center", marginLeft: "4px" }}>
+          <TokenIconButton variant="ghost" size="sm" resolve={childIconButtonResolve}>
+            <X size={13} />
+          </TokenIconButton>
+        </div>
       ) : null}
     </div>
   );

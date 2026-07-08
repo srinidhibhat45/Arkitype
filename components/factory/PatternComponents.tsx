@@ -8,11 +8,12 @@
  */
 import type { CSSProperties } from "react";
 import { ChevronRight, Heart, Megaphone, MessageCircle, X } from "lucide-react";
-import { PreviewMode } from "@/store/useDesignSystem";
+import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
-import { NO_BINDINGS, Resolver } from "@/lib/componentSchema";
+import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver } from "@/lib/componentSchema";
 import { ToneVariant, TokenAvatar, TokenBadge, useTone } from "./DisplayComponents";
-import { TokenInput } from "./CoreComponents";
+import { TokenInput, TokenButton } from "./CoreComponents";
+import { TokenIconButton } from "./FormControls";
 import { TokenStat } from "./FeedbackComponents";
 
 /* ── List item (media object) ── */
@@ -34,6 +35,12 @@ export function TokenListItem({
 }) {
   const r = resolve;
   const border = r("container.border") ?? tv("border-muted");
+
+  const avatarResolve = useComponentBindings("avatar");
+  const badgeResolve = useComponentBindings("badge");
+  const childAvatarResolve = createChildResolver("avatar", resolve, avatarResolve);
+  const childBadgeResolve = createChildResolver("badge", resolve, badgeResolve);
+
   return (
     <div
       style={{
@@ -56,7 +63,7 @@ export function TokenListItem({
             borderTop: i > 0 ? `1px solid ${border}` : "none",
           }}
         >
-          <TokenAvatar size="sm" radiusStep={7} initials={row.name.slice(0, 2).toUpperCase()} />
+          <TokenAvatar size="sm" radiusStep={7} initials={row.name.slice(0, 2).toUpperCase()} resolve={childAvatarResolve} />
           <span style={{ minWidth: 0, flex: 1 }}>
             <span style={{ display: "block", fontSize: "var(--ark-text-sm)", fontWeight: 600, color: r("text.name") ?? tv("text-primary"), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {row.name}
@@ -68,7 +75,7 @@ export function TokenListItem({
           <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: 700, color: r("text.amount") ?? tv("text-primary"), fontVariantNumeric: "tabular-nums" }}>
             {row.amount}
           </span>
-          <TokenBadge variant={row.tone} mode={mode}>
+          <TokenBadge variant={row.tone} mode={mode} resolve={childBadgeResolve}>
             {row.badge}
           </TokenBadge>
           <ChevronRight size={15} style={{ color: tv("text-muted"), flexShrink: 0 }} />
@@ -99,6 +106,17 @@ export function TokenBanner({
 }) {
   const tone = useTone(variant, mode);
   const r = resolve;
+
+  const cfg = useDesignSystem((s) => s.components.banner);
+  const parentProperties = cfg?.properties;
+
+  const buttonResolve = useComponentBindings("button");
+  const iconButtonResolve = useComponentBindings("iconButton");
+  const childButtonResolve = createChildResolver("button", resolve, buttonResolve);
+  const childIconButtonResolve = createChildResolver("iconButton", resolve, iconButtonResolve);
+
+  const btnSize = (parentProperties?.["button.size"] as any) ?? "sm";
+
   return (
     <div
       role="region"
@@ -126,23 +144,18 @@ export function TokenBanner({
         </span>
       </span>
       {action ? (
-        <span
-          style={{
-            padding: `${sv(1)} ${sv(2)}`,
-            borderRadius: rv(Math.max(radiusStep - 1, 0)),
-            background: tone.accent,
-            color: tv("text-on-action"),
-            fontSize: "var(--ark-text-xs)",
-            fontWeight: 700,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Review now
-        </span>
+        <div style={{ flexShrink: 0 }}>
+          <TokenButton size={btnSize} resolve={childButtonResolve}>
+            Review now
+          </TokenButton>
+        </div>
       ) : null}
       {dismissible ? (
-        <X size={15} style={{ color: tone.accent, cursor: "pointer", flexShrink: 0 }} aria-label="Dismiss" />
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
+          <TokenIconButton variant="ghost" size="sm" resolve={childIconButtonResolve}>
+            <X size={15} />
+          </TokenIconButton>
+        </div>
       ) : null}
     </div>
   );
@@ -163,6 +176,15 @@ export function TokenField({
 }) {
   const tone = useTone("error", mode);
   const r = resolve;
+
+  const cfg = useDesignSystem((s) => s.components.field);
+  const parentProperties = cfg?.properties;
+
+  const inputResolve = useComponentBindings("input");
+  const childInputResolve = createChildResolver("input", resolve, inputResolve);
+
+  const inputSize = (parentProperties?.["input.size"] as any) ?? "md";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: sv(1), width: "100%", maxWidth: 340, fontFamily: "var(--ark-font-sans)" }}>
       <label style={{ fontSize: "var(--ark-text-sm)", fontWeight: 600, color: r("text.label") ?? tv("text-primary"), display: "inline-flex", gap: 3 }}>
@@ -181,8 +203,10 @@ export function TokenField({
       >
         <TokenInput
           state="default"
+          size={inputSize}
           radiusStep={radiusStep}
           placeholder="name@company.com"
+          resolve={childInputResolve}
         />
       </div>
       <span
@@ -218,6 +242,7 @@ export function TokenStatGrid({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const statResolve = useComponentBindings("stat");
   const cell: CSSProperties = {
     padding: sv(3),
     borderRadius: r("cell.radius") ?? rv(radiusStep),
@@ -236,7 +261,7 @@ export function TokenStatGrid({
     >
       {GRID_STATS.map((s) => (
         <div key={s.label} style={cell}>
-          <TokenStat mode={mode} label={s.label} value={s.value} delta={s.delta} trend={s.trend} />
+          <TokenStat mode={mode} label={s.label} value={s.value} delta={s.delta} trend={s.trend} resolve={statResolve} />
         </div>
       ))}
     </div>
@@ -254,6 +279,8 @@ export function TokenFeedItem({
 }) {
   const r = resolve;
   const meta = r("text.meta") ?? tv("text-muted");
+  const avatarResolve = useComponentBindings("avatar");
+  const childAvatarResolve = createChildResolver("avatar", resolve, avatarResolve);
   return (
     <div
       style={{
@@ -267,7 +294,7 @@ export function TokenFeedItem({
         fontFamily: "var(--ark-font-sans)",
       }}
     >
-      <TokenAvatar size="sm" radiusStep={7} initials="MR" />
+      <TokenAvatar size="sm" radiusStep={7} initials="MR" resolve={childAvatarResolve} />
       <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: sv(1) }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: sv(1) }}>
           <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: 700, color: r("text.name") ?? tv("text-primary") }}>

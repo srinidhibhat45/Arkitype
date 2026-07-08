@@ -227,36 +227,45 @@ export function TokenSwatchCard({
   data,
   binding,
   onPick,
+  minimal = false,
+  align = "left",
 }: {
   data: InspectorData;
   binding: string;
   onPick: (binding: string) => void;
+  minimal?: boolean;
+  align?: "left" | "right";
 }) {
   const [open, setOpen] = useState(false);
   const desc = describeBinding(binding);
   return (
-    <div>
+    <div className="relative w-full min-w-0 flex items-center">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 rounded-lg border border-line bg-ink px-2 py-1.5 text-left transition-colors hover:border-line-strong"
+        className={
+          minimal
+            ? "flex items-center gap-1.5 w-full h-full text-left select-none border-none bg-transparent hover:bg-transparent p-0 min-w-0"
+            : "flex items-center gap-1.5 rounded-md border border-line/50 bg-ink-panel/40 px-2 py-1 text-left transition-colors hover:bg-ink-panel/80 hover:border-line h-7 select-none"
+        }
       >
-        <Swatch hex={data.swatch(binding)} size={18} />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-mono text-[10.5px] text-fg">{desc.label}</span>
-          <span className="block text-[9px] uppercase tracking-wide text-fg-mute">{desc.kind}</span>
+        <Swatch hex={data.swatch(binding)} size={13} />
+        <span className="min-w-0 font-mono text-[10.5px] text-fg-dim truncate flex-1" title={desc.label}>
+          {desc.label}
         </span>
       </button>
       {open ? (
-        <ColorPicker
-          data={data}
-          value={binding}
-          onPick={(b) => {
-            onPick(b);
-            setOpen(false);
-          }}
-          onClose={() => setOpen(false)}
-        />
+        <div className={`absolute top-full mt-1.5 z-[100] w-64 shadow-2xl ${align === "left" ? "left-0" : "right-0"}`}>
+          <ColorPicker
+            data={data}
+            value={binding}
+            onPick={(b) => {
+              onPick(b);
+              setOpen(false);
+            }}
+            onClose={() => setOpen(false)}
+          />
+        </div>
       ) : null}
     </div>
   );

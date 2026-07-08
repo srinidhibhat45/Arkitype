@@ -285,6 +285,14 @@ export function ColourAside() {
         Suggestions are colour theory applied to <em>your</em> brand hex.
         Every swatch is editable — a dot marks the ones you've pinned by hand.
       </AsideNote>
+
+      <AsideNote>
+        <strong>Caspian Strategy:</strong> You can merge Text and Icons into a single <code>FG</code> foreground role to reduce tokens by ~30% and ensure hover synchronization.
+      </AsideNote>
+
+      <AsideNote>
+        <strong>Formulaic Ramps:</strong> Arkitype generates primitive steps by binary-searching the HSL lightness channel to match exact relative WCAG luminance targets, creating perceptually uniform gradients.
+      </AsideNote>
     </>
   );
 }

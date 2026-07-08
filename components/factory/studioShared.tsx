@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { ArrowUpRight, Check, Pipette, X } from "lucide-react";
 import { PreviewMode, RADII_NAMES, useDesignSystem } from "@/store/useDesignSystem";
 import { rampStepLabels } from "@/lib/color";
-import { generateTypeScale } from "@/lib/typography";
+import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 import { resolveRef, resolveToken } from "@/lib/tokens";
 import { bindingSource, bindingSwatch, describeBinding } from "@/lib/binding";
 
@@ -55,7 +55,8 @@ export function useInspectorData() {
     label: `space-${i + 1} · ${px}px`,
     value: `space:${i + 1}`,
   }));
-  const radiusOptions = RADII_NAMES.map((n, i) => ({
+  const radiusNames = primitives.radiusNames ?? RADII_NAMES;
+  const radiusOptions = radiusNames.map((n, i) => ({
     label: `radius-${n} · ${primitives.radii[i]}px`,
     value: `radius:${i}`,
   }));
@@ -65,7 +66,8 @@ export function useInspectorData() {
     {
       rounding: primitives.typography.rounding,
       sizeOverrides: primitives.typography.sizeOverrides,
-    }
+    },
+    primitives.typography.stepDefs ?? STEP_DEFS
   );
   const textOptions = textSteps.map((s) => ({
     label: `text-${s.name} · ${s.size}px`,
@@ -90,6 +92,7 @@ export function useInspectorData() {
     families,
     spaceOptions,
     radiusOptions,
+    radiusNames: primitives.radiusNames,
     textOptions,
     weightOptions,
     fontOptions,
@@ -126,39 +129,7 @@ export function Swatch({ hex, size = 20 }: { hex: string; size?: number }) {
   );
 }
 
-/* ── a selectable swatch button (check on the active one) ── */
 
-function SwatchButton({
-  hex,
-  selected,
-  title,
-  onClick,
-}: {
-  hex: string;
-  selected: boolean;
-  title: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className={`relative rounded-md border p-0.5 transition-colors ${
-        selected ? "border-fg ring-1 ring-fg" : "border-line hover:border-line-strong"
-      }`}
-    >
-      <Swatch hex={hex} size={20} />
-      {selected ? (
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-fg shadow">
-            <Check size={10} strokeWidth={3} className="text-ink" />
-          </span>
-        </span>
-      ) : null}
-    </button>
-  );
-}
 
 /* ── colour picker (inline, expanding) ── */
 
@@ -174,12 +145,37 @@ export function ColorPicker({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"roles" | "primitives" | "custom">("roles");
+  const [search, setSearch] = useState("");
   const [hex, setHex] = useState(value.startsWith("hex:") ? value.slice(4) : "#4f46e5");
-  const desc = describeBinding(value);
+  const desc = describeBinding(value, data.radiusNames);
   const currentSwatch = data.swatch(value);
   const source = bindingSource(value);
   const goToStep = useDesignSystem((s) => s.goToStep);
   const setPendingFocus = useDesignSystem((s) => s.setPendingFocus);
+
+  // Filter Roles by search query
+  const filteredRoleGroups = data.roleGroups
+    .map((g) => {
+      const tokens = g.tokens.filter(
+        (tk) =>
+          tk.token.toLowerCase().includes(search.toLowerCase()) ||
+          g.label.toLowerCase().includes(search.toLowerCase())
+      );
+      return { ...g, tokens };
+    })
+    .filter((g) => g.tokens.length > 0);
+
+  // Filter Primitives by search query
+  const filteredFamilies = data.families
+    .map((f) => {
+      const swatches = f.swatches.filter(
+        (sw) =>
+          sw.ref.toLowerCase().includes(search.toLowerCase()) ||
+          f.name.toLowerCase().includes(search.toLowerCase())
+      );
+      return { ...f, swatches };
+    })
+    .filter((f) => f.swatches.length > 0);
 
   return (
     <div className="mt-2 rounded-lg border border-line-strong bg-ink-panel p-2.5">
@@ -189,7 +185,10 @@ export function ColorPicker({
             <button
               key={t}
               type="button"
-              onClick={() => setTab(t)}
+              onClick={() => {
+                setTab(t);
+                setSearch(""); // reset search on tab change
+              }}
               className={`rounded px-2 py-0.5 text-[10.5px] font-medium capitalize transition-colors ${
                 tab === t ? "bg-ink-hover text-fg" : "text-fg-mute hover:text-fg-dim"
               }`}
@@ -208,71 +207,132 @@ export function ColorPicker({
         </button>
       </div>
 
-      <div className="mb-2 flex items-center gap-2 rounded-md border border-line bg-ink px-2 py-1.5">
-        <Swatch hex={currentSwatch} size={16} />
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-fg">
-          {desc.label}
-        </span>
-        <span className="shrink-0 text-[9px] uppercase tracking-wide text-fg-mute">
-          {desc.kind}
-        </span>
-        {source ? (
-          <button
-            type="button"
-            title={`Open ${source.step === "roles" ? "Roles" : "Colour"} step`}
-            onClick={() => {
-              setPendingFocus({ step: source.step, anchor: source.anchor });
-              goToStep(source.step);
-              onClose();
-            }}
-            className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
-          >
-            <ArrowUpRight size={11} />
-          </button>
-        ) : null}
+      {/* Search Bar for Tokens */}
+      {(tab === "roles" || tab === "primitives") && (
+        <div className="mb-2">
+          <input
+            type="text"
+            placeholder="Search tokens..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-7 rounded-md border border-line bg-ink px-2 text-[11px] text-fg placeholder-fg-mute focus:border-focus focus:outline-none"
+            autoFocus
+          />
+        </div>
+      )}
+
+      <div className="mb-2 flex flex-col gap-1.5 rounded-md border border-line bg-ink px-2.5 py-2">
+        <div className="flex items-center gap-2">
+          <Swatch hex={currentSwatch} size={16} />
+          <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-fg">
+            {desc.label}
+          </span>
+          {source ? (
+            <button
+              type="button"
+              title={`Open ${source.step === "roles" ? "Roles" : "Colour"} step`}
+              onClick={() => {
+                setPendingFocus({ step: source.step, anchor: source.anchor });
+                goToStep(source.step);
+                onClose();
+              }}
+              className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
+            >
+              <ArrowUpRight size={11} />
+            </button>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-between border-t border-line/40 pt-1.5">
+          <span className="text-[9px] uppercase tracking-wide text-fg-mute">
+            Source: {desc.kind}
+          </span>
+          {desc.kind === "role" && (
+            <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-bold uppercase tracking-wider">
+              Semantic (OK)
+            </span>
+          )}
+          {desc.kind === "primitive" && (
+            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[9px] font-bold uppercase tracking-wider animate-pulse" title="Direct primitive bindings bypass semantic rules. Bind to a role instead.">
+              Primitive (Direct)
+            </span>
+          )}
+          {desc.kind === "custom" && (
+            <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 text-[9px] font-bold uppercase tracking-wider" title="Static raw HEX values break system overrides.">
+              Static Value
+            </span>
+          )}
+        </div>
       </div>
 
       {tab === "roles" ? (
-        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
-          {data.roleGroups.map((g) => (
-            <div key={g.label}>
-              <div className="mb-1 text-[9.5px] font-medium uppercase tracking-wide text-fg-mute">
+        <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
+          {filteredRoleGroups.map((g) => (
+            <div key={g.label} className="space-y-1">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-fg-mute px-1">
                 {g.label}
               </div>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-col gap-0.5">
                 {g.tokens.map((tk) => (
-                  <SwatchButton
+                  <button
+                    type="button"
                     key={tk.token}
-                    hex={tk.hex}
-                    title={tk.token}
-                    selected={value === `role:${tk.token}`}
                     onClick={() => onPick(`role:${tk.token}`)}
-                  />
+                    className={`flex items-center gap-2 w-full px-1.5 py-1 rounded-md text-left transition-colors ${
+                      value === `role:${tk.token}`
+                        ? "bg-ink-hover text-fg font-semibold border border-line/80"
+                        : "text-fg-mute hover:text-fg-dim hover:bg-ink/30 border border-transparent"
+                    }`}
+                  >
+                    <Swatch hex={tk.hex} size={12} />
+                    <span className="text-[11px] font-mono truncate flex-1">{tk.token}</span>
+                    {value === `role:${tk.token}` && (
+                      <Check size={11} className="text-fg-dim shrink-0" strokeWidth={3} />
+                    )}
+                  </button>
                 ))}
               </div>
             </div>
           ))}
+          {filteredRoleGroups.length === 0 && (
+            <div className="py-4 text-center text-xs text-fg-mute">
+              No matching roles found
+            </div>
+          )}
         </div>
       ) : tab === "primitives" ? (
-        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
-          {data.families.map((f) => (
-            <div key={f.id}>
-              <div className="mb-1 text-[9.5px] font-medium uppercase tracking-wide text-fg-mute">
+        <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
+          {filteredFamilies.map((f) => (
+            <div key={f.id} className="space-y-1">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-fg-mute px-1">
                 {f.name}
               </div>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-col gap-0.5">
                 {f.swatches.map((sw) => (
-                  <SwatchButton
+                  <button
+                    type="button"
                     key={sw.ref}
-                    hex={sw.hex}
-                    title={sw.ref}
-                    selected={value === `prim:${sw.ref}`}
                     onClick={() => onPick(`prim:${sw.ref}`)}
-                  />
+                    className={`flex items-center gap-2 w-full px-1.5 py-1 rounded-md text-left transition-colors ${
+                      value === `prim:${sw.ref}`
+                        ? "bg-ink-hover text-fg font-semibold border border-line/80"
+                        : "text-fg-mute hover:text-fg-dim hover:bg-ink/30 border border-transparent"
+                    }`}
+                  >
+                    <Swatch hex={sw.hex} size={12} />
+                    <span className="text-[11px] font-mono truncate flex-1">{sw.ref}</span>
+                    {value === `prim:${sw.ref}` && (
+                      <Check size={11} className="text-fg-dim shrink-0" strokeWidth={3} />
+                    )}
+                  </button>
                 ))}
               </div>
             </div>
           ))}
+          {filteredFamilies.length === 0 && (
+            <div className="py-4 text-center text-xs text-fg-mute">
+              No matching primitives found
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-2">
@@ -313,5 +373,46 @@ export function ColorPicker({
         </div>
       )}
     </div>
+  );
+}
+
+export function InlineEditableText({
+  componentId,
+  propKey,
+  value,
+  style,
+  className,
+}: {
+  componentId: string;
+  propKey: string;
+  value: string;
+  style?: import("react").CSSProperties;
+  className?: string;
+}) {
+  const setProperty = useDesignSystem((s) => s.setComponentProperty);
+  
+  return (
+    <span
+      contentEditable
+      suppressContentEditableWarning
+      onBlur={(e) => {
+        setProperty(componentId, propKey, e.currentTarget.textContent || "");
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+      style={{ 
+        outline: "none", 
+        cursor: "text", 
+        borderBottom: "1px dashed transparent",
+        ...style 
+      }}
+      className={`hover:border-fg-dim/40 hover:bg-fg/5 px-0.5 rounded transition-all ${className || ""}`}
+    >
+      {value}
+    </span>
   );
 }

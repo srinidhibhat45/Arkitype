@@ -1,14 +1,18 @@
 "use client";
 
 /**
- * The Tabs Cluster — strict 4-skeleton rule.
- *  1 Standard Underline · 2 Contained Pills · 3 Segmented Matrix · 4 Vertical Sidebar Stack
- * Fully functional (interaction state is local UI state; all styling flows
- * from --ark-* variables).
+ * The Tabs Cluster — fully customizable tabs view.
+ * Renders Standard Underline, Contained Pills, Segmented Matrix, or Vertical Sidebar Stack
+ * based on selected skeletonId, styled dynamically via properties from the store.
  */
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { rv, sv, tv } from "@/lib/tokens";
+import { useDesignSystem, PreviewMode } from "@/store/useDesignSystem";
+import { resolveOptions, useComponentBindings, createChildResolver, Resolver } from "@/lib/componentSchema";
+import { sv, tv } from "@/lib/tokens";
+import { TokenBadge } from "./DisplayComponents";
+import { TokenButton, TokenInput, TokenAlert } from "./CoreComponents";
+import { TokenSearchField, TokenStepper } from "./FormControls";
 
 export const TABS_SKELETONS = [
   { id: "1", name: "Standard Underline", desc: "Border-base indicator beneath labels" },
@@ -19,14 +23,72 @@ export const TABS_SKELETONS = [
 
 const DEFAULT_TABS = ["Overview", "Allocations", "Forecast", "Audit"];
 
-function PanelBody({ active }: { active: string }) {
+interface TabsResolvedOpts {
+  radius: number;
+  borderWidth: number;
+  borderColor: string;
+  activeBg: string;
+  activeTextColor: string;
+  padding: number;
+  showIcons: boolean;
+  skeletonId: string;
+}
+
+function useResolvedTabsOptions(): TabsResolvedOpts {
+  const cfg = useDesignSystem((s) => s.components.tabs);
+  const opts = resolveOptions("tabs", cfg?.properties);
+  return {
+    radius: Number(opts.radius ?? 6),
+    borderWidth: Number(opts.borderWidth ?? 1),
+    borderColor: (opts.borderColor ?? "#e4e4e7") as string,
+    activeBg: (opts.activeBg ?? "#f4f4f5") as string,
+    activeTextColor: (opts.activeTextColor ?? "#18181b") as string,
+    padding: Number(opts.padding ?? 8),
+    showIcons: opts.showIcons !== false,
+    skeletonId: (cfg?.skeletonId ?? "1") as string,
+  };
+}
+
+function PanelBody({
+  active,
+  mode,
+  childButtonResolve,
+  childInputResolve,
+  childAlertResolve,
+  childSearchFieldResolve,
+  childStepperResolve,
+  parentProperties,
+}: {
+  active: string;
+  mode: PreviewMode;
+  childButtonResolve: Resolver;
+  childInputResolve: Resolver;
+  childAlertResolve: Resolver;
+  childSearchFieldResolve: Resolver;
+  childStepperResolve: Resolver;
+  parentProperties?: Record<string, any>;
+}) {
+  const btnSize = (parentProperties?.["button.size"] as any) ?? "sm";
+  const btnVariant = (parentProperties?.["button.variant"] as any) ?? "filled";
+  const btnPrefix = (parentProperties?.["button.prefixIcon"] as string) ?? "";
+  const btnSuffix = (parentProperties?.["button.suffixIcon"] as string) ?? "";
+
+  const inputSize = (parentProperties?.["input.size"] as any) ?? "sm";
+  const searchSize = (parentProperties?.["searchField.size"] as any) ?? "sm";
+  const stepperSize = (parentProperties?.["stepper.size"] as any) ?? "sm";
+
+  const alertVariant = (parentProperties?.["alert.variant"] as any) ?? "warning";
+  const alertStyle = (parentProperties?.["alert.style"] as any) ?? "subtle";
+  const alertAccent = (parentProperties?.["alert.accent"] as any) ?? "left";
+  const alertIcon = parentProperties?.["alert.icon"] !== false;
+
   return (
     <div
       style={{
-        padding: sv(3),
+        padding: "16px",
         display: "flex",
         flexDirection: "column",
-        gap: sv(2),
+        gap: "12px",
       }}
     >
       <span
@@ -38,34 +100,126 @@ function PanelBody({ active }: { active: string }) {
       >
         {active} panel
       </span>
-      {[92, 74, 58].map((w) => (
-        <div
-          key={w}
-          style={{
-            height: 8,
-            width: `${w}%`,
-            background: tv("surface-subtle"),
-            borderRadius: rv(1),
-          }}
-        />
-      ))}
+      
+      {active === "Overview" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <TokenSearchField state="active" value="Marketing" placeholder="Search allocations..." size={searchSize} resolve={childSearchFieldResolve} />
+          <p style={{ color: tv("text-muted"), fontSize: "var(--ark-text-xs)", margin: 0 }}>
+            Enter a query to search transactions across all departments.
+          </p>
+        </div>
+      )}
+
+      {active === "Allocations" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <TokenInput state="active" value="DEPT-402" placeholder="Department code (e.g. DEPT-402)" size={inputSize} resolve={childInputResolve} />
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "var(--ark-text-xs)", color: tv("text-secondary"), fontWeight: 600 }}>Limit:</span>
+            <TokenStepper value={5} size={stepperSize} resolve={childStepperResolve} />
+            <TokenButton
+              size={btnSize}
+              variant={btnVariant}
+              prefixIcon={btnPrefix}
+              suffixIcon={btnSuffix}
+              resolve={childButtonResolve}
+            >
+              Update
+            </TokenButton>
+          </div>
+        </div>
+      )}
+
+      {active === "Forecast" && (
+        <div style={{ width: "100%" }}>
+          <TokenAlert
+            variant={alertVariant}
+            mode={mode}
+            title="Budget Cap Reached"
+            body="Your current forecast exceeds the set quarterly limits by 12.4%."
+            style={alertStyle}
+            accent={alertAccent}
+            icon={alertIcon}
+            resolve={childAlertResolve}
+          />
+        </div>
+      )}
+
+      {active === "Audit" && (
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <TokenButton
+            size={btnSize}
+            variant={btnVariant}
+            prefixIcon={btnPrefix}
+            suffixIcon={btnSuffix}
+            resolve={childButtonResolve}
+          >
+            Start Audit Cycle
+          </TokenButton>
+        </div>
+      )}
     </div>
   );
 }
 
 export function TabsSkeleton({
   skeletonId,
-  radiusStep,
   tabs = DEFAULT_TABS,
   children,
 }: {
   skeletonId: string;
-  radiusStep: number;
+  radiusStep?: number;
   tabs?: string[];
   children?: (active: string) => ReactNode;
 }) {
+  const opts = useResolvedTabsOptions();
   const [active, setActive] = useState(tabs[0]);
-  const body = children ? children(active) : <PanelBody active={active} />;
+  const mode = useDesignSystem((s) => s.currentPreviewMode);
+
+  const cfg = useDesignSystem((s) => s.components.tabs);
+  const parentProperties = cfg?.properties;
+
+  const buttonResolve = useComponentBindings("button");
+  const inputResolve = useComponentBindings("input");
+  const alertResolve = useComponentBindings("alert");
+  const searchFieldResolve = useComponentBindings("searchField");
+  const stepperResolve = useComponentBindings("stepper");
+
+  const parentResolve = useComponentBindings("tabs");
+  const childButtonResolve = createChildResolver("button", parentResolve, buttonResolve);
+  const childInputResolve = createChildResolver("input", parentResolve, inputResolve);
+  const childAlertResolve = createChildResolver("alert", parentResolve, alertResolve);
+  const childSearchFieldResolve = createChildResolver("searchField", parentResolve, searchFieldResolve);
+  const childStepperResolve = createChildResolver("stepper", parentResolve, stepperResolve);
+
+  const body = children ? children(active) : (
+    <PanelBody
+      active={active}
+      mode={mode}
+      childButtonResolve={childButtonResolve}
+      childInputResolve={childInputResolve}
+      childAlertResolve={childAlertResolve}
+      childSearchFieldResolve={childSearchFieldResolve}
+      childStepperResolve={childStepperResolve}
+      parentProperties={parentProperties}
+    />
+  );
+  
+  const badgeResolve = useComponentBindings("badge");
+
+  const renderTabLabel = (t: string) => {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center" }}>
+        {t}
+        {t === "Audit" && (
+          <span style={{ marginLeft: "6px", display: "inline-flex", transform: "scale(0.82)", transformOrigin: "left center" }}>
+            <TokenBadge variant="warning" mode={mode} resolve={badgeResolve}>
+              12
+            </TokenBadge>
+          </span>
+        )}
+      </span>
+    );
+  };
 
   const baseBtn = {
     background: "transparent",
@@ -74,13 +228,14 @@ export function TabsSkeleton({
     fontFamily: "var(--ark-font-sans)",
     fontSize: "var(--ark-text-xs)",
     fontWeight: 600,
+    transition: "all 0.15s ease",
   } as const;
 
   if (skeletonId === "2") {
-    // Contained pills
+    // Contained pills styled dynamically
     return (
       <div>
-        <div style={{ display: "flex", gap: sv(2), padding: sv(2) }}>
+        <div style={{ display: "flex", gap: "8px", padding: `${opts.padding}px` }}>
           {tabs.map((t) => {
             const on = t === active;
             return (
@@ -90,13 +245,14 @@ export function TabsSkeleton({
                 onClick={() => setActive(t)}
                 style={{
                   ...baseBtn,
-                  padding: `${sv(1)} ${sv(3)}`,
-                  borderRadius: rv(7),
-                  background: on ? tv("action-primary-default") : tv("surface-subtle"),
-                  color: on ? tv("text-on-action") : tv("text-secondary"),
+                  padding: "6px 12px",
+                  borderRadius: `${opts.radius}px`,
+                  backgroundColor: on ? opts.activeBg : "transparent",
+                  color: on ? opts.activeTextColor : tv("text-secondary"),
+                  border: `${opts.borderWidth}px solid ${on ? opts.borderColor : "transparent"}`,
                 }}
               >
-                {t}
+                {renderTabLabel(t)}
               </button>
             );
           })}
@@ -107,17 +263,17 @@ export function TabsSkeleton({
   }
 
   if (skeletonId === "3") {
-    // Segmented matrix
+    // Segmented matrix styled dynamically
     return (
       <div>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: `repeat(${tabs.length}, 1fr)`,
-            border: `1px solid ${tv("border-default")}`,
-            borderRadius: rv(radiusStep),
+            border: `${opts.borderWidth}px solid ${opts.borderColor}`,
+            borderRadius: `${opts.radius}px`,
             overflow: "hidden",
-            margin: sv(2),
+            margin: `${opts.padding}px`,
           }}
         >
           {tabs.map((t, i) => {
@@ -129,13 +285,13 @@ export function TabsSkeleton({
                 onClick={() => setActive(t)}
                 style={{
                   ...baseBtn,
-                  padding: `${sv(1)} ${sv(2)}`,
-                  background: on ? tv("action-primary-default") : tv("surface-elevated"),
-                  color: on ? tv("text-on-action") : tv("text-secondary"),
-                  borderLeft: i > 0 ? `1px solid ${tv("border-default")}` : "none",
+                  padding: "8px 12px",
+                  backgroundColor: on ? opts.activeBg : "transparent",
+                  color: on ? opts.activeTextColor : tv("text-secondary"),
+                  borderLeft: i > 0 ? `${opts.borderWidth}px solid ${opts.borderColor}` : "none",
                 }}
               >
-                {t}
+                {renderTabLabel(t)}
               </button>
             );
           })}
@@ -146,17 +302,17 @@ export function TabsSkeleton({
   }
 
   if (skeletonId === "4") {
-    // Vertical sidebar stack
+    // Vertical sidebar stack styled dynamically
     return (
-      <div style={{ display: "flex", minHeight: 120 }}>
+      <div style={{ display: "flex", minHeight: 140 }}>
         <div
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: sv(1),
-            padding: sv(2),
-            borderRight: `1px solid ${tv("border-muted")}`,
-            minWidth: 110,
+            gap: "4px",
+            padding: `${opts.padding}px`,
+            borderRight: `${opts.borderWidth}px solid ${opts.borderColor}`,
+            minWidth: 120,
           }}
         >
           {tabs.map((t) => {
@@ -169,14 +325,13 @@ export function TabsSkeleton({
                 style={{
                   ...baseBtn,
                   textAlign: "left",
-                  padding: `${sv(1)} ${sv(2)}`,
-                  borderRadius: rv(Math.min(radiusStep, 3)),
-                  background: on ? tv("surface-subtle") : "transparent",
-                  color: on ? tv("text-primary") : tv("text-muted"),
-                  borderLeft: `2px solid ${on ? tv("action-primary-default") : "transparent"}`,
+                  padding: "6px 12px",
+                  borderRadius: `${opts.radius}px`,
+                  backgroundColor: on ? opts.activeBg : "transparent",
+                  color: on ? opts.activeTextColor : tv("text-muted"),
                 }}
               >
-                {t}
+                {renderTabLabel(t)}
               </button>
             );
           })}
@@ -186,15 +341,15 @@ export function TabsSkeleton({
     );
   }
 
-  // 1 — Standard underline
+  // 1 — Standard underline styled dynamically
   return (
     <div>
       <div
         style={{
           display: "flex",
-          gap: sv(4),
-          padding: `0 ${sv(3)}`,
-          borderBottom: `1px solid ${tv("border-muted")}`,
+          gap: "16px",
+          padding: `0 ${opts.padding * 1.5}px`,
+          borderBottom: `${opts.borderWidth}px solid ${opts.borderColor}`,
         }}
       >
         {tabs.map((t) => {
@@ -206,14 +361,13 @@ export function TabsSkeleton({
               onClick={() => setActive(t)}
               style={{
                 ...baseBtn,
-                padding: `${sv(2)} 0`,
-                color: on ? tv("text-primary") : tv("text-muted"),
-                borderBottom: `2px solid ${on ? tv("action-primary-default") : "transparent"}`,
+                padding: "10px 0",
+                color: on ? opts.activeTextColor : tv("text-muted"),
+                borderBottom: `2px solid ${on ? opts.activeBg : "transparent"}`,
                 marginBottom: -1,
-                transition: "color 120ms ease, border-color 120ms ease",
               }}
             >
-              {t}
+              {renderTabLabel(t)}
             </button>
           );
         })}

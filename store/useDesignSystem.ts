@@ -13,7 +13,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { generateRamp, hexToRgba, isValidHex, rampStepLabels } from "@/lib/color";
-import { generateTypeScale, FontRoleId, RoundingMode } from "@/lib/typography";
+import { generateTypeScale, FontRoleId, RoundingMode, STEP_DEFS } from "@/lib/typography";
 
 /* ────────────────────────────── vocabulary ────────────────────────────── */
 
@@ -287,16 +287,25 @@ export interface FontRole {
   weight: string; // references a weight-token name
 }
 
+export interface TypographyStepDef {
+  name: string;
+  assignment: string;
+  exp: number;
+  role: string;
+  weight: string;
+}
+
 export interface TypographyTokens {
   baseSize: number;
   scaleFactor: number;
   rounding: RoundingMode;
   weights: WeightToken[];
-  fontRoles: Record<FontRoleId, FontRole>;
+  fontRoles: Record<string, FontRole>; // Widened
   families: { sans: string; mono: string }; // back-compat mirror of body/mono
   sizeOverrides: Record<string, number>;
   leadingOverrides: Record<string, number>;
-  stepAssign: Record<string, { role: FontRoleId; weight: string }>;
+  stepAssign: Record<string, { role: string; weight: string }>; // Widened
+  stepDefs?: TypographyStepDef[]; // Dynamic size steps
 }
 
 const INTER = "Inter, -apple-system, BlinkMacSystemFont, sans-serif";
@@ -339,9 +348,10 @@ const buildSpacing = (
 
 const buildRadii = (
   scale: number,
-  overrides: Record<number, number>
+  overrides: Record<number, number>,
+  radiusSteps: ReadonlyArray<number> = BASE_RADII
 ): number[] =>
-  BASE_RADII.map((r, i) =>
+  radiusSteps.map((r, i) =>
     typeof overrides[i] === "number"
       ? overrides[i]
       : r === 0 || r === 9999
@@ -383,7 +393,60 @@ export interface ComponentConfig {
   bindings?: Record<string, string>;
 }
 
+export interface ProjectState {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  meta: { name: string; started: boolean };
+  journey: {
+    activeStep: StepId;
+    done: Partial<Record<StepId, boolean>>;
+    visited: Partial<Record<StepId, boolean>>;
+  };
+  primitives: {
+    colorFamilies: ColorFamily[];
+    seeds: Record<string, string>;
+    colors: Record<string, string[]>;
+    spacingBase: number;
+    spacingMultipliers: number[];
+    spacingOverrides: Record<number, number>;
+    spacing: number[];
+    radiusScale: number;
+    radiusOverrides: Record<number, number>;
+    radii: number[];
+    radiusNames?: string[];
+    radiusSteps?: number[];
+    typography: TypographyTokens;
+    elevation: ElevationTokens;
+    motion: MotionTokens;
+    layout: LayoutTokens;
+  };
+  semantics: {
+    groups: SemanticGroup[];
+    modes: {
+      light: Record<string, string>;
+      dark: Record<string, string>;
+    };
+  };
+  components: Record<string, ComponentConfig>;
+  currentPreviewMode: PreviewMode;
+  canvasZoom: number;
+}
+
 export interface ArkitypeState {
+  /* Auth & Onboarding State */
+  user: { email: string; name: string } | null;
+  survey: Record<string, string> | null;
+  view: "landing" | "login" | "survey" | "dashboard" | "workspace";
+  
+  /* Multi-project state */
+  activeProjectId: string | null;
+  projects: Record<string, ProjectState>;
+
+  /* Tutorial state */
+  tutorialStep: number | null; // null if not running, or 0..3
+
   meta: { name: string; started: boolean };
   journey: {
     activeStep: StepId;
@@ -401,6 +464,8 @@ export interface ArkitypeState {
     radiusScale: number;
     radiusOverrides: Record<number, number>;
     radii: number[]; // derived cache
+    radiusNames?: string[]; // Dynamic radius names
+    radiusSteps?: number[]; // Dynamic radius base values
     typography: TypographyTokens;
     elevation: ElevationTokens;
     motion: MotionTokens;
@@ -421,12 +486,44 @@ export interface ArkitypeState {
   /** Transient "jump here and highlight X" target — never persisted. */
   pendingFocus: { step: StepId; anchor: string } | null;
 
+  /* Transient UI state */
+  activeComponentId: string | null;
+  activeComponentVariant: string;
+  activeComponentState: string;
+  hoveredPartId: string | null;
+  selectedPartId: string | null;
+  activeLeftTab: "layers" | "tokens";
+
+  /* Auth & onboarding actions */
+  login: (email: string, name: string) => void;
+  register: (email: string, name: string) => void;
+  logout: () => void;
+  submitSurvey: (data: Record<string, string>) => void;
+  setView: (view: "landing" | "login" | "survey" | "dashboard" | "workspace") => void;
+
+  /* Multi-project actions */
+  selectProject: (id: string) => void;
+  createProject: (name: string) => boolean; // returns success (false if limit hit)
+  deleteProject: (id: string) => void;
+  duplicateProject: (id: string) => boolean; // returns success (false if limit hit)
+  renameProject: (id: string, name: string) => void;
+
+  /* Tutorial actions */
+  setTutorialStep: (step: number | null) => void;
+
   /* actions */
   startSystem: (name: string, brandHex: string) => void;
   setSystemName: (name: string) => void;
   goToStep: (step: StepId) => void;
   completeStep: (step: StepId) => void;
   setPendingFocus: (target: { step: StepId; anchor: string } | null) => void;
+
+  setActiveComponentId: (id: string | null) => void;
+  setActiveComponentVariant: (v: string) => void;
+  setActiveComponentState: (s: string) => void;
+  setHoveredPartId: (id: string | null) => void;
+  setSelectedPartId: (id: string | null) => void;
+  setActiveLeftTab: (tab: "layers" | "tokens") => void;
 
   /* colour */
   setSeed: (slot: string, hex: string) => void;
@@ -447,13 +544,17 @@ export interface ArkitypeState {
   setRadiusScale: (scale: number) => void;
   setRadiusOverride: (index: number, px: number) => void;
   clearRadiusOverride: (index: number) => void;
+  addRadiusStep: (name: string, px: number) => void;
+  removeRadiusStep: (index: number) => void;
 
   /* typography */
   setTypographyBase: (size: number) => void;
   setScaleFactor: (factor: number) => void;
   setRounding: (mode: RoundingMode) => void;
   setFontFamily: (kind: "sans" | "mono", value: string) => void;
-  setFontRole: (role: FontRoleId, patch: Partial<FontRole>) => void;
+  setFontRole: (role: string, patch: Partial<FontRole>) => void; // Widened
+  addFontRole: (id: string, family: string) => void; // NEW
+  removeFontRole: (id: string) => void; // NEW
   addWeight: () => void;
   setWeight: (index: number, patch: Partial<WeightToken>) => void;
   removeWeight: (index: number) => void;
@@ -461,7 +562,9 @@ export interface ArkitypeState {
   clearTypeSizeOverride: (step: string) => void;
   setTypeLeadingOverride: (step: string, value: number) => void;
   clearTypeLeadingOverride: (step: string) => void;
-  setStepAssign: (step: string, patch: { role?: FontRoleId; weight?: string }) => void;
+  setStepAssign: (step: string, patch: { role?: string; weight?: string }) => void; // Widened
+  addTypeStep: (name: string, assignment: string, exp: number) => void; // NEW
+  removeTypeStep: (name: string) => void; // NEW
 
   /* elevation */
   setShadowField: (mode: PreviewMode, index: number, field: ShadowField, value: number) => void;
@@ -659,6 +762,18 @@ function uniqueId(base: string, taken: Set<string>): string {
 function freshPrimitives(): ArkitypeState["primitives"] {
   const families = cloneFamilies(DEFAULT_FAMILIES);
   const spacingMultipliers = [...DEFAULT_SPACING_MULTIPLIERS];
+  const radiusNames = ["none", "xs", "sm", "md", "lg", "xl", "2xl", "full"];
+  const radiusSteps = [0, 2, 4, 8, 12, 16, 24, 9999];
+  const stepDefs = [
+    { name: "xs", assignment: "Caption / Meta", exp: -2, role: "body", weight: "regular" },
+    { name: "sm", assignment: "Labels / Secondary", exp: -1, role: "body", weight: "medium" },
+    { name: "base", assignment: "Body Copy", exp: 0, role: "body", weight: "regular" },
+    { name: "lg", assignment: "Lead Paragraph", exp: 1, role: "body", weight: "regular" },
+    { name: "xl", assignment: "H4 Heading", exp: 2, role: "heading", weight: "semibold" },
+    { name: "2xl", assignment: "H3 Heading", exp: 3, role: "heading", weight: "semibold" },
+    { name: "3xl", assignment: "H2 Heading", exp: 4, role: "heading", weight: "bold" },
+    { name: "4xl", assignment: "H1 Display", exp: 5, role: "display", weight: "bold" },
+  ];
   return {
     colorFamilies: families,
     seeds: buildSeeds(families),
@@ -669,8 +784,13 @@ function freshPrimitives(): ArkitypeState["primitives"] {
     spacing: buildSpacing(4, spacingMultipliers, {}),
     radiusScale: 1,
     radiusOverrides: {},
-    radii: buildRadii(1, {}),
-    typography: JSON.parse(JSON.stringify(DEFAULT_TYPOGRAPHY)) as TypographyTokens,
+    radii: buildRadii(1, {}, radiusSteps),
+    radiusNames,
+    radiusSteps,
+    typography: {
+      ...JSON.parse(JSON.stringify(DEFAULT_TYPOGRAPHY)),
+      stepDefs,
+    } as TypographyTokens,
     elevation: {
       light: cloneShadows(DEFAULT_ELEVATION.light),
       dark: cloneShadows(DEFAULT_ELEVATION.dark),
@@ -682,25 +802,187 @@ function freshPrimitives(): ArkitypeState["primitives"] {
 
 export const useDesignSystem = create<ArkitypeState>()(
   persist(
-    (set) => ({
-      meta: { name: "", started: false },
-      journey: { activeStep: "colour", done: {}, visited: { colour: true } },
-      primitives: freshPrimitives(),
-      semantics: {
-        groups: JSON.parse(JSON.stringify(DEFAULT_SEMANTIC_GROUPS)) as SemanticGroup[],
-        modes: {
-          light: { ...DEFAULT_LIGHT },
-          dark: { ...DEFAULT_DARK },
+    (originalSet, get) => {
+      const set = (
+        partial:
+          | ArkitypeState
+          | Partial<ArkitypeState>
+          | ((state: ArkitypeState) => ArkitypeState | Partial<ArkitypeState> | void | any),
+        replace?: boolean
+      ) => {
+        originalSet((state) => {
+          const next = typeof partial === "function" ? partial(state) : partial;
+          const merged = { ...state, ...next };
+          
+          const isSelectingProject = next.activeProjectId !== undefined && next.activeProjectId !== state.activeProjectId;
+          
+          if (merged.activeProjectId && merged.projects[merged.activeProjectId] && !isSelectingProject) {
+            const p = { ...merged.projects[merged.activeProjectId] };
+            p.updatedAt = Date.now();
+            p.meta = merged.meta;
+            p.journey = merged.journey;
+            p.primitives = merged.primitives;
+            p.semantics = merged.semantics;
+            p.components = merged.components;
+            p.currentPreviewMode = merged.currentPreviewMode;
+            p.canvasZoom = merged.canvasZoom;
+            merged.projects[merged.activeProjectId] = p;
+          }
+          return merged;
+        }, replace);
+      };
+
+      const createDefaultProjectState = (id: string, name: string): ProjectState => {
+        return {
+          id,
+          name,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          meta: { name, started: true },
+          journey: { activeStep: "colour", done: {}, visited: { colour: true } },
+          primitives: freshPrimitives(),
+          semantics: {
+            groups: JSON.parse(JSON.stringify(DEFAULT_SEMANTIC_GROUPS)) as SemanticGroup[],
+            modes: {
+              light: { ...DEFAULT_LIGHT },
+              dark: { ...DEFAULT_DARK },
+            },
+          },
+          components: JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)) as Record<string, ComponentConfig>,
+          currentPreviewMode: "dark",
+          canvasZoom: 1,
+        };
+      };
+
+      return {
+        user: null,
+        survey: null,
+        view: "landing",
+        activeProjectId: null,
+        projects: {},
+        tutorialStep: null,
+
+        meta: { name: "", started: false },
+        journey: { activeStep: "colour", done: {}, visited: { colour: true } },
+        primitives: freshPrimitives(),
+        semantics: {
+          groups: JSON.parse(JSON.stringify(DEFAULT_SEMANTIC_GROUPS)) as SemanticGroup[],
+          modes: {
+            light: { ...DEFAULT_LIGHT },
+            dark: { ...DEFAULT_DARK },
+          },
         },
-      },
-      components: JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)) as Record<
-        string,
-        ComponentConfig
-      >,
-      currentPreviewMode: "dark",
-      chromeTheme: "light",
-      canvasZoom: 1,
-      pendingFocus: null,
+        components: JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)) as Record<
+          string,
+          ComponentConfig
+        >,
+        currentPreviewMode: "dark",
+        chromeTheme: "light",
+        canvasZoom: 1,
+        pendingFocus: null,
+
+        /* Transient UI state */
+        activeComponentId: "button",
+        activeComponentVariant: "default",
+        activeComponentState: "default",
+        hoveredPartId: null,
+        selectedPartId: null,
+        activeLeftTab: "layers",
+
+        /* Auth & onboarding actions */
+        login: (email, name) => set({ user: { email, name }, view: "dashboard" }),
+        register: (email, name) => set({ user: { email, name }, view: "survey" }),
+        logout: () => set({ user: null, survey: null, activeProjectId: null, view: "landing" }),
+        submitSurvey: (data) => set({ survey: data, view: "dashboard" }),
+        setView: (view) => set({ view }),
+
+        /* Multi-project actions */
+        selectProject: (id) =>
+          set((state) => {
+            const project = state.projects[id];
+            if (!project) return {};
+            return {
+              activeProjectId: id,
+              meta: project.meta,
+              journey: project.journey,
+              primitives: project.primitives,
+              semantics: project.semantics,
+              components: project.components,
+              currentPreviewMode: project.currentPreviewMode,
+              canvasZoom: project.canvasZoom,
+              view: "workspace",
+            };
+          }),
+
+        createProject: (name) => {
+          const state = get();
+          const currentCount = Object.keys(state.projects).length;
+          if (currentCount >= 3) {
+            return false; // Limit hit!
+          }
+          const id = `project-${Date.now()}`;
+          const newProj = createDefaultProjectState(id, name);
+          set((state) => ({
+            projects: {
+              ...state.projects,
+              [id]: newProj,
+            },
+          }));
+          return true;
+        },
+
+        deleteProject: (id) =>
+          set((state) => {
+            const projects = { ...state.projects };
+            delete projects[id];
+            const activeProjectId = state.activeProjectId === id ? null : state.activeProjectId;
+            return { projects, activeProjectId };
+          }),
+
+        duplicateProject: (id) => {
+          const state = get();
+          const currentCount = Object.keys(state.projects).length;
+          if (currentCount >= 3) {
+            return false; // Limit hit!
+          }
+          const source = state.projects[id];
+          if (!source) return false;
+
+          const newId = `project-${Date.now()}`;
+          const clone: ProjectState = JSON.parse(JSON.stringify(source));
+          clone.id = newId;
+          clone.name = `${source.name} (Copy)`;
+          clone.createdAt = Date.now();
+          clone.updatedAt = Date.now();
+
+          set((state) => ({
+            projects: {
+              ...state.projects,
+              [newId]: clone,
+            },
+          }));
+          return true;
+        },
+
+        renameProject: (id, name) =>
+          set((state) => {
+            if (!state.projects[id]) return {};
+            const projects = { ...state.projects };
+            projects[id] = { ...projects[id], name, updatedAt: Date.now() };
+            // If renaming the active project, update meta too
+            const meta = state.activeProjectId === id ? { ...state.meta, name } : state.meta;
+            return { projects, meta };
+          }),
+
+        /* Tutorial actions */
+        setTutorialStep: (step) => set({ tutorialStep: step }),
+
+        setActiveComponentId: (id) => set({ activeComponentId: id }),
+      setActiveComponentVariant: (v) => set({ activeComponentVariant: v }),
+      setActiveComponentState: (s) => set({ activeComponentState: s }),
+       setHoveredPartId: (id) => set({ hoveredPartId: id }),
+       setSelectedPartId: (id) => set({ selectedPartId: id }),
+       setActiveLeftTab: (tab) => set({ activeLeftTab: tab }),
 
       startSystem: (name, brandHex) =>
         set((state) => {
@@ -984,22 +1266,26 @@ export const useDesignSystem = create<ArkitypeState>()(
         }),
 
       setRadiusScale: (scale) =>
-        set((state) => ({
-          primitives: {
-            ...state.primitives,
-            radiusScale: scale,
-            radii: buildRadii(scale, state.primitives.radiusOverrides),
-          },
-        })),
+        set((state) => {
+          const radiusSteps = state.primitives.radiusSteps ?? [0, 2, 4, 8, 12, 16, 24, 9999];
+          return {
+            primitives: {
+              ...state.primitives,
+              radiusScale: scale,
+              radii: buildRadii(scale, state.primitives.radiusOverrides, radiusSteps),
+            },
+          };
+        }),
 
       setRadiusOverride: (index, px) =>
         set((state) => {
           const overrides = { ...state.primitives.radiusOverrides, [index]: px };
+          const radiusSteps = state.primitives.radiusSteps ?? [0, 2, 4, 8, 12, 16, 24, 9999];
           return {
             primitives: {
               ...state.primitives,
               radiusOverrides: overrides,
-              radii: buildRadii(state.primitives.radiusScale, overrides),
+              radii: buildRadii(state.primitives.radiusScale, overrides, radiusSteps),
             },
           };
         }),
@@ -1007,11 +1293,43 @@ export const useDesignSystem = create<ArkitypeState>()(
       clearRadiusOverride: (index) =>
         set((state) => {
           const { [index]: _drop, ...overrides } = state.primitives.radiusOverrides;
+          const radiusSteps = state.primitives.radiusSteps ?? [0, 2, 4, 8, 12, 16, 24, 9999];
           return {
             primitives: {
               ...state.primitives,
               radiusOverrides: overrides,
-              radii: buildRadii(state.primitives.radiusScale, overrides),
+              radii: buildRadii(state.primitives.radiusScale, overrides, radiusSteps),
+            },
+          };
+        }),
+
+      addRadiusStep: (name, px) =>
+        set((state) => {
+          const radiusNames = [...(state.primitives.radiusNames ?? ["none", "xs", "sm", "md", "lg", "xl", "2xl", "full"])];
+          const radiusSteps = [...(state.primitives.radiusSteps ?? [0, 2, 4, 8, 12, 16, 24, 9999])];
+          const insertIdx = radiusNames.length > 1 ? radiusNames.length - 1 : radiusNames.length;
+          radiusNames.splice(insertIdx, 0, name);
+          radiusSteps.splice(insertIdx, 0, px);
+          return {
+            primitives: {
+              ...state.primitives,
+              radiusNames,
+              radiusSteps,
+              radii: buildRadii(state.primitives.radiusScale, state.primitives.radiusOverrides, radiusSteps),
+            },
+          };
+        }),
+
+      removeRadiusStep: (index) =>
+        set((state) => {
+          const radiusNames = (state.primitives.radiusNames ?? ["none", "xs", "sm", "md", "lg", "xl", "2xl", "full"]).filter((_, i) => i !== index);
+          const radiusSteps = (state.primitives.radiusSteps ?? [0, 2, 4, 8, 12, 16, 24, 9999]).filter((_, i) => i !== index);
+          return {
+            primitives: {
+              ...state.primitives,
+              radiusNames,
+              radiusSteps,
+              radii: buildRadii(state.primitives.radiusScale, state.primitives.radiusOverrides, radiusSteps),
             },
           };
         }),
@@ -1161,13 +1479,101 @@ export const useDesignSystem = create<ArkitypeState>()(
       setStepAssign: (step, patch) =>
         set((state) => {
           const t = state.primitives.typography;
-          const current = t.stepAssign[step] ?? { role: "body" as FontRoleId, weight: "regular" };
+          const current = t.stepAssign[step] ?? { role: "body", weight: "regular" };
           return {
             primitives: {
               ...state.primitives,
               typography: {
                 ...t,
                 stepAssign: { ...t.stepAssign, [step]: { ...current, ...patch } },
+              },
+            },
+          };
+        }),
+
+      addFontRole: (id, family) =>
+        set((state) => {
+          const t = state.primitives.typography;
+          const slug = slugify(id);
+          if (!slug || t.fontRoles[slug] !== undefined) return state;
+          const fontRoles = {
+            ...t.fontRoles,
+            [slug]: { family, weight: "regular" },
+          };
+          return {
+            primitives: {
+              ...state.primitives,
+              typography: {
+                ...t,
+                fontRoles,
+              },
+            },
+          };
+        }),
+
+      removeFontRole: (id) =>
+        set((state) => {
+          const t = state.primitives.typography;
+          if (id === "body" || id === "mono" || id === "heading" || id === "display") return state;
+          const { [id]: _drop, ...fontRoles } = t.fontRoles;
+          return {
+            primitives: {
+              ...state.primitives,
+              typography: {
+                ...t,
+                fontRoles,
+              },
+            },
+          };
+        }),
+
+      addTypeStep: (name, assignment, exp) =>
+        set((state) => {
+          const t = state.primitives.typography;
+          const slug = slugify(name);
+          const stepDefs = [...(t.stepDefs ?? [
+            { name: "xs", assignment: "Caption / Meta", exp: -2, role: "body", weight: "regular" },
+            { name: "sm", assignment: "Labels / Secondary", exp: -1, role: "body", weight: "medium" },
+            { name: "base", assignment: "Body Copy", exp: 0, role: "body", weight: "regular" },
+            { name: "lg", assignment: "Lead Paragraph", exp: 1, role: "body", weight: "regular" },
+            { name: "xl", assignment: "H4 Heading", exp: 2, role: "heading", weight: "semibold" },
+            { name: "2xl", assignment: "H3 Heading", exp: 3, role: "heading", weight: "semibold" },
+            { name: "3xl", assignment: "H2 Heading", exp: 4, role: "heading", weight: "bold" },
+            { name: "4xl", assignment: "H1 Display", exp: 5, role: "display", weight: "bold" },
+          ])];
+          if (!slug || stepDefs.some((s) => s.name === slug)) return state;
+          stepDefs.push({ name: slug, assignment, exp, role: "body", weight: "regular" });
+          stepDefs.sort((a, b) => a.exp - b.exp);
+          return {
+            primitives: {
+              ...state.primitives,
+              typography: {
+                ...t,
+                stepDefs,
+              },
+            },
+          };
+        }),
+
+      removeTypeStep: (name) =>
+        set((state) => {
+          const t = state.primitives.typography;
+          const stepDefs = (t.stepDefs ?? [
+            { name: "xs", assignment: "Caption / Meta", exp: -2, role: "body", weight: "regular" },
+            { name: "sm", assignment: "Labels / Secondary", exp: -1, role: "body", weight: "medium" },
+            { name: "base", assignment: "Body Copy", exp: 0, role: "body", weight: "regular" },
+            { name: "lg", assignment: "Lead Paragraph", exp: 1, role: "body", weight: "regular" },
+            { name: "xl", assignment: "H4 Heading", exp: 2, role: "heading", weight: "semibold" },
+            { name: "2xl", assignment: "H3 Heading", exp: 3, role: "heading", weight: "semibold" },
+            { name: "3xl", assignment: "H2 Heading", exp: 4, role: "heading", weight: "bold" },
+            { name: "4xl", assignment: "H1 Display", exp: 5, role: "display", weight: "bold" },
+          ]).filter((s) => s.name !== name);
+          return {
+            primitives: {
+              ...state.primitives,
+              typography: {
+                ...t,
+                stepDefs,
               },
             },
           };
@@ -1419,10 +1825,11 @@ export const useDesignSystem = create<ArkitypeState>()(
         })),
 
       setCanvasZoom: (zoom) => set({ canvasZoom: zoom }),
-    }),
-    {
+    };
+  },
+  {
       name: "arkitype-system",
-      version: 6,
+      version: 8,
       // v2 → v3: dynamic colour families, per-mode elevation, typography
       // weights/roles/rounding/overrides, editable spacing/radii + overrides,
       // stored semantic groups + expanded roles.
@@ -1434,6 +1841,8 @@ export const useDesignSystem = create<ArkitypeState>()(
       // rail's free-jump now tracks "seen" separately from the footer's
       // "confirmed"); backfill from activeStep so the current step doesn't
       // look unvisited.
+      // v6 -> v7: dynamic radius names, radius steps and typography scale steps.
+      // v7 -> v8: multi-project dashboard files registry, user auth, survey metadata.
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as any;
         if (!state) return persisted as ArkitypeState;
@@ -1464,54 +1873,51 @@ export const useDesignSystem = create<ArkitypeState>()(
 
         if (version < 3 && state.primitives) {
           const p = state.primitives;
-
-          // Colour: seeds map → colorFamilies (preserve seeds; no overrides yet).
-          if (!Array.isArray(p.colorFamilies)) {
-            const oldSeeds: Record<string, string> = p.seeds ?? {};
-            p.colorFamilies = DEFAULT_FAMILIES.map((d) => ({
-              ...d,
-              overrides: {},
-              seed: oldSeeds[d.id] ?? d.seed,
-            }));
+          if (p.shadows) {
+            p.elevation = {
+              light: cloneShadows(p.shadows),
+              dark: cloneShadows(p.shadows),
+            };
+          } else {
+            p.elevation = {
+              light: cloneShadows(DEFAULT_ELEVATION.light),
+              dark: cloneShadows(DEFAULT_ELEVATION.dark),
+            };
           }
-          p.seeds = buildSeeds(p.colorFamilies);
-          p.colors = buildColors(p.colorFamilies);
-
-          // Spacing: add editable multipliers + overrides.
-          p.spacingMultipliers = Array.isArray(p.spacingMultipliers)
-            ? p.spacingMultipliers
-            : [...DEFAULT_SPACING_MULTIPLIERS];
-          p.spacingOverrides = p.spacingOverrides ?? {};
-          p.spacing = buildSpacing(
-            p.spacingBase ?? 4,
-            p.spacingMultipliers,
-            p.spacingOverrides
-          );
-
-          // Radii: add overrides.
-          p.radiusOverrides = p.radiusOverrides ?? {};
-          p.radii = buildRadii(p.radiusScale ?? 1, p.radiusOverrides);
-
-          // Typography: fold old {baseSize, scaleFactor, families} into the
-          // richer model, preserving the user's chosen sizes and families.
-          const oldT = p.typography ?? {};
-          const base = JSON.parse(JSON.stringify(DEFAULT_TYPOGRAPHY)) as TypographyTokens;
-          p.typography = {
-            ...base,
-            baseSize: oldT.baseSize ?? base.baseSize,
-            scaleFactor: oldT.scaleFactor ?? base.scaleFactor,
-            families: oldT.families ?? base.families,
-            fontRoles: {
-              ...base.fontRoles,
-              display: { ...base.fontRoles.display, family: oldT.families?.sans ?? base.fontRoles.display.family },
-              heading: { ...base.fontRoles.heading, family: oldT.families?.sans ?? base.fontRoles.heading.family },
-              body: { ...base.fontRoles.body, family: oldT.families?.sans ?? base.fontRoles.body.family },
-              mono: { ...base.fontRoles.mono, family: oldT.families?.mono ?? base.fontRoles.mono.family },
-            },
+          const t = p.typography ?? {};
+          t.baseSize = t.baseSize ?? 16;
+          t.scaleFactor = t.scaleFactor ?? 1.25;
+          t.rounding = t.rounding ?? "integer";
+          t.weights = t.weights ?? [...DEFAULT_WEIGHTS];
+          t.fontRoles = t.fontRoles ?? {
+            display: { family: t.fontFamilyDisplay ?? INTER, weight: "bold" },
+            heading: { family: t.fontFamilyHeading ?? INTER, weight: "semibold" },
+            body: { family: t.fontFamilyBody ?? INTER, weight: "regular" },
+            mono: { family: t.fontFamilyMono ?? MONO, weight: "regular" },
           };
+          t.families = {
+            sans: t.fontFamilyBody ?? INTER,
+            mono: t.fontFamilyMono ?? MONO,
+          };
+          t.sizeOverrides = t.sizeOverrides ?? {};
+          t.leadingOverrides = t.leadingOverrides ?? {};
+          t.stepAssign = t.stepAssign ?? {};
 
-          // Elevation: old string[] shadows → structured per-mode defaults.
-          p.elevation = {
+          p.typography = t;
+          p.colorFamilies = p.colorFamilies ?? cloneFamilies(DEFAULT_FAMILIES);
+          p.seeds = p.seeds ?? buildSeeds(p.colorFamilies);
+          p.colors = p.colors ?? buildColors(p.colorFamilies);
+
+          p.spacingBase = p.spacingBase ?? 4;
+          p.spacingMultipliers = p.spacingMultipliers ?? [...DEFAULT_SPACING_MULTIPLIERS];
+          p.spacingOverrides = p.spacingOverrides ?? {};
+          p.spacing = p.spacing ?? buildSpacing(p.spacingBase, p.spacingMultipliers, p.spacingOverrides);
+
+          p.radiusScale = p.radiusScale ?? 1;
+          p.radiusOverrides = p.radiusOverrides ?? {};
+          p.radii = p.radii ?? buildRadii(p.radiusScale, p.radiusOverrides);
+
+          p.elevation = p.elevation ?? {
             light: cloneShadows(DEFAULT_ELEVATION.light),
             dark: cloneShadows(DEFAULT_ELEVATION.dark),
           };
@@ -1519,8 +1925,6 @@ export const useDesignSystem = create<ArkitypeState>()(
         }
 
         if (version < 3) {
-          // Semantics: move groups into state; merge expanded default roles so
-          // saved systems gain the new tokens without losing user remaps.
           state.semantics = state.semantics ?? { modes: { light: {}, dark: {} } };
           state.semantics.groups = JSON.parse(
             JSON.stringify(DEFAULT_SEMANTIC_GROUPS)
@@ -1532,7 +1936,6 @@ export const useDesignSystem = create<ArkitypeState>()(
         }
 
         if (version < 4) {
-          // Backfill new component ids while preserving any user overrides.
           state.components = {
             ...(JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)) as Record<
               string,
@@ -1543,8 +1946,6 @@ export const useDesignSystem = create<ArkitypeState>()(
         }
 
         if (version < 5) {
-          // Give every component a bindings map so the inspector has somewhere
-          // to write overrides; existing property/skeleton choices are kept.
           const comps = (state.components ?? {}) as Record<string, ComponentConfig>;
           for (const id of Object.keys(comps)) {
             comps[id] = { ...comps[id], bindings: comps[id].bindings ?? {} };
@@ -1558,10 +1959,69 @@ export const useDesignSystem = create<ArkitypeState>()(
           };
         }
 
+        if (version < 7 && state.primitives) {
+          const p = state.primitives;
+          if (!p.radiusNames) {
+            p.radiusNames = ["none", "xs", "sm", "md", "lg", "xl", "2xl", "full"];
+          }
+          if (!p.radiusSteps) {
+            p.radiusSteps = [0, 2, 4, 8, 12, 16, 24, 9999];
+          }
+          if (p.typography && !p.typography.stepDefs) {
+            p.typography.stepDefs = [
+              { name: "xs", assignment: "Caption / Meta", exp: -2, role: "body", weight: "regular" },
+              { name: "sm", assignment: "Labels / Secondary", exp: -1, role: "body", weight: "medium" },
+              { name: "base", assignment: "Body Copy", exp: 0, role: "body", weight: "regular" },
+              { name: "lg", assignment: "Lead Paragraph", exp: 1, role: "body", weight: "regular" },
+              { name: "xl", assignment: "H4 Heading", exp: 2, role: "heading", weight: "semibold" },
+              { name: "2xl", assignment: "H3 Heading", exp: 3, role: "heading", weight: "semibold" },
+              { name: "3xl", assignment: "H2 Heading", exp: 4, role: "heading", weight: "bold" },
+              { name: "4xl", assignment: "H1 Display", exp: 5, role: "display", weight: "bold" },
+            ];
+          }
+        }
+
+        if (version < 8) {
+          // Wrap current single system state into a default project
+          const defaultProjId = "project-default";
+          const defaultProjName = state.meta?.name || "My First System";
+          
+          const defaultProject: any = {
+            id: defaultProjId,
+            name: defaultProjName,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            meta: state.meta || { name: defaultProjName, started: true },
+            journey: state.journey || { activeStep: "colour", done: {}, visited: { colour: true } },
+            primitives: state.primitives || freshPrimitives(),
+            semantics: state.semantics || {
+              groups: JSON.parse(JSON.stringify(DEFAULT_SEMANTIC_GROUPS)),
+              modes: { light: { ...DEFAULT_LIGHT }, dark: { ...DEFAULT_DARK } },
+            },
+            components: state.components || JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)),
+            currentPreviewMode: state.currentPreviewMode || "dark",
+            canvasZoom: state.canvasZoom || 1,
+          };
+          
+          state.projects = {
+            [defaultProjId]: defaultProject,
+          };
+          state.activeProjectId = defaultProjId;
+          state.user = null;
+          state.survey = null;
+          state.view = "landing";
+          state.tutorialStep = null;
+        }
+
         return state as ArkitypeState;
       },
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
+        user: state.user,
+        survey: state.survey,
+        view: state.view,
+        activeProjectId: state.activeProjectId,
+        projects: state.projects,
         meta: state.meta,
         journey: state.journey,
         primitives: state.primitives,
@@ -1592,7 +2052,8 @@ export function countTokens(state: ArkitypeState): number {
       {
         rounding: state.primitives.typography.rounding,
         sizeOverrides: state.primitives.typography.sizeOverrides,
-      }
+      },
+      state.primitives.typography.stepDefs ?? STEP_DEFS
     ).length * 2; // size + leading
   const weightCount = state.primitives.typography.weights.length;
   const fontCount = Object.keys(state.primitives.typography.fontRoles).length;

@@ -221,6 +221,8 @@ export function TokenSlider({
   );
 }
 
+import { checkContrast } from "@/lib/a11y";
+
 /* ── colour: swatch button that opens the shared token picker ── */
 
 export function TokenSwatchCard({
@@ -229,20 +231,49 @@ export function TokenSwatchCard({
   onPick,
   minimal = false,
   align = "left",
+  contrastAgainstHex,
+  contrastAgainstLabel,
+  contrastContext,
 }: {
   data: InspectorData;
   binding: string;
   onPick: (binding: string) => void;
   minimal?: boolean;
   align?: "left" | "right";
+  contrastAgainstHex?: string;
+  contrastAgainstLabel?: string;
+  contrastContext?: "text-normal" | "text-large" | "ui-component";
 }) {
   const [open, setOpen] = useState(false);
+  const [pendingValue, setPendingValue] = useState<string | null>(null);
+  const [pendingWarning, setPendingWarning] = useState<{ label: string; ratio: number } | null>(null);
   const desc = describeBinding(binding);
+
+  const handlePick = (newVal: string) => {
+    if (contrastAgainstHex) {
+      const newHex = data.swatch(newVal);
+      const check = checkContrast(newHex, contrastAgainstHex, contrastContext || "text-normal");
+      if (check.level === "fail") {
+        setPendingValue(newVal);
+        setPendingWarning({ label: contrastAgainstLabel || "counterpart", ratio: check.ratio });
+        return;
+      }
+    }
+    onPick(newVal);
+    setOpen(false);
+    setPendingValue(null);
+    setPendingWarning(null);
+  };
+
   return (
     <div className="relative w-full min-w-0 flex items-center">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => !o);
+          setPendingValue(null);
+          setPendingWarning(null);
+        }}
         className={
           minimal
             ? "flex items-center gap-1.5 w-full h-full text-left select-none border-none bg-transparent hover:bg-transparent p-0 min-w-0"
@@ -256,15 +287,44 @@ export function TokenSwatchCard({
       </button>
       {open ? (
         <div className={`absolute top-full mt-1.5 z-[100] w-64 shadow-2xl ${align === "left" ? "left-0" : "right-0"}`}>
-          <ColorPicker
-            data={data}
-            value={binding}
-            onPick={(b) => {
-              onPick(b);
-              setOpen(false);
-            }}
-            onClose={() => setOpen(false)}
-          />
+          {pendingWarning ? (
+            <div className="rounded-lg border border-red-500/20 bg-red-950/95 backdrop-blur-md p-3 text-[11px] text-white">
+              <div className="mb-2 font-medium">
+                ⚠️ Drops contrast to {pendingWarning.ratio}:1 (Fail) against {pendingWarning.label}.
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (pendingValue) onPick(pendingValue);
+                    setOpen(false);
+                    setPendingValue(null);
+                    setPendingWarning(null);
+                  }}
+                  className="rounded bg-red-500/20 px-2 py-1 font-bold text-red-200 hover:bg-red-500/30 transition-colors"
+                >
+                  Use anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingValue(null);
+                    setPendingWarning(null);
+                  }}
+                  className="rounded bg-zinc-800 px-2 py-1 font-bold text-zinc-300 hover:bg-zinc-700 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ColorPicker
+              data={data}
+              value={binding}
+              onPick={handlePick}
+              onClose={() => setOpen(false)}
+            />
+          )}
         </div>
       ) : null}
     </div>

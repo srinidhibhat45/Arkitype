@@ -33,6 +33,7 @@ export function TokenIconButton({
   size = "md",
   radiusStep = 2,
   resolve = NO_BINDINGS,
+  "aria-label": ariaLabel = "Action",
   children,
   onClick,
 }: {
@@ -41,6 +42,7 @@ export function TokenIconButton({
   size?: SizeToken;
   radiusStep?: number;
   resolve?: Resolver;
+  "aria-label"?: string;
   children?: React.ReactNode;
   onClick?: () => void;
 }) {
@@ -96,7 +98,7 @@ export function TokenIconButton({
   };
 
   return (
-    <button type="button" style={style} disabled={disabled} aria-label="Action" onClick={onClick}>
+    <button type="button" data-ark-part="container" style={style} disabled={disabled} aria-label={ariaLabel} onClick={onClick}>
       {children ? children : <Plus size={pxNum(r("icon.size"), Math.round(box * 0.42))} strokeWidth={2.2} />}
     </button>
   );

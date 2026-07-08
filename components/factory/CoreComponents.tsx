@@ -21,7 +21,8 @@ import {
 } from "lucide-react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
-import { CState, NO_BINDINGS, Resolver } from "@/lib/componentSchema";
+import { CState, NO_BINDINGS, Resolver, createChildResolver, resolveOptions, useComponentBindings, useVariantComponentBindings } from "@/lib/componentSchema";
+import { TokenIconButton } from "./FormControls";
 
 export type InteractionState =
   | "default"
@@ -96,7 +97,12 @@ export function TokenButton({
   const s = SIZE_MAP[size];
   const disabled = state === "disabled";
   const cst = bindState(state);
-  const r = resolve;
+  // Use variant-scoped resolver for color keys so each variant (text, outlined,
+  // tonal…) has independent color overrides that don't bleed into other variants.
+  const variantResolve = useVariantComponentBindings("button", variant);
+  // For structural props (padding, radius, font) still use the passed-in resolver
+  // which falls back through the shared filled-scope bindings.
+  const r = (key: string, st?: CState) => variantResolve(key, st) ?? resolve(key, st);
   const mode = useDesignSystem((s) => s.currentPreviewMode);
 
   let defBg = "transparent";
@@ -139,29 +145,31 @@ export function TokenButton({
       defBg = state === "hover" ? (mode === "dark" ? tv("error-400") : tv("error-700")) : state === "active" ? (mode === "dark" ? tv("error-300") : tv("error-800")) : (mode === "dark" ? tv("error-500") : tv("error-600"));
       defColor = tv("text-on-action");
     } else if (variant === "warning") {
-      defBg = state === "hover" ? (mode === "dark" ? tv("warning-400") : tv("warning-700")) : (mode === "dark" ? tv("warning-500") : tv("warning-600"));
+      defBg = state === "hover" ? (mode === "dark" ? tv("warning-400") : tv("warning-700")) : state === "active" ? (mode === "dark" ? tv("warning-300") : tv("warning-800")) : (mode === "dark" ? tv("warning-500") : tv("warning-600"));
       defColor = tv("text-on-action");
     } else if (variant === "success") {
-      defBg = state === "hover" ? (mode === "dark" ? tv("success-400") : tv("success-700")) : (mode === "dark" ? tv("success-500") : tv("success-600"));
+      defBg = state === "hover" ? (mode === "dark" ? tv("success-400") : tv("success-700")) : state === "active" ? (mode === "dark" ? tv("success-300") : tv("success-800")) : (mode === "dark" ? tv("success-500") : tv("success-600"));
       defColor = tv("text-on-action");
     }
   }
 
-  const prefixColor = r("prefixIcon.color", cst) ?? defColor;
-  const suffixColor = r("suffixIcon.color", cst) ?? defColor;
+  const isFeedbackVariant = variant === "error" || variant === "warning" || variant === "success";
+
+  const prefixColor = isFeedbackVariant ? defColor : (r("prefixIcon.color", cst) ?? defColor);
+  const suffixColor = isFeedbackVariant ? defColor : (r("suffixIcon.color", cst) ?? defColor);
   const prefixIconSize = r("prefixIcon.size") ?? "16px";
   const suffixIconSize = r("suffixIcon.size") ?? "16px";
 
   const style: CSSProperties = {
-    background: r("container.bg", cst) ?? defBg,
-    color: r("label.color", cst) ?? defColor,
+    background: isFeedbackVariant ? defBg : (r("container.bg", cst) ?? defBg),
+    color: isFeedbackVariant ? defColor : (r("label.color", cst) ?? defColor),
     padding: `${r("container.padY") ?? sv(s.py)} ${r("container.padX") ?? sv(s.px)}`,
     borderRadius: r("container.radius") ?? rv(radiusStep),
     fontSize: r("label.size") ?? `var(--ark-text-${s.text})`,
     fontFamily: r("label.font") ?? "var(--ark-font-sans)",
     fontWeight: r("label.weight") ?? 600,
     border: `${r("container.borderWidth") ?? "1px"} solid ${
-      r("container.border", cst) ?? defBorder
+      isFeedbackVariant ? defBorder : (r("container.border", cst) ?? defBorder)
     }`,
     display: "inline-flex",
     alignItems: "center",
@@ -369,7 +377,7 @@ export function TokenSelect({
   };
 
   return (
-    <div data-ark-part="container" style={style} role="combobox" aria-expanded={state === "active"} aria-disabled={disabled}>
+    <div data-ark-part="container" style={style} role="combobox" aria-expanded={state === "active"} aria-disabled={disabled} tabIndex={disabled ? -1 : 0}>
       <span data-ark-part="text">{state === "loading" ? "Loading options…" : value}</span>
       {state === "loading" ? (
         <Loader2 data-ark-part="chevron" size={pxNum(r("chevron.size"), 13)} className="ark-spin" style={{ color: chevronColor }} />
@@ -411,8 +419,9 @@ export function TokenAlert({
   body,
   style = "subtle",
   accent = "left",
-  icon = false,
+  icon = true,
   dismissible = false,
+  action = false,
   resolve = NO_BINDINGS,
 }: {
   variant?: AlertVariant;
@@ -424,10 +433,30 @@ export function TokenAlert({
   accent?: AlertAccent;
   icon?: boolean;
   dismissible?: boolean;
+  action?: boolean;
   resolve?: Resolver;
 }) {
   const r = resolve;
   const colors = useDesignSystem((s) => s.primitives.colors);
+  const cfg = useDesignSystem((s) => s.components.alert);
+  const instances = cfg?.instances;
+
+  const actionOpts = instances?.action ?? {};
+  const actionLabel = (actionOpts.label as string) ?? "Learn more";
+  const actionVariant = (actionOpts.variant as any) ?? "outlined";
+  const actionSize = (actionOpts.size as any) ?? "sm";
+  const actionPrefix = (actionOpts.prefixIcon as string) ?? "";
+  const actionSuffix = (actionOpts.suffixIcon as string) ?? "";
+
+  const dismissOpts = instances?.dismiss ?? {};
+  const dismissVariant = (dismissOpts.variant as any) ?? "ghost";
+  const dismissSize = (dismissOpts.size as any) ?? "sm";
+
+  const buttonResolve = useComponentBindings("button");
+  const iconButtonResolve = useComponentBindings("iconButton");
+  const childButtonResolve = createChildResolver("button", resolve, buttonResolve);
+  const childIconButtonResolve = createChildResolver("iconButton", resolve, iconButtonResolve);
+
   const slot =
     variant === "info"
       ? "secondary"
@@ -442,6 +471,12 @@ export function TokenAlert({
   const washBorder = mode === "light" ? ramp[2] : ramp[7];
   const washText = mode === "light" ? ramp[8] : ramp[1];
   const accentC = ramp[5];
+
+  const opts = resolveOptions("alert", cfg?.properties);
+  const alertTitle = (opts.title || title) as string;
+  const alertBody = (opts.body || body) as string;
+  const titleSize = (opts["title.size"] ?? "sm") as string;
+  const bodySize = (opts["body.size"] ?? "xs") as string;
 
   // Style resolves the surface/border/text triple; solid inverts to a filled tone.
   const surface =
@@ -474,28 +509,62 @@ export function TokenAlert({
         color: text,
         fontFamily: r("text.font") ?? "var(--ark-font-sans)",
         display: "flex",
-        alignItems: "flex-start",
+        alignItems: "center",
         gap: sv(2),
+        width: "100%",
       }}
     >
       {icon ? (
-        <Icon size={16} style={{ color: glyph, flexShrink: 0, marginTop: 1 }} />
+        <Icon size={16} style={{ color: glyph, flexShrink: 0 }} />
       ) : null}
-      <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: sv(1) }}>
-        <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: 700 }}>
-          {title ?? `${variant.charAt(0).toUpperCase()}${variant.slice(1)} signal`}
+      <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: sv(0.5) }}>
+        <span
+          style={{
+            fontSize: `var(--ark-text-${titleSize})`,
+            lineHeight: `var(--ark-leading-${titleSize})`,
+            fontWeight: `var(--ark-weight-${titleSize})`,
+            fontFamily: `var(--ark-font-role-${titleSize})`,
+          }}
+        >
+          {alertTitle || `${variant.charAt(0).toUpperCase()}${variant.slice(1)} signal`}
         </span>
-        <span style={{ fontSize: "var(--ark-text-xs)", opacity: 0.85 }}>
-          {body ??
-            "Token-mapped alert surface. Wash, border and accent resolve from the primitive ramp per mode."}
+        <span
+          style={{
+            fontSize: `var(--ark-text-${bodySize})`,
+            lineHeight: `var(--ark-leading-${bodySize})`,
+            fontWeight: `var(--ark-weight-${bodySize})`,
+            fontFamily: `var(--ark-font-role-${bodySize})`,
+            opacity: 0.85,
+          }}
+        >
+          {alertBody || "Token-mapped alert surface. Wash, border and accent resolve from the primitive ramp per mode."}
         </span>
       </span>
+      {action ? (
+        <div style={{ flexShrink: 0, marginLeft: "4px" }}>
+          <TokenButton
+            variant={actionVariant}
+            size={actionSize}
+            prefixIcon={actionPrefix}
+            suffixIcon={actionSuffix}
+            resolve={childButtonResolve}
+          >
+            {actionLabel}
+          </TokenButton>
+        </div>
+      ) : null}
       {dismissible ? (
-        <X
-          size={14}
-          style={{ color: text, opacity: 0.6, cursor: "pointer", flexShrink: 0 }}
-          aria-label="Dismiss"
-        />
+        <div style={{ flexShrink: 0, marginLeft: "4px" }}>
+          <TokenIconButton
+            variant={dismissVariant}
+            size={dismissSize}
+            resolve={childIconButtonResolve}
+            aria-label="Dismiss alert"
+            onClick={() => {}}
+          >
+            <X size={14} />
+          </TokenIconButton>
+        </div>
       ) : null}
     </div>
   );

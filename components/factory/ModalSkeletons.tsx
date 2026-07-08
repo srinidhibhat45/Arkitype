@@ -8,7 +8,7 @@
 import { X, Sparkles, Folder, File, Trash, Edit } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useDesignSystem } from "@/store/useDesignSystem";
-import { resolveOptions, useComponentBindings, createChildResolver, Resolver } from "@/lib/componentSchema";
+import { resolveOptions, useComponentBindings, createChildResolver, useSlotInstance, Resolver } from "@/lib/componentSchema";
 import { sv, tv, rv } from "@/lib/tokens";
 import { TokenButton, TokenInput, TokenSelect, TokenAlert } from "./CoreComponents";
 import { TokenIconButton } from "./FormControls";
@@ -31,7 +31,9 @@ export const MODAL_SKELETONS = [
 
 interface ModalResolvedOpts {
   title: string;
+  titleSize: string;
   subtitle: string;
+  subtitleSize: string;
   align: "left" | "center";
   showClose: boolean;
   forcedAction: boolean;
@@ -41,8 +43,7 @@ interface ModalResolvedOpts {
   shadow: string;
   borderWidth: number;
   bodyText: string;
-  primaryLabel: string;
-  secondaryLabel: string;
+  bodyTextSize: string;
   showSecondary: boolean;
   width: "xs" | "sm" | "md" | "lg";
   overlayOpacity: number;
@@ -58,7 +59,9 @@ function useResolvedModalOptions(): ModalResolvedOpts {
   
   return {
     title: (opts.title ?? "Confirm deletion") as string,
+    titleSize: (opts["title.size"] ?? "xl") as string,
     subtitle: (opts.subtitle ?? "This action cannot be undone") as string,
+    subtitleSize: (opts["subtitle.size"] ?? "sm") as string,
     align: (opts.align ?? "left") as "left" | "center",
     showClose: opts.showClose !== false && opts.forcedAction !== true,
     forcedAction: !!opts.forcedAction,
@@ -68,8 +71,7 @@ function useResolvedModalOptions(): ModalResolvedOpts {
     shadow: (opts.shadow ?? "lg") as string,
     borderWidth: Number(opts.borderWidth ?? 1),
     bodyText: (opts.bodyText ?? "This will permanently delete the selected items from your workspace.") as string,
-    primaryLabel: (opts.primaryLabel ?? "Delete") as string,
-    secondaryLabel: (opts.secondaryLabel ?? "Cancel") as string,
+    bodyTextSize: (opts["bodyText.size"] ?? "sm") as string,
     showSecondary: opts.showSecondary !== false,
     width: (opts.width ?? "sm") as "xs" | "sm" | "md" | "lg",
     overlayOpacity: Number(opts.overlayOpacity ?? 48),
@@ -88,7 +90,8 @@ function ModalChrome({
   onClose,
   iconButtonResolve,
   resolve,
-  parentProperties,
+  closeIconSize,
+  closeIconVariant,
 }: {
   opts: ModalResolvedOpts;
   children: ReactNode;
@@ -97,13 +100,14 @@ function ModalChrome({
   onClose?: () => void;
   iconButtonResolve?: Resolver;
   resolve: Resolver;
-  parentProperties?: Record<string, any>;
+  closeIconSize: any;
+  closeIconVariant: any;
 }) {
   const bgColor = resolve("container.bg") ?? tv("surface-elevated");
   const bColor = resolve("container.border") ?? tv("border-muted");
 
-  const iconBtnSize = (parentProperties?.["iconButton.size"] as any) ?? "sm";
-  const iconBtnVariant = (parentProperties?.["iconButton.variant"] as any) ?? "ghost";
+  const iconBtnSize = closeIconSize ?? "sm";
+  const iconBtnVariant = closeIconVariant ?? "ghost";
 
   return (
     <div
@@ -112,7 +116,7 @@ function ModalChrome({
       style={{
         backgroundColor: bgColor,
         border: `${opts.borderWidth}px solid ${bColor}`,
-        borderRadius: `${opts.radius}px`,
+        borderRadius: resolve("container.radius") ?? `${opts.radius}px`,
         boxShadow: SHADOWS[opts.shadow] ?? SHADOWS.lg,
         display: "flex",
         flexDirection: "column",
@@ -138,8 +142,10 @@ function ModalChrome({
           <span
             style={{
               color: tv("text-primary"),
-              fontSize: "var(--ark-text-base)",
-              fontWeight: 700,
+              fontSize: `var(--ark-text-${opts.titleSize})`,
+              lineHeight: `var(--ark-leading-${opts.titleSize})`,
+              fontWeight: `var(--ark-weight-${opts.titleSize})`,
+              fontFamily: `var(--ark-font-role-${opts.titleSize})`,
             }}
           >
             {opts.title}
@@ -148,7 +154,10 @@ function ModalChrome({
             <span
               style={{
                 color: tv("text-muted"),
-                fontSize: "var(--ark-text-xs)",
+                fontSize: `var(--ark-text-${opts.subtitleSize})`,
+                lineHeight: `var(--ark-leading-${opts.subtitleSize})`,
+                fontWeight: `var(--ark-weight-${opts.subtitleSize})`,
+                fontFamily: `var(--ark-font-role-${opts.subtitleSize})`,
                 marginTop: "2px",
               }}
             >
@@ -170,6 +179,7 @@ function ModalChrome({
               variant={iconBtnVariant}
               size={iconBtnSize}
               resolve={iconButtonResolve}
+              aria-label="Close dialog"
               onClick={onClose}
             >
               <X size={14} />
@@ -233,35 +243,41 @@ export function ModalSkeleton({
   const parentProperties = cfg?.properties;
   const mode = useDesignSystem((s) => s.currentPreviewMode);
 
-  const buttonResolve = useComponentBindings("button");
+  // Repeated per-item icon buttons (bottom-sheet file grid) are styled data,
+  // not a fixed instance slot — they just use the molecule's global style.
   const iconButtonResolve = useComponentBindings("iconButton");
   const inputResolve = useComponentBindings("input");
   const selectResolve = useComponentBindings("select");
   const alertResolve = useComponentBindings("alert");
 
   const parentResolve = useComponentBindings("modal");
-  const childPrimaryButtonResolve = createChildResolver("primaryButton", parentResolve, buttonResolve);
-  const childSecondaryButtonResolve = createChildResolver("secondaryButton", parentResolve, buttonResolve);
-  const childIconButtonResolve = createChildResolver("iconButton", parentResolve, iconButtonResolve);
   const childInputResolve = createChildResolver("input", parentResolve, inputResolve);
   const childSelectResolve = createChildResolver("select", parentResolve, selectResolve);
   const childAlertResolve = createChildResolver("alert", parentResolve, alertResolve);
 
-  // Retrieve primary and secondary button modifier options from parent properties
-  const primarySize = (parentProperties?.["primaryButton.size"] as any) ?? "sm";
-  const primaryVariant = (parentProperties?.["primaryButton.variant"] as any) ?? "filled";
-  const primaryPrefix = (parentProperties?.["primaryButton.prefixIcon"] as string) ?? "";
-  const primarySuffix = (parentProperties?.["primaryButton.suffixIcon"] as string) ?? "";
+  // Each slot's `resolve` is the Button/IconButton molecule's own global style
+  // resolver — the modal has no way to override it. `content` is the slot's
+  // per-instance content (label/icon/variant/size), stored on the modal itself.
+  const primaryAction = useSlotInstance("modal", "primaryAction");
+  const secondaryAction = useSlotInstance("modal", "secondaryAction");
+  const closeAction = useSlotInstance("modal", "closeButton");
 
-  const secondarySize = (parentProperties?.["secondaryButton.size"] as any) ?? "sm";
-  const secondaryVariant = (parentProperties?.["secondaryButton.variant"] as any) ?? "outlined";
-  const secondaryPrefix = (parentProperties?.["secondaryButton.prefixIcon"] as string) ?? "";
-  const secondarySuffix = (parentProperties?.["secondaryButton.suffixIcon"] as string) ?? "";
+  const primarySize = primaryAction.content.size as any;
+  const primaryVariant = primaryAction.content.variant as any;
+  const primaryPrefix = primaryAction.content.prefixIcon as string;
+  const primarySuffix = primaryAction.content.suffixIcon as string;
+  const primaryLabel = primaryAction.content.label as string;
+
+  const secondarySize = secondaryAction.content.size as any;
+  const secondaryVariant = secondaryAction.content.variant as any;
+  const secondaryPrefix = secondaryAction.content.prefixIcon as string;
+  const secondarySuffix = secondaryAction.content.suffixIcon as string;
+  const secondaryLabel = secondaryAction.content.label as string;
 
   const selectSize = (parentProperties?.["select.size"] as any) ?? "sm";
   const inputSize = (parentProperties?.["input.size"] as any) ?? "sm";
-  const iconBtnSize = (parentProperties?.["iconButton.size"] as any) ?? "sm";
-  const iconBtnVariant = (parentProperties?.["iconButton.variant"] as any) ?? "ghost";
+  const iconBtnSize = closeAction.content.size as any;
+  const iconBtnVariant = closeAction.content.variant as any;
 
   // Width translation
   const widthMap = {
@@ -280,10 +296,10 @@ export function ModalSkeleton({
           variant={secondaryVariant}
           prefixIcon={secondaryPrefix}
           suffixIcon={secondarySuffix}
-          resolve={childSecondaryButtonResolve}
+          resolve={secondaryAction.resolve}
           onClick={onClose}
         >
-          {opts.secondaryLabel}
+          {secondaryLabel}
         </TokenButton>
       )}
       <TokenButton
@@ -291,10 +307,10 @@ export function ModalSkeleton({
         variant={primaryVariant}
         prefixIcon={primaryPrefix}
         suffixIcon={primarySuffix}
-        resolve={childPrimaryButtonResolve}
+        resolve={primaryAction.resolve}
         onClick={onClose}
       >
-        {opts.primaryLabel}
+        {primaryLabel}
       </TokenButton>
     </div>
   );
@@ -307,8 +323,9 @@ export function ModalSkeleton({
           resolve={parentResolve}
           onClose={onClose}
           footer={footer}
-          iconButtonResolve={childIconButtonResolve}
-          parentProperties={parentProperties}
+          iconButtonResolve={closeAction.resolve}
+          closeIconSize={iconBtnSize}
+          closeIconVariant={iconBtnVariant}
           style={{
             position: "absolute",
             top: 0,
@@ -326,7 +343,16 @@ export function ModalSkeleton({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5", marginBottom: "8px" }}>
+            <p
+              style={{
+                color: tv("text-secondary"),
+                fontSize: `var(--ark-text-${opts.bodyTextSize})`,
+                lineHeight: `var(--ark-leading-${opts.bodyTextSize})`,
+                fontWeight: `var(--ark-weight-${opts.bodyTextSize})`,
+                fontFamily: `var(--ark-font-role-${opts.bodyTextSize})`,
+                marginBottom: "8px",
+              }}
+            >
               {opts.bodyText}
             </p>
             <FieldRow label="Date Range">
@@ -355,8 +381,9 @@ export function ModalSkeleton({
           resolve={parentResolve}
           onClose={onClose}
           footer={footer}
-          iconButtonResolve={childIconButtonResolve}
-          parentProperties={parentProperties}
+          iconButtonResolve={closeAction.resolve}
+          closeIconSize={iconBtnSize}
+          closeIconVariant={iconBtnVariant}
           style={{ 
             position: "absolute", 
             inset: "20px",
@@ -365,7 +392,15 @@ export function ModalSkeleton({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "14px", height: "100%", maxWidth: "600px", width: "100%", margin: "0 auto" }}>
-            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5" }}>
+            <p
+              style={{
+                color: tv("text-secondary"),
+                fontSize: `var(--ark-text-${opts.bodyTextSize})`,
+                lineHeight: `var(--ark-leading-${opts.bodyTextSize})`,
+                fontWeight: `var(--ark-weight-${opts.bodyTextSize})`,
+                fontFamily: `var(--ark-font-role-${opts.bodyTextSize})`,
+              }}
+            >
               {opts.bodyText}
             </p>
             <FieldRow label="Report Title">
@@ -413,8 +448,9 @@ export function ModalSkeleton({
           resolve={parentResolve}
           onClose={onClose}
           footer={footer}
-          iconButtonResolve={childIconButtonResolve}
-          parentProperties={parentProperties}
+          iconButtonResolve={closeAction.resolve}
+          closeIconSize={iconBtnSize}
+          closeIconVariant={iconBtnVariant}
           style={{
             position: "absolute",
             left: "50%",
@@ -431,7 +467,16 @@ export function ModalSkeleton({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "12px", height: "100%" }}>
-            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5", marginBottom: "8px" }}>
+            <p
+              style={{
+                color: tv("text-secondary"),
+                fontSize: `var(--ark-text-${opts.bodyTextSize})`,
+                lineHeight: `var(--ark-leading-${opts.bodyTextSize})`,
+                fontWeight: `var(--ark-weight-${opts.bodyTextSize})`,
+                fontFamily: `var(--ark-font-role-${opts.bodyTextSize})`,
+                marginBottom: "8px",
+              }}
+            >
               {opts.bodyText}
             </p>
             
@@ -474,7 +519,7 @@ export function ModalSkeleton({
                   </span>
                   
                   <div style={{ position: "absolute", top: 4, right: 4 }}>
-                    <TokenIconButton variant={iconBtnVariant} size={iconBtnSize} resolve={childIconButtonResolve}>
+                    <TokenIconButton variant={iconBtnVariant} size={iconBtnSize} resolve={iconButtonResolve} aria-label="Delete file">
                       <Trash size={10} style={{ color: tv("text-muted") }} />
                     </TokenIconButton>
                   </div>
@@ -492,8 +537,9 @@ export function ModalSkeleton({
           resolve={parentResolve}
           onClose={onClose}
           footer={footer}
-          iconButtonResolve={childIconButtonResolve}
-          parentProperties={parentProperties}
+          iconButtonResolve={closeAction.resolve}
+          closeIconSize={iconBtnSize}
+          closeIconVariant={iconBtnVariant}
           style={{
             position: "absolute",
             top: opts.position === "top" ? "10%" : opts.position === "bottom" ? "auto" : "50%",
@@ -506,7 +552,15 @@ export function ModalSkeleton({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-sm)", lineHeight: "1.5" }}>
+            <p
+              style={{
+                color: tv("text-secondary"),
+                fontSize: `var(--ark-text-${opts.bodyTextSize})`,
+                lineHeight: `var(--ark-leading-${opts.bodyTextSize})`,
+                fontWeight: `var(--ark-weight-${opts.bodyTextSize})`,
+                fontFamily: `var(--ark-font-role-${opts.bodyTextSize})`,
+              }}
+            >
               {opts.bodyText}
             </p>
             

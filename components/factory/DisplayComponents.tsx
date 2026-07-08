@@ -9,7 +9,7 @@ import { AlertTriangle, Bell, CheckCircle2, Info, X, XCircle } from "lucide-reac
 import type { CSSProperties } from "react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
-import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver } from "@/lib/componentSchema";
+import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver, resolveOptions } from "@/lib/componentSchema";
 import { pxNum, TokenButton } from "./CoreComponents";
 import { TokenIconButton } from "./FormControls";
 
@@ -384,21 +384,36 @@ export function TokenToast({
   const Glyph = toastGlyph(variant);
 
   const cfg = useDesignSystem((s) => s.components.toast);
-  const properties = cfg?.properties;
+  const instances = cfg?.instances;
 
   const buttonResolve = useComponentBindings("button");
   const iconButtonResolve = useComponentBindings("iconButton");
   const childButtonResolve = createChildResolver("button", resolve, buttonResolve);
   const childIconButtonResolve = createChildResolver("iconButton", resolve, iconButtonResolve);
 
-  const btnSize = (properties?.["button.size"] as any) ?? "sm";
+  const actionOpts = instances?.action ?? {};
+  const actionLabel = (actionOpts.label as string) ?? "Undo";
+  const actionVariant = (actionOpts.variant as any) ?? "outlined";
+  const actionSize = (actionOpts.size as any) ?? "sm";
+  const actionPrefix = (actionOpts.prefixIcon as string) ?? "";
+  const actionSuffix = (actionOpts.suffixIcon as string) ?? "";
+
+  const dismissOpts = instances?.dismiss ?? {};
+  const dismissVariant = (dismissOpts.variant as any) ?? "ghost";
+  const dismissSize = (dismissOpts.size as any) ?? "sm";
+
+  const opts = resolveOptions("toast", cfg?.properties);
+  const toastTitle = (opts.title || title) as string;
+  const toastBody = (opts.body || body) as string;
+  const titleSize = (opts["title.size"] ?? "sm") as string;
+  const bodySize = (opts["body.size"] ?? "xs") as string;
 
   return (
     <div
       role="status"
       style={{
         display: "flex",
-        alignItems: "flex-start",
+        alignItems: "center",
         gap: sv(2),
         padding: `${sv(2)} ${sv(3)}`,
         borderRadius: r("container.radius") ?? rv(radiusStep),
@@ -407,6 +422,7 @@ export function TokenToast({
         boxShadow: `var(--ark-shadow-${elevation})`,
         fontFamily: "var(--ark-font-sans)",
         maxWidth: 360,
+        width: "100%",
       }}
     >
       {icon ? (
@@ -432,32 +448,49 @@ export function TokenToast({
           style={{
             display: "block",
             color: r("text.title") ?? tv("text-primary"),
-            fontSize: "var(--ark-text-sm)",
-            fontWeight: 600,
+            fontSize: `var(--ark-text-${titleSize})`,
+            lineHeight: `var(--ark-leading-${titleSize})`,
+            fontWeight: `var(--ark-weight-${titleSize})`,
+            fontFamily: `var(--ark-font-role-${titleSize})`,
           }}
         >
-          {title ?? "Transaction saved"}
+          {toastTitle || "Transaction saved"}
         </span>
         <span
           style={{
             display: "block",
             color: r("text.body") ?? tv("text-muted"),
-            fontSize: "var(--ark-text-xs)",
+            fontSize: `var(--ark-text-${bodySize})`,
+            lineHeight: `var(--ark-leading-${bodySize})`,
+            fontWeight: `var(--ark-weight-${bodySize})`,
+            fontFamily: `var(--ark-font-role-${bodySize})`,
           }}
         >
-          {body ?? "TXN-0459 posted to the operating ledger."}
+          {toastBody || "TXN-0459 posted to the operating ledger."}
         </span>
       </span>
       {action ? (
-        <div style={{ flexShrink: 0, alignSelf: "center", marginLeft: "4px" }}>
-          <TokenButton size={btnSize} resolve={childButtonResolve}>
-            Undo
+        <div style={{ flexShrink: 0, marginLeft: "4px" }}>
+          <TokenButton
+            variant={actionVariant}
+            size={actionSize}
+            prefixIcon={actionPrefix}
+            suffixIcon={actionSuffix}
+            resolve={childButtonResolve}
+          >
+            {actionLabel}
           </TokenButton>
         </div>
       ) : null}
       {dismissible ? (
-        <div style={{ flexShrink: 0, alignSelf: "center", marginLeft: "4px" }}>
-          <TokenIconButton variant="ghost" size="sm" resolve={childIconButtonResolve}>
+        <div style={{ flexShrink: 0, marginLeft: "4px" }}>
+          <TokenIconButton
+            variant={dismissVariant}
+            size={dismissSize}
+            resolve={childIconButtonResolve}
+            aria-label="Dismiss notification"
+            onClick={() => {}}
+          >
             <X size={13} />
           </TokenIconButton>
         </div>

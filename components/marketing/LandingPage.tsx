@@ -185,7 +185,7 @@ export function LandingPage() {
             {/* Search Button */}
             <button 
               onClick={() => setSearchOpen(true)}
-              className="p-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition-colors focus-visible:outline-none"
+              className="p-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
               aria-label="Search site"
             >
               <Search size={15} />
@@ -194,7 +194,7 @@ export function LandingPage() {
             {/* Dark mode switch */}
             <button 
               onClick={toggleChromeTheme}
-              className="p-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition-colors focus-visible:outline-none"
+              className="p-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
               aria-label="Toggle theme mode"
             >
               {chromeTheme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
@@ -206,7 +206,7 @@ export function LandingPage() {
                 if (user) setView("dashboard");
                 else setView("login");
               }}
-              className="ml-2 rounded-full bg-white text-zinc-950 font-bold text-[10px] uppercase tracking-wider px-4 py-2 hover:bg-zinc-200 active:scale-95 transition-all shadow-md focus-visible:outline-none"
+              className="ml-2 rounded-full bg-white text-zinc-950 font-bold text-[10px] uppercase tracking-wider px-4 py-2 hover:bg-zinc-200 active:scale-95 transition-all shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
             >
               Get Started
             </button>
@@ -214,7 +214,7 @@ export function LandingPage() {
             {/* Mobile menu toggle */}
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition-colors focus-visible:outline-none"
+              className="md:hidden p-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
               aria-label="Toggle Menu"
             >
               {mobileMenuOpen ? <X size={16} /> : <Menu size={16} />}
@@ -286,7 +286,7 @@ export function LandingPage() {
                 if (user) setView("dashboard");
                 else setView("login");
               }}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-blue-650 text-white font-black text-xs uppercase tracking-wider px-8 py-4.5 border-t border-white/20 shadow-[0_5px_0_#1E40AF,0_12px_24px_rgba(37,99,235,0.25)] hover:translate-y-[4px] hover:shadow-[0_1px_0_#1E40AF,0_4px_8px_rgba(37,99,235,0.25)] active:translate-y-[5px] active:shadow-none transition-all duration-150 focus-visible:outline-none"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-blue-650 text-white font-black text-xs uppercase tracking-wider px-8 py-4.5 border-t border-white/20 shadow-[0_5px_0_#1E40AF,0_12px_24px_rgba(37,99,235,0.25)] hover:translate-y-[4px] hover:shadow-[0_1px_0_#1E40AF,0_4px_8px_rgba(37,99,235,0.25)] active:translate-y-[5px] active:shadow-none transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
             >
               Get started
               <ChevronRight size={15} />
@@ -337,7 +337,7 @@ export function LandingPage() {
                 const element = document.getElementById("sandbox");
                 if (element) element.scrollIntoView({ behavior: "smooth" });
               }}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-zinc-900 border border-white/10 hover:border-white/20 text-white font-bold text-xs uppercase tracking-wider px-8 py-4.5 shadow-[0_5px_0_#18181b,0_12px_24px_rgba(0,0,0,0.5)] hover:translate-y-[4px] hover:shadow-[0_1px_0_#18181b,0_4px_8px_rgba(0,0,0,0.5)] active:translate-y-[5px] active:shadow-none transition-all duration-150 focus-visible:outline-none"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-zinc-900 border border-white/10 hover:border-white/20 text-white font-bold text-xs uppercase tracking-wider px-8 py-4.5 shadow-[0_5px_0_#18181b,0_12px_24px_rgba(0,0,0,0.5)] hover:translate-y-[4px] hover:shadow-[0_1px_0_#18181b,0_4px_8px_rgba(0,0,0,0.5)] active:translate-y-[5px] active:shadow-none transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
             >
               Browse components
             </button>

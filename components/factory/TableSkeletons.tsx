@@ -48,13 +48,10 @@ const fmt = (n: number): string =>
 interface TableResolvedOpts {
   showHeader: boolean;
   borderWidth: number;
-  borderColor: string;
-  bg: string;
   radius: number;
   padding: number;
   striped: boolean;
   rowHeight: number;
-  accentColor: string;
 }
 
 function useResolvedTableOptions(): TableResolvedOpts {
@@ -63,13 +60,10 @@ function useResolvedTableOptions(): TableResolvedOpts {
   return {
     showHeader: opts.showHeader !== false,
     borderWidth: Number(opts.borderWidth ?? 1),
-    borderColor: (opts.borderColor ?? "#e4e4e7") as string,
-    bg: (opts.bg ?? "#ffffff") as string,
     radius: Number(opts.radius ?? 8),
     padding: Number(opts.padding ?? 12),
     striped: opts.striped !== false,
     rowHeight: Number(opts.rowHeight ?? 44),
-    accentColor: (opts.accentColor ?? "#4f46e5") as string,
   };
 }
 
@@ -115,9 +109,14 @@ export function TableSkeleton({
   const data = maxRows ? rows.slice(0, maxRows) : rows;
   const avatarResolve = useComponentBindings("avatar");
 
+  const parentResolve = useComponentBindings("table");
+  const bg = parentResolve("container.bg") ?? tv("surface-elevated");
+  const borderColor = parentResolve("container.border") ?? tv("border-muted");
+  const accentColor = parentResolve("cell.accent") ?? tv("action-primary-default");
+
   const wrapperStyle: CSSProperties = {
-    backgroundColor: opts.bg,
-    border: `${opts.borderWidth}px solid ${opts.borderColor}`,
+    backgroundColor: bg,
+    border: `${opts.borderWidth}px solid ${borderColor}`,
     borderRadius: `${opts.radius}px`,
     overflow: "hidden",
     overflowX: "auto",
@@ -133,8 +132,8 @@ export function TableSkeleton({
           gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
           gap: `${opts.padding}px`,
           padding: `${opts.padding}px`,
-          backgroundColor: opts.bg,
-          border: `${opts.borderWidth}px solid ${opts.borderColor}`,
+          backgroundColor: bg,
+          border: `${opts.borderWidth}px solid ${borderColor}`,
           borderRadius: `${opts.radius}px`,
         }}
       >
@@ -143,7 +142,7 @@ export function TableSkeleton({
             key={t.id}
             style={{
               backgroundColor: tv("surface-elevated"),
-              border: `1px solid ${opts.borderColor}`,
+              border: `1px solid ${borderColor}`,
               borderRadius: `${opts.radius - 2 > 0 ? opts.radius - 2 : 4}px`,
               padding: `${opts.padding}px`,
               display: "flex",
@@ -151,39 +150,28 @@ export function TableSkeleton({
               gap: "8px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <TokenAvatar initials={t.payee.charAt(0)} size="sm" resolve={avatarResolve} />
-              <span
-                style={{
-                  color: tv("text-primary"),
-                  fontSize: "var(--ark-text-xs)",
-                  fontWeight: 600,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {t.payee}
+            <div style={{ display: "flex", justifyItems: "center", justifyContent: "space-between", gap: "8px" }}>
+              <span style={{ fontSize: "10px", color: tv("text-muted"), fontFamily: "var(--ark-font-mono)" }}>
+                {t.id}
               </span>
-              <MoreHorizontal
-                size={13}
-                style={{ marginLeft: "auto", color: tv("text-muted"), flexShrink: 0 }}
-              />
-            </div>
-            <Amount value={t.amount} accentColor={opts.accentColor} />
-            <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
               <StatusBadge status={t.status} />
-              <span
-                style={{
-                  padding: "2px 6px",
-                  borderRadius: "9999px",
-                  backgroundColor: tv("surface-subtle"),
-                  color: tv("text-secondary"),
-                  fontSize: "10px",
-                }}
-              >
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <TokenAvatar initials={t.payee.slice(0, 2)} size="sm" resolve={avatarResolve} />
+              <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <span style={{ fontSize: "var(--ark-text-xs)", fontWeight: 700, color: tv("text-primary"), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {t.payee}
+                </span>
+                <span style={{ fontSize: "10px", color: tv("text-muted") }}>
+                  {t.date}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyItems: "center", justifyContent: "space-between", gap: "8px", borderTop: `1px solid ${borderColor}`, paddingTop: "8px", marginTop: "4px" }}>
+              <span style={{ fontSize: "10px", color: tv("text-secondary") }}>
                 {t.category}
               </span>
+              <Amount value={t.amount} accentColor={accentColor} />
             </div>
           </div>
         ))}
@@ -192,138 +180,98 @@ export function TableSkeleton({
   }
 
   if (skeletonId === "3") {
-    // Borderless clean list styled dynamically
+    // Borderless Clean List styled dynamically
     return (
-      <div style={{ ...wrapperStyle, padding: `8px ${opts.padding * 1.5}px` }}>
-        <div style={{ minWidth: "500px" }}>
-          {data.map((t, idx) => (
-          <div
-            key={t.id}
-            className="group"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "16px",
-              height: `${opts.rowHeight}px`,
-              borderBottom: idx === data.length - 1 ? "none" : `1px solid ${opts.borderColor}`,
-            }}
-          >
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div
+      <div style={wrapperStyle}>
+        <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+          <tbody>
+            {data.map((t, idx) => (
+              <tr
+                key={t.id}
                 style={{
-                  color: tv("text-primary"),
-                  fontSize: "var(--ark-text-sm)",
-                  fontWeight: 600,
+                  borderBottom: idx === data.length - 1 ? "none" : `1px solid ${borderColor}`,
+                  height: `${opts.rowHeight}px`,
+                  backgroundColor: opts.striped && idx % 2 === 1 ? tv("surface-subtle") : "transparent",
                 }}
               >
-                {t.payee}
-              </div>
-              <div
-                style={{
-                  color: tv("text-muted"),
-                  fontSize: "10px",
-                  fontFamily: "var(--ark-font-mono)",
-                }}
-              >
-                {t.id} · {t.date} · {t.category}
-              </div>
-            </div>
-            <Amount value={t.amount} accentColor={opts.accentColor} />
-            <MoreHorizontal
-              size={14}
-              style={{ color: tv("text-muted"), cursor: "pointer" }}
-            />
-          </div>
-        ))}
-        </div>
+                <td style={{ padding: `0 ${opts.padding}px`, width: "60px" }}>
+                  <span style={{ fontSize: "10px", color: tv("text-muted"), fontFamily: "var(--ark-font-mono)" }}>
+                    {t.id}
+                  </span>
+                </td>
+                <td style={{ padding: `0 ${opts.padding}px` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <TokenAvatar initials={t.payee.slice(0, 2)} size="sm" resolve={avatarResolve} />
+                    <span style={{ fontSize: "var(--ark-text-xs)", fontWeight: 500, color: tv("text-primary") }}>
+                      {t.payee}
+                    </span>
+                  </div>
+                </td>
+                <td style={{ padding: `0 ${opts.padding}px` }}>
+                  <span style={{ fontSize: "var(--ark-text-xs)", color: tv("text-secondary") }}>
+                    {t.category}
+                  </span>
+                </td>
+                <td style={{ padding: `0 ${opts.padding}px` }}>
+                  <StatusBadge status={t.status} />
+                </td>
+                <td style={{ padding: `0 ${opts.padding}px`, textAlign: "right" }}>
+                  <Amount value={t.amount} accentColor={accentColor} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     );
   }
 
   if (skeletonId === "4") {
-    // Timeline audit log styled dynamically
+    // Timeline Audit Log styled dynamically
     return (
-      <div style={{ ...wrapperStyle, padding: `${opts.padding * 1.5}px`, position: "relative" }}>
-        <div
-          style={{
-            position: "absolute",
-            left: `calc(${opts.padding * 1.5}px + 44px)`,
-            top: `${opts.padding * 1.5}px`,
-            bottom: `${opts.padding * 1.5}px`,
-            width: 1,
-            backgroundColor: opts.borderColor,
-          }}
-        />
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {data.map((t) => (
-            <div
-              key={t.id}
-              style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}
-            >
-              <span
-                style={{
-                  width: 44,
-                  flexShrink: 0,
-                  color: tv("text-muted"),
-                  fontSize: "10px",
-                  fontFamily: "var(--ark-font-mono)",
-                  textAlign: "right",
-                  lineHeight: "18px",
-                }}
-              >
-                {t.date.slice(5)}
-              </span>
-              <span
-                style={{
-                  width: 9,
-                  height: 9,
-                  marginTop: 5,
-                  borderRadius: "50%",
-                  backgroundColor: t.status === "Flagged" ? "#ef4444" : opts.accentColor,
-                  flexShrink: 0,
-                  position: "relative",
-                  zIndex: 1,
-                  boxShadow: `0 0 0 3px ${opts.bg}`,
-                }}
-              />
-              <div
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  backgroundColor: tv("surface-elevated"),
-                  border: `1px solid ${opts.borderColor}`,
-                  borderRadius: `${opts.radius - 2 > 0 ? opts.radius - 2 : 4}px`,
-                  padding: "8px 12px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
-                  <span
-                    style={{
-                      color: tv("text-primary"),
-                      fontSize: "var(--ark-text-xs)",
-                      fontWeight: 600,
-                      textOverflow: "ellipsis",
-                      overflow: "hidden",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {t.payee}
-                  </span>
-                  <Amount value={t.amount} accentColor={opts.accentColor} />
-                </div>
+      <div style={{ ...wrapperStyle, backgroundColor: "transparent", border: "none" }}>
+        <div style={{ position: "relative", paddingLeft: "24px" }}>
+          {/* Vertical line */}
+          <div
+            style={{
+              position: "absolute",
+              left: "8px",
+              top: "12px",
+              bottom: "12px",
+              width: "2px",
+              backgroundColor: borderColor,
+            }}
+          />
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: `${opts.padding * 1.5}px` }}>
+            {data.map((t) => (
+              <div key={t.id} style={{ display: "flex", gap: "12px", alignItems: "flex-start", position: "relative" }}>
+                {/* Timeline node dot */}
+                <span
+                  style={{
+                    width: 9,
+                    height: 9,
+                    marginTop: 5,
+                    borderRadius: "50%",
+                    backgroundColor: t.status === "Flagged" ? "#ef4444" : accentColor,
+                    flexShrink: 0,
+                    position: "relative",
+                    zIndex: 1,
+                    boxShadow: `0 0 0 3px ${bg}`,
+                  }}
+                />
+                
+                {/* Content card */}
                 <div
                   style={{
-                    marginTop: 2,
-                    color: tv("text-muted"),
-                    fontSize: "10px",
                     fontFamily: "var(--ark-font-mono)",
                   }}
                 >
                   {t.id} logged to {t.category} · {t.status.toLowerCase()}
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -342,7 +290,7 @@ export function TableSkeleton({
               gap: "8px",
               padding: `8px ${opts.padding}px`,
               backgroundColor: tv("surface-subtle"),
-              borderBottom: `${opts.borderWidth}px solid ${opts.borderColor}`,
+              borderBottom: `${opts.borderWidth}px solid ${borderColor}`,
               height: "36px",
               alignItems: "center",
             }}
@@ -375,7 +323,7 @@ export function TableSkeleton({
               alignItems: "center",
               padding: `0 ${opts.padding}px`,
               height: `${opts.rowHeight}px`,
-              borderBottom: idx === data.length - 1 ? "none" : `1px solid ${opts.borderColor}`,
+              borderBottom: idx === data.length - 1 ? "none" : `1px solid ${borderColor}`,
               backgroundColor: opts.striped && idx % 2 === 1 ? tv("surface-elevated") : "transparent",
             }}
           >
@@ -407,7 +355,7 @@ export function TableSkeleton({
               <StatusBadge status={t.status} />
             </span>
             <span style={{ textAlign: "right" }}>
-              <Amount value={t.amount} accentColor={opts.accentColor} />
+              <Amount value={t.amount} accentColor={accentColor} />
             </span>
           </div>
         ))}

@@ -39,6 +39,9 @@ import {
   Lock,
   Eye,
   Sliders,
+  Paintbrush,
+  Type,
+  PaintBucket,
 } from "lucide-react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
@@ -52,6 +55,7 @@ import {
   bindingKey,
   componentOptions,
   currentBinding,
+  defBinding,
   previewAxis,
   resolveOptions,
   useComponentBindings,
@@ -226,18 +230,39 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
           mode={mode}
           radiusStep={radiusStep}
           resolve={resolve}
-        />
+        >
+          {os("label") || "Success"}
+        </TokenBadge>
       );
     case "tag":
       return (
-        <TokenTag mode={mode} radiusStep={radiusStep} resolve={resolve}>
-          engineering
+        <TokenTag
+          mode={mode}
+          radiusStep={radiusStep}
+          resolve={resolve}
+          removable={ob("removable") !== false}
+        >
+          {os("label") || "engineering"}
         </TokenTag>
       );
     case "avatar":
-      return <TokenAvatar size="lg" radiusStep={radiusStep} presence="online" resolve={resolve} />;
+      return (
+        <TokenAvatar
+          size={os("size") as any || "lg"}
+          radiusStep={radiusStep}
+          presence={os("presence") === "none" ? undefined : os("presence") as any || "online"}
+          initials={os("initials") || "JD"}
+          resolve={resolve}
+        />
+      );
     case "tooltip":
-      return <TokenTooltip radiusStep={radiusStep} resolve={resolve} />;
+      return (
+        <TokenTooltip
+          radiusStep={radiusStep}
+          label={os("label") || "Tooltip content"}
+          resolve={resolve}
+        />
+      );
     case "progress":
       return (
         <div className="w-64">
@@ -261,6 +286,7 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
             accent={os("accent") as AlertAccent}
             icon={ob("icon")}
             dismissible={ob("dismissible")}
+            action={ob("action")}
             mode={mode}
             radiusStep={radiusStep}
             resolve={resolve}
@@ -429,12 +455,17 @@ function useStudioData(id: string) {
   const clearBinding = useDesignSystem((s) => s.clearComponentBinding);
   const resetAll = useDesignSystem((s) => s.resetComponentBindings);
   const setProperty = useDesignSystem((s) => s.setComponentProperty);
+  const setSlotContent = useDesignSystem((s) => s.setSlotContent);
   const currentMode = useDesignSystem((s) => s.currentPreviewMode);
   const setPreviewMode = useDesignSystem((s) => s.setPreviewMode);
   const resolve = useComponentBindings(id);
   const data = useInspectorData();
 
+  const canvasZoom = useDesignSystem((s) => s.canvasZoom);
+  const setCanvasZoom = useDesignSystem((s) => s.setCanvasZoom);
+
   const properties = cfg?.properties;
+  const instances = cfg?.instances;
   const size = (properties?.size as SizeToken) ?? "md";
   const radiusStep = Number(properties?.radiusStep ?? 2);
   const overrideCount = bindings ? Object.keys(bindings).length : 0;
@@ -447,14 +478,18 @@ function useStudioData(id: string) {
     clearBinding,
     resetAll,
     setProperty,
+    setSlotContent,
     currentMode,
     setPreviewMode,
     resolve,
     data,
     properties,
+    instances,
     size,
     radiusStep,
     overrideCount,
+    canvasZoom,
+    setCanvasZoom,
   };
 }
 
@@ -489,6 +524,8 @@ export function ComponentStudioPreview({
     overrideCount,
     resetAll,
     properties,
+    canvasZoom,
+    setCanvasZoom,
   } = useStudioData(id);
 
   const [activeState, setActiveState] = useState<CState>(spec?.states[0] ?? "default");
@@ -504,7 +541,7 @@ export function ComponentStudioPreview({
   const hoveredLabel = spec.parts.find((p) => p.id === hoveredPart)?.label ?? "";
 
   const hero = (st: CState, o: Record<string, string | boolean | number> = opts): ReactNode =>
-    renderHero(id, { state: st, size, radiusStep, resolve, mode, opts: o });
+    renderHero(id, { state: st, size: "md", radiusStep, resolve, mode, opts: o });
 
   /* the clickable canvas strip: states for controls, variants for display */
   const stripItems: Array<{ key: string; label: string; node: ReactNode; active: boolean; onClick: () => void }> =
@@ -533,50 +570,62 @@ export function ComponentStudioPreview({
     backgroundSize: "16px 16px",
   } as const;
 
+  const isSizable = SIZABLE.has(id);
+  const friendlySizes: Record<string, string> = {
+    sm: "Small",
+    md: "Medium",
+    lg: "Large",
+    xl: "Extra Large",
+  };
+
   return (
-    <div>
-      {/* top toolbar: variant · state · reset · light/dark */}
-      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-        {axis && axisValue ? (
-          <ToolbarSegmented
-            label={axis.label}
-            options={(axis.options ?? []).map((c) => ({ value: c.value, label: c.label }))}
-            value={axisValue}
-            onChange={(v) => setProperty(id, axis.key, v)}
-          />
-        ) : null}
-
-        {multiState ? (
-          <ToolbarSegmented
-            label="Editing"
-            options={spec.states.map((s) => ({ value: s, label: STATE_LABEL[s] }))}
-            value={activeState}
-            onChange={setActiveState}
-          />
-        ) : null}
-
-        <div className="ml-auto flex items-center gap-2">
+    <div className="space-y-6">
+      {/* top toolbar: reset · zoom · light/dark */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="text-[12px] font-bold uppercase tracking-wider text-fg-mute">
+          Live Studio Preview
+        </div>
+        <div className="flex items-center gap-3">
           {overrideCount > 0 ? (
             <button
               type="button"
               onClick={() => resetAll(id)}
-              className="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-1 text-[10.5px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+              className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg h-7"
             >
-              <RotateCcw size={10} /> Reset all · {overrideCount}
+              <RotateCcw size={11} /> Reset all ({overrideCount})
             </button>
           ) : null}
-          <div className="inline-flex rounded-lg border border-line bg-ink-panel p-0.5">
+
+          {/* Zoom Controller */}
+          <div className="flex items-center gap-1.5 rounded-lg border border-line bg-ink-panel p-0.5 px-2.5 h-7">
+            <span className="text-[9.5px] font-semibold text-fg-mute uppercase tracking-wider">Zoom</span>
+            <input
+              type="range"
+              min={0.5}
+              max={2.5}
+              step={0.25}
+              value={canvasZoom}
+              onChange={(e) => setCanvasZoom(Number(e.target.value))}
+              className="w-16 accent-fg cursor-ew-resize"
+            />
+            <span className="font-mono text-[9px] font-bold text-fg-mute w-8 text-right">
+              {Math.round(canvasZoom * 100)}%
+            </span>
+          </div>
+
+          {/* Light/Dark Toggle */}
+          <div className="inline-flex rounded-lg border border-line bg-ink-panel p-0.5 h-7 items-center">
             {(["light", "dark"] as PreviewMode[]).map((m) => (
               <button
                 key={m}
                 type="button"
                 aria-label={m}
                 onClick={() => setPreviewMode(m)}
-                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-medium capitalize transition-colors h-full ${
                   mode === m ? "bg-fg text-ink" : "text-fg-mute hover:text-fg-dim"
                 }`}
               >
-                {m === "light" ? <Sun size={12} /> : <Moon size={12} />}
+                {m === "light" ? <Sun size={11} /> : <Moon size={11} />}
                 {m}
               </button>
             ))}
@@ -584,78 +633,213 @@ export function ComponentStudioPreview({
         </div>
       </div>
 
-      {/* enlarged live preview — full canvas width */}
-      <div className="rounded-2xl border border-line p-6" style={dotted}>
-        <div className="flex items-center justify-center py-10">
-          <div ref={previewRef} className="relative w-full">
-            <ThemeFrame mode={mode} className="w-full">
-              <div className="flex min-h-[240px] items-center justify-center p-10">
-                {hero(activeState)}
-              </div>
-            </ThemeFrame>
-
-            {/* hover-highlight overlay: rings the part named by the hovered cluster */}
-            <div className="pointer-events-none absolute inset-0 z-20">
-              <div
-                className="absolute rounded-md"
-                style={{
-                  top: (box?.top ?? 0) - 5,
-                  left: (box?.left ?? 0) - 5,
-                  width: (box?.width ?? 0) + 10,
-                  height: (box?.height ?? 0) + 10,
-                  boxShadow: `0 0 0 2px ${RING}`,
-                  background: `${RING}14`,
-                  opacity: box ? 1 : 0,
-                  transition: "opacity 120ms ease-out",
-                }}
-              />
-              {box ? (
-                <span
-                  className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
-                  style={{ top: box.top - 7, left: box.left - 5, background: RING }}
-                >
-                  {hoveredLabel}
-                </span>
-              ) : null}
-            </div>
-          </div>
+      {/* VARIANTS / PREVIEW Card (Full Width) */}
+      <div className="flex flex-col rounded-2xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-5 py-2.5 select-none">
+          <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-fg-mute">
+            {axis ? (axis.label || "Variants") : "Preview"}
+          </span>
+          <span className="text-[10px] font-bold text-fg-dim uppercase tracking-wider font-mono">
+            {axis ? (axis.options?.find((o) => o.value === axisValue)?.label ?? axisValue) : spec.id}
+          </span>
         </div>
+        <div className="relative overflow-hidden w-full">
+          <ThemeFrame mode={mode} className="w-full">
+            <div className="flex flex-row flex-wrap items-center justify-center gap-x-12 gap-y-10 p-10 min-h-[180px] w-full overflow-x-auto" style={dotted}>
+              {axis ? (
+                (axis.options ?? []).map((opt) => {
+                  const isActive = opt.value === axisValue;
+                  return (
+                    <div
+                      key={opt.value}
+                      role="button"
+                      onClick={() => setProperty(id, axis.key, opt.value)}
+                      ref={isActive ? previewRef : undefined}
+                      className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border transition-all cursor-pointer ${
+                        isActive
+                          ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-105 z-10"
+                          : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
+                      }`}
+                    >
+                      <div
+                        className="flex items-center justify-center p-2"
+                        style={{
+                          transform: `scale(${canvasZoom})`,
+                          transformOrigin: "center",
+                          transition: "transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+                        }}
+                      >
+                        {hero(activeState, { ...opts, [axis.key]: opt.value })}
+                      </div>
+                      <span className={`text-[10px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
+                        {opt.label}
+                      </span>
 
-        {stripItems.length > 0 ? (
-          <div className="mt-6 border-t border-line pt-4">
-            <div className="mb-3 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
-              {multiState ? "Interaction states — click to edit" : `${axis?.label ?? "Variants"} — click to preview`}
-            </div>
-            <ThemeFrame mode={mode}>
-              <div className="flex flex-wrap items-start gap-x-8 gap-y-5 p-5">
-                {stripItems.map((it) => (
+                      {isActive && (
+                        /* hover-highlight overlay: rings the part named by the hovered cluster */
+                        <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-xl">
+                          <div
+                            className="absolute rounded-md"
+                            style={{
+                              top: (box?.top ?? 0) - 5,
+                              left: (box?.left ?? 0) - 5,
+                              width: (box?.width ?? 0) + 10,
+                              height: (box?.height ?? 0) + 10,
+                              boxShadow: `0 0 0 2px ${RING}`,
+                              background: `${RING}14`,
+                              opacity: box ? 1 : 0,
+                              transition: "opacity 120ms ease-out",
+                            }}
+                          />
+                          {box ? (
+                            <span
+                              className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
+                              style={{ top: box.top - 7, left: box.left - 5, background: RING }}
+                            >
+                              {hoveredLabel}
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div
+                  ref={previewRef}
+                  className="relative flex flex-col items-center gap-2 p-4 rounded-xl border border-transparent"
+                >
                   <div
-                    key={it.key}
-                    role="button"
-                    tabIndex={0}
-                    onClick={it.onClick}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        it.onClick();
-                      }
+                    className="flex items-center justify-center p-2"
+                    style={{
+                      transform: `scale(${canvasZoom})`,
+                      transformOrigin: "center",
+                      transition: "transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1)",
                     }}
-                    className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-3 transition-colors ${
-                      it.active
-                        ? "border-line-strong bg-ink-panel/60"
-                        : "border-transparent hover:border-line"
-                    }`}
                   >
-                    {it.node}
-                    <span className={`text-[10px] ${it.active ? "text-fg" : "text-fg-mute"}`}>
-                      {it.label}
-                    </span>
+                    {hero(activeState)}
                   </div>
-                ))}
-              </div>
-            </ThemeFrame>
+
+                  {/* hover-highlight overlay */}
+                  <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-xl">
+                    <div
+                      className="absolute rounded-md"
+                      style={{
+                        top: (box?.top ?? 0) - 5,
+                        left: (box?.left ?? 0) - 5,
+                        width: (box?.width ?? 0) + 10,
+                        height: (box?.height ?? 0) + 10,
+                        boxShadow: `0 0 0 2px ${RING}`,
+                        background: `${RING}14`,
+                        opacity: box ? 1 : 0,
+                        transition: "opacity 120ms ease-out",
+                      }}
+                    />
+                    {box ? (
+                      <span
+                        className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
+                        style={{ top: box.top - 7, left: box.left - 5, background: RING }}
+                      >
+                        {hoveredLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
+          </ThemeFrame>
+        </div>
+      </div>
+
+      {/* Two Column Section for STATES & SIZES */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* STATES Card */}
+        {multiState && (
+          <div className={`flex flex-col rounded-2xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm ${!isSizable ? "md:col-span-2" : ""}`}>
+            <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-5 py-2.5 select-none">
+              <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-fg-mute">States</span>
+              <span className="text-[10px] font-bold text-fg-dim uppercase tracking-wider font-mono">{STATE_LABEL[activeState]}</span>
+            </div>
+            <div className="relative overflow-hidden w-full">
+              <ThemeFrame mode={mode} className="w-full">
+                <div className="flex flex-row flex-wrap items-center justify-center gap-x-10 gap-y-8 p-8 min-h-[160px] w-full overflow-x-auto" style={dotted}>
+                  {spec.states.map((st) => {
+                    const isActive = st === activeState;
+                    return (
+                      <div
+                        key={st}
+                        role="button"
+                        onClick={() => setActiveState(st)}
+                        className={`flex flex-col items-center gap-2 p-3.5 rounded-xl border transition-all cursor-pointer ${
+                          isActive
+                            ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-105 z-10"
+                            : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
+                        }`}
+                      >
+                        <div
+                          className="flex items-center justify-center p-1.5"
+                          style={{
+                            transform: `scale(${canvasZoom * 0.85})`,
+                            transformOrigin: "center",
+                          }}
+                        >
+                          {hero(st)}
+                        </div>
+                        <span className={`text-[9.5px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
+                          {STATE_LABEL[st]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ThemeFrame>
+            </div>
           </div>
-        ) : null}
+        )}
+
+        {/* SIZES Card */}
+        {isSizable && (
+          <div className={`flex flex-col rounded-2xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm ${!multiState ? "md:col-span-2" : ""}`}>
+            <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-5 py-2.5 select-none">
+              <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-fg-mute">Sizes</span>
+              <span className="text-[10px] font-bold text-fg-dim uppercase tracking-wider font-mono">{friendlySizes[size] ?? size}</span>
+            </div>
+            <div className="relative overflow-hidden w-full">
+              <ThemeFrame mode={mode} className="w-full">
+                <div className="flex flex-row flex-wrap items-center justify-center gap-x-10 gap-y-8 p-8 min-h-[160px] w-full overflow-x-auto" style={dotted}>
+                  {SIZE_OPTIONS.map((sz) => {
+                    const isActive = sz.value === size;
+                    return (
+                      <div
+                        key={sz.value}
+                        role="button"
+                        onClick={() => setProperty(id, "size", sz.value)}
+                        className={`flex flex-col items-center gap-2 p-3.5 rounded-xl border transition-all cursor-pointer ${
+                          isActive
+                            ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-105 z-10"
+                            : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
+                        }`}
+                      >
+                        <div
+                          className="flex items-center justify-center p-1.5"
+                          style={{
+                            transform: `scale(${canvasZoom * 0.85})`,
+                            transformOrigin: "center",
+                          }}
+                        >
+                          {renderHero(id, { state: activeState, size: sz.value as any, radiusStep, resolve, mode, opts })}
+                        </div>
+                        <span className={`text-[9.5px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
+                          {friendlySizes[sz.value] ?? sz.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ThemeFrame>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -847,7 +1031,7 @@ export function IconSegmented({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="flex rounded-lg border border-line bg-ink p-0.5 shrink-0">
+    <div className="flex w-full rounded-lg border border-line bg-ink p-0.5">
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -856,7 +1040,7 @@ export function IconSegmented({
             type="button"
             title={o.label}
             onClick={() => onChange(o.value)}
-            className={`flex h-6 items-center justify-center rounded-md px-2.5 transition-colors ${
+            className={`flex-1 flex h-6 items-center justify-center rounded-md px-2.5 transition-colors ${
               active
                 ? "bg-line-strong text-fg"
                 : "text-fg-mute hover:bg-surface-subtle hover:text-fg"
@@ -900,9 +1084,11 @@ export function ComponentStudioControls({
     setBinding,
     clearBinding,
     setProperty,
+    setSlotContent,
     resolve,
     data,
     properties,
+    instances,
     size,
   } = useStudioData(id);
 
@@ -913,19 +1099,85 @@ export function ComponentStudioControls({
   const opts = resolveOptions(id, properties);
   const options = componentOptions(id).filter((o) => !o.previewAxis);
 
-  /* compact inline row for part properties */
+  const COLOR_KEYS = new Set([
+    "container.bg",
+    "container.border",
+    "label.color",
+    "prefixIcon.color",
+    "suffixIcon.color",
+  ]);
+
+  const getCurrentBindingForProp = (prop: PropSpec, st?: CState) => {
+    const activeVariant = opts.variant as string ?? "filled";
+    const isVariantColorProp = (id === "button" && activeVariant !== "filled" && COLOR_KEYS.has(prop.key));
+    const resolvedState = prop.stateful ? st : undefined;
+    const propKey = bindingKey(prop.key, resolvedState);
+
+    if (isVariantColorProp) {
+      const variantStorageKey = `${activeVariant}.${propKey}`;
+      const stored = bindings?.[variantStorageKey];
+      if (stored) {
+        return { binding: stored, overridden: true, storageKey: variantStorageKey };
+      }
+      // Return variant-specific default binding
+      let def = "raw:transparent";
+      if (prop.key === "container.bg") {
+        if (activeVariant === "tonal") def = "role:surface-subtle";
+        else if (activeVariant === "elevated") def = "role:surface-elevated";
+        else if (activeVariant === "error") def = "role:feedback-error-text";
+        else if (activeVariant === "warning") def = "role:feedback-warning-text";
+        else if (activeVariant === "success") def = "role:feedback-success-text";
+        else def = "raw:transparent";
+      } else if (prop.key === "container.border") {
+        if (activeVariant === "outlined") def = "role:border-default";
+        else def = "raw:transparent";
+      } else if (prop.key === "label.color" || prop.key === "prefixIcon.color" || prop.key === "suffixIcon.color") {
+        if (activeVariant === "tonal") def = "role:text-secondary";
+        else if (activeVariant === "error" || activeVariant === "warning" || activeVariant === "success") def = "role:text-on-action";
+        else def = "role:action-primary-default";
+      }
+      return { binding: def, overridden: false, storageKey: variantStorageKey };
+    }
+
+    if (bindings && bindings[propKey]) {
+      return { binding: bindings[propKey], overridden: true, storageKey: propKey };
+    }
+    return { binding: defBinding(prop, st), overridden: false, storageKey: propKey };
+  };
+
+  /* compact vertical stacked row for part properties with figma-style icons */
   const renderPropRow = (prop: PropSpec): ReactNode => {
     const st = prop.stateful ? activeState : undefined;
-    const key = bindingKey(prop.key, st);
-    const { binding, overridden } = currentBinding(bindings, prop, activeState);
+    const { binding, overridden, storageKey } = getCurrentBindingForProp(prop, activeState);
+    const key = storageKey;
     const propStates = prop.states ?? spec.states;
+    const activeVariant = opts.variant as string ?? "filled";
+    const isVariantColorProp = (id === "button" && activeVariant !== "filled" && COLOR_KEYS.has(prop.key));
 
     let control: ReactNode;
     if (prop.type === "color") {
+      let counterpartHex: string | undefined;
+      let counterpartLabel: string | undefined;
+      if (prop.contrastAgainst) {
+        const counterpartPropSpec = spec.parts.flatMap(p => p.props).find(pr => pr.key === prop.contrastAgainst);
+        if (counterpartPropSpec) {
+          const { binding: counterpartBinding } = getCurrentBindingForProp(counterpartPropSpec, activeState);
+          counterpartHex = data.swatch(counterpartBinding);
+          counterpartLabel = counterpartPropSpec.label;
+        }
+      }
+      const contrastContext = (prop.key.includes("label") || prop.key.includes("text") || prop.key.includes("value")) ? "text-normal" : "ui-component";
+
       control = (
-        <div className="w-28 flex justify-end">
-          <TokenSwatchCard data={data} binding={binding} onPick={(b) => setBinding(id, key, b)} align="right" />
-        </div>
+        <TokenSwatchCard
+          data={data}
+          binding={binding}
+          onPick={(b) => setBinding(id, key, b)}
+          align="right"
+          contrastAgainstHex={counterpartHex}
+          contrastAgainstLabel={counterpartLabel}
+          contrastContext={contrastContext}
+        />
       );
     } else if (prop.type === "space") {
       const spaceOpts = data.spaceOptions;
@@ -941,22 +1193,21 @@ export function ComponentStudioControls({
           }))}
           value={`space:${idx + 1}`}
           onChange={(v) => setBinding(id, key, v)}
+          className="w-full"
         />
       );
     } else if (prop.type === "dimension") {
       const n = binding.startsWith("px:") ? Number(binding.slice(3)) : Number(binding) || 0;
       control = (
-        <div className="w-20">
-          <ScrubberInput
-            label=""
-            value={n}
-            min={prop.min ?? 0}
-            max={prop.max ?? 64}
-            step={1}
-            onChange={(v) => setBinding(id, key, `px:${v}`)}
-            unit="px"
-          />
-        </div>
+        <ScrubberInput
+          label=""
+          value={n}
+          min={prop.min ?? 0}
+          max={prop.max ?? 64}
+          step={1}
+          onChange={(v) => setBinding(id, key, `px:${v}`)}
+          unit="px"
+        />
       );
     } else {
       const scaleOpts =
@@ -972,34 +1223,61 @@ export function ComponentStudioControls({
           options={scaleOpts}
           value={binding}
           onChange={(v) => setBinding(id, key, v)}
+          className="w-full"
         />
       );
     }
 
+    const getPropIcon = (kKey: string): ReactNode => {
+      const k = kKey.toLowerCase();
+      if (k.endsWith(".bg") || k.includes("bg") || k.includes("color")) {
+        return <Paintbrush size={10} className="text-fg-mute" />;
+      }
+      if (k.includes("radius")) {
+        return <CornerUpRight size={10} className="text-fg-mute" />;
+      }
+      if (k.includes("border") || k.includes("thickness")) {
+        return <Square size={10} className="text-fg-mute" />;
+      }
+      if (k.includes("pad") || k.includes("space")) {
+        return <Sliders size={10} className="text-fg-mute" />;
+      }
+      if (k.includes("font") || k.includes("text") || k.includes("size") || k.includes("weight")) {
+        return <Type size={10} className="text-fg-mute" />;
+      }
+      return <Sliders size={10} className="text-fg-mute" />;
+    };
+
     return (
-      <div key={key} className="flex items-center justify-between py-1.5 border-b border-line last:border-0 pb-1.5">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[11px] text-fg-dim font-medium truncate">{prop.label}</span>
+      <div key={key} className="flex flex-col gap-1 min-w-0 pb-1">
+        <div className="flex items-center justify-between text-[9px] text-fg-mute font-semibold uppercase tracking-wider min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {getPropIcon(prop.key)}
+            <span className="truncate" title={prop.label}>{prop.label}</span>
+          </div>
           {overridden && (
             <button
               type="button"
               title="Reset to default"
               onClick={() => clearBinding(id, key)}
-              className="rounded p-0.5 text-fg-mute transition-colors hover:text-fg shrink-0 animate-pulse"
+              className="rounded p-0.5 text-fg-mute transition-colors hover:text-fg shrink-0"
             >
-              <RotateCcw size={10} />
+              <RotateCcw size={9} />
             </button>
           )}
         </div>
-        <div className="shrink-0">
+        <div className="w-full">
           {control}
           {prop.type === "color" && prop.stateful && propStates.length > 1 ? (
             <button
               type="button"
               onClick={() => {
-                for (const s of propStates) setBinding(id, bindingKey(prop.key, s), binding);
+                for (const s of propStates) {
+                  const targetKey = isVariantColorProp ? `${activeVariant}.${bindingKey(prop.key, s)}` : bindingKey(prop.key, s);
+                  setBinding(id, targetKey, binding);
+                }
               }}
-              className="block mt-0.5 text-[8.5px] text-fg-mute text-right underline decoration-dotted underline-offset-2 hover:text-fg-dim"
+              className="block mt-0.5 text-[8px] text-fg-mute text-right underline decoration-dotted underline-offset-2 hover:text-fg-dim"
             >
               apply to all states
             </button>
@@ -1087,11 +1365,14 @@ export function ComponentStudioControls({
       title: "Options",
       part: null,
       content: (
-        <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
           {/* Size segmented option */}
           {SIZABLE.has(id) && (
-            <div className="flex items-center justify-between py-1 border-b border-line pb-2">
-              <span className="text-[11px] text-fg-dim font-medium">Size</span>
+            <div className="col-span-2 flex flex-col gap-1">
+              <div className="flex items-center gap-1 text-[10px] text-fg-mute font-semibold uppercase tracking-wider">
+                <Sliders size={10} />
+                <span>Size</span>
+              </div>
               <TokenSegmented
                 options={SIZE_OPTIONS}
                 value={size}
@@ -1102,10 +1383,13 @@ export function ComponentStudioControls({
 
           {/* Alignment & Position Row */}
           {(hasAlign || hasPosition) && (
-            <div className="flex items-center justify-between gap-4 py-1.5 border-b border-line pb-2">
+            <div className="col-span-2 grid grid-cols-2 gap-3">
               {hasAlign && (
-                <div className="flex flex-col gap-1 flex-1">
-                  <span className="text-[9.5px] text-fg-mute font-semibold uppercase tracking-wide">Text Align</span>
+                <div className="flex flex-col gap-1 min-w-0">
+                  <span className="text-[9.5px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1">
+                    <AlignLeft size={10} />
+                    <span>Text Align</span>
+                  </span>
                   <IconSegmented
                     options={[
                       { label: "Left", value: "left", icon: <AlignLeft size={11} /> },
@@ -1117,8 +1401,11 @@ export function ComponentStudioControls({
                 </div>
               )}
               {hasPosition && (
-                <div className="flex flex-col gap-1 flex-1 items-end">
-                  <span className="text-[9.5px] text-fg-mute font-semibold uppercase tracking-wide self-start">Positioning</span>
+                <div className="flex flex-col gap-1 min-w-0">
+                  <span className="text-[9.5px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1">
+                    <ArrowUpToLine size={10} />
+                    <span>Positioning</span>
+                  </span>
                   <IconSegmented
                     options={[
                       { label: "Top", value: "top", icon: <ArrowUpToLine size={11} /> },
@@ -1139,8 +1426,11 @@ export function ComponentStudioControls({
             const choices = o.options ?? [];
             const hasIcons = choices.every((c) => !!getEnumIcon(o.key, c.value));
             return (
-              <div key={o.key} className="flex items-center justify-between py-1 border-b border-line last:border-0 pb-1.5">
-                <span className="text-[11px] text-fg-dim font-medium">{o.label}</span>
+              <div key={o.key} className="flex flex-col gap-1 min-w-0">
+                <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                  <Sliders size={10} />
+                  <span>{o.label}</span>
+                </span>
                 {hasIcons ? (
                   <IconSegmented
                     options={choices.map((c) => ({
@@ -1162,7 +1452,7 @@ export function ComponentStudioControls({
                     options={choices.map((c) => ({ label: c.label, value: c.value }))}
                     value={val}
                     onChange={(v) => setProperty(id, o.key, v)}
-                    className="w-32"
+                    className="w-full"
                   />
                 )}
               </div>
@@ -1171,14 +1461,14 @@ export function ComponentStudioControls({
 
           {/* Paired Numeric settings */}
           {numPairs.length > 0 && (
-            <div className="space-y-2 py-1.5 border-b border-line pb-2">
+            <div className="col-span-2 grid grid-cols-2 gap-2">
               {numPairs}
             </div>
           )}
 
           {/* Remaining Number options */}
           {remainingNumOpts.length > 0 && (
-            <div className="grid grid-cols-2 gap-2 py-1.5 border-b border-line last:border-0 pb-2">
+            <div className="col-span-2 grid grid-cols-2 gap-2">
               {remainingNumOpts.map((o) => {
                 const val = opts[o.key] as number;
                 return (
@@ -1197,11 +1487,11 @@ export function ComponentStudioControls({
 
           {/* Boolean switch options in 2-column grid */}
           {boolOpts.length > 0 && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 py-1.5 border-b border-line last:border-0 pb-2">
+            <div className="col-span-2 grid grid-cols-2 gap-x-4 gap-y-2">
               {boolOpts.map((o) => {
                 const val = opts[o.key] as boolean;
                 return (
-                  <div key={o.key} className="flex items-center justify-between text-[11px] gap-2">
+                  <div key={o.key} className="flex items-center justify-between text-[11px] gap-2 h-7 rounded-lg border border-line bg-ink px-2">
                     <span className="text-fg-dim font-medium truncate" title={o.label}>{o.label}</span>
                     <OptionToggle value={val} onChange={(v) => setProperty(id, o.key, v)} />
                   </div>
@@ -1214,32 +1504,55 @@ export function ComponentStudioControls({
           {colorOpts.map((o) => {
             const val = opts[o.key] as string;
             return (
-              <div key={o.key} className="flex items-center justify-between py-1.5 border-b border-line last:border-0 pb-1.5">
-                <span className="text-[11px] text-fg-dim font-medium">{o.label}</span>
+              <div key={o.key} className="flex flex-col gap-1 min-w-0">
+                <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                  <Paintbrush size={10} />
+                  <span>{o.label}</span>
+                </span>
                 <HexInput value={val} onChange={(v) => setProperty(id, o.key, v)} size="sm" />
               </div>
             );
           })}
 
           {/* Inline Text options */}
-          {textOpts.length > 0 && (
-            <div className="space-y-2 py-1.5 last:border-0 pb-1">
-              {textOpts.map((o) => {
-                const val = opts[o.key] as string;
-                return (
-                  <div key={o.key} className="flex items-center justify-between gap-3 py-1 border-b border-line last:border-0 pb-1.5">
-                    <span className="text-[11px] text-fg-dim font-medium w-24 shrink-0 truncate">{o.label}</span>
-                    <input
-                      type="text"
-                      value={val}
-                      onChange={(e) => setProperty(id, o.key, e.target.value)}
-                      className="flex-1 rounded-md border border-line bg-ink px-2 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono text-right"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {textOpts.map((o) => {
+            const val = (opts[o.key] as string) ?? "";
+            const sizeKey = `${o.key}.size`;
+            // Default size mappings depending on key name
+            const defaultSize = o.key.includes("title") ? "xl" : o.key.includes("subtitle") ? "sm" : o.key.includes("body") ? "base" : "base";
+            const sizeVal = (opts[sizeKey] as string) ?? defaultSize;
+
+            return (
+              <div key={o.key} className="col-span-2 flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                    <Type size={10} />
+                    <span>{o.label}</span>
+                  </span>
+                  <span className="text-[9px] uppercase tracking-wide text-fg-mute font-semibold">Scale Step</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={val}
+                    onChange={(e) => setProperty(id, o.key, e.target.value)}
+                    className="flex-1 h-7 rounded-md border border-line bg-ink px-2.5 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono"
+                  />
+                  <select
+                    value={sizeVal}
+                    onChange={(e) => setProperty(id, sizeKey, e.target.value)}
+                    className="w-20 h-7 rounded-md border border-line bg-ink px-1.5 py-0.5 text-[11px] text-fg focus:border-focus focus:outline-none font-mono bg-ink-panel cursor-pointer"
+                  >
+                    {["xs", "sm", "base", "lg", "xl", "2xl", "3xl", "4xl"].map((step) => (
+                      <option key={step} value={step}>
+                        {step}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ),
     });
@@ -1251,11 +1564,137 @@ export function ComponentStudioControls({
       title: part.label,
       count: part.props.length,
       part: part.id,
-      content: <>{part.props.map(renderPropRow)}</>,
+      content: (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+          {part.props.map(renderPropRow)}
+        </div>
+      ),
     });
   }
 
-  if (spec.children && spec.children.length > 0) {
+  if (spec.slots && spec.slots.length > 0) {
+    for (const slot of spec.slots) {
+      const childSpec = COMPONENT_SPECS[slot.componentId];
+      if (!childSpec) continue;
+
+      const slotOptions = slot.content;
+      const numOpts = slotOptions.filter((o) => o.type === "number");
+      const boolOpts = slotOptions.filter((o) => o.type === "boolean");
+      const textOpts = slotOptions.filter((o) => o.type === "text");
+      const colorOpts = slotOptions.filter((o) => o.type === "color"); // should stay empty per the hard rule in §3.1
+      const enumOpts = slotOptions.filter(
+        (o) => o.type !== "number" && o.type !== "boolean" && o.type !== "text" && o.type !== "color"
+      );
+
+      const getSlotVal = (key: string, def: string | boolean | number) => {
+        const stored = instances?.[slot.id]?.[key];
+        return typeof stored !== "undefined" ? stored : def;
+      };
+
+      clusters.push({
+        key: `slot.${slot.id}.content`,
+        title: `${slot.label} — ${childSpec.id}`,
+        part: null,
+        content: (
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+            {enumOpts.map((o) => {
+              const val = getSlotVal(o.key, o.def) as string;
+              const choices = o.options ?? [];
+              return (
+                <div key={o.key} className="flex flex-col gap-1 min-w-0">
+                  <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                    <Sliders size={10} />
+                    <span>{o.label}</span>
+                  </span>
+                  {choices.length <= 3 ? (
+                    <TokenSegmented
+                      options={choices.map((c) => ({ label: c.label, value: c.value }))}
+                      value={val}
+                      onChange={(v) => setSlotContent(id, slot.id, o.key, v)}
+                    />
+                  ) : (
+                    <CompactSelect
+                      options={choices.map((c) => ({ label: c.label, value: c.value }))}
+                      value={val}
+                      onChange={(v) => setSlotContent(id, slot.id, o.key, v)}
+                      className="w-full"
+                    />
+                  )}
+                </div>
+              );
+            })}
+
+            {boolOpts.length > 0 && (
+              <div className="col-span-2 grid grid-cols-2 gap-x-4 gap-y-2">
+                {boolOpts.map((o) => {
+                  const val = getSlotVal(o.key, o.def) as boolean;
+                  return (
+                    <div key={o.key} className="flex items-center justify-between text-[11px] gap-2 h-7 rounded-lg border border-line bg-ink px-2">
+                      <span className="text-fg-dim font-medium truncate" title={o.label}>{o.label}</span>
+                      <OptionToggle value={val} onChange={(v) => setSlotContent(id, slot.id, o.key, v)} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {numOpts.length > 0 && (
+              <div className="col-span-2 grid grid-cols-2 gap-2">
+                {numOpts.map((o) => {
+                  const val = getSlotVal(o.key, o.def) as number;
+                  return (
+                    <ScrubberInput
+                      key={o.key}
+                      label={o.label}
+                      value={val}
+                      min={o.min ?? 0}
+                      max={o.max ?? 100}
+                      onChange={(v) => setSlotContent(id, slot.id, o.key, v)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
+            {colorOpts.map((o) => {
+              const val = getSlotVal(o.key, o.def) as string;
+              return (
+                <div key={o.key} className="flex flex-col gap-1 min-w-0">
+                  <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                    <Paintbrush size={10} />
+                    <span>{o.label}</span>
+                  </span>
+                  <HexInput value={val} onChange={(v) => setSlotContent(id, slot.id, o.key, v)} size="sm" />
+                </div>
+              );
+            })}
+
+            {textOpts.length > 0 && (
+              <div className="col-span-2 flex flex-col gap-1">
+                {textOpts.map((o) => {
+                  const val = getSlotVal(o.key, o.def) as string;
+                  return (
+                    <div key={o.key} className="flex flex-col gap-1">
+                      <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                        <Type size={10} />
+                        <span>{o.label}</span>
+                      </span>
+                      <input
+                        type="text"
+                        value={val}
+                        onChange={(e) => setSlotContent(id, slot.id, o.key, e.target.value)}
+                        className="w-full h-7 rounded-md border border-line bg-ink px-2.5 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ),
+      });
+    }
+  } else if (spec.children && spec.children.length > 0) {
     for (const childId of spec.children) {
       const childSpec = COMPONENT_SPECS[childId];
       if (!childSpec) continue;

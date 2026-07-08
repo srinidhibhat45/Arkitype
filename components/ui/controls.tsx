@@ -185,8 +185,14 @@ export function SelectControl({
   onChange: (value: string) => void;
   compact?: boolean;
 }) {
+  const safeValue = value || "__empty__";
+  const safeOptions = options.map((o) => ({
+    label: o.label || "(empty)",
+    value: o.value || "__empty__",
+  }));
+
   const trigger = (
-    <RadixSelect.Root value={value} onValueChange={onChange}>
+    <RadixSelect.Root value={safeValue} onValueChange={(val) => onChange(val === "__empty__" ? "" : val)}>
       <RadixSelect.Trigger
         className={`flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-ink-panel text-left text-fg transition-colors hover:border-line-strong focus:outline-none data-[state=open]:border-line-strong ${
           compact ? "px-2.5 h-8 text-[12.5px] font-medium" : "px-3 py-2 text-[13.5px] font-bold"
@@ -204,7 +210,7 @@ export function SelectControl({
           className="z-50 max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-line-strong bg-ink-raised shadow-2xl"
         >
           <RadixSelect.Viewport className="p-1">
-            {options.map((o) => (
+            {safeOptions.map((o) => (
               <RadixSelect.Item
                 key={o.value}
                 value={o.value}

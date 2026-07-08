@@ -46,12 +46,28 @@ export interface PropSpec {
   def: string | Partial<Record<CState, string>>; // default binding(s)
   min?: number; // for dimension inputs
   max?: number;
+  contrastAgainst?: string; // key of counterpart prop
 }
 
 export interface PartSpec {
   id: string;
   label: string;
   props: PropSpec[];
+}
+
+/**
+ * A named placement of one molecule inside an organism — e.g. Modal's
+ * "primaryAction" is an instance of "button". A slot's `content` may only
+ * hold content-level fields (text, icon name, which variant/size to render)
+ * — NEVER a colour/space/radius/border/font field. Style always comes from
+ * the molecule's own global ComponentConfig; slots have no way to override
+ * it, by construction (see `useSlotInstance`).
+ */
+export interface SlotSpec {
+  id: string;
+  componentId: string;
+  label: string;
+  content: OptionSpec[];
 }
 
 /**
@@ -79,7 +95,10 @@ export interface ComponentSpec {
   states: CState[];
   parts: PartSpec[];
   options?: OptionSpec[];
+  /** @deprecated prefer `slots` — kept for organisms not yet migrated (see ATOMIC_DESIGN_PLAN.md). */
   children?: string[];
+  /** Named molecule instances this organism embeds. Replaces `children`. */
+  slots?: SlotSpec[];
 }
 
 /* ── authoring helpers ── */
@@ -89,7 +108,7 @@ const prop = (
   label: string,
   type: BindingType,
   def: PropSpec["def"],
-  opts: Partial<Pick<PropSpec, "stateful" | "states" | "min" | "max">> = {}
+  opts: Partial<Pick<PropSpec, "stateful" | "states" | "min" | "max" | "contrastAgainst">> = {}
 ): PropSpec => ({ key, label, type, def, ...opts });
 
 /* ── option-authoring helpers ── */
@@ -193,10 +212,11 @@ function labelPart(
     weight?: string;
     size?: string;
     states?: CState[];
+    contrastAgainst?: string;
   }
 ): PartSpec {
   const props: PropSpec[] = [
-    prop(`${id}.color`, "Colour", "color", o.color, { stateful: true, states: o.states }),
+    prop(`${id}.color`, "Colour", "color", o.color, { stateful: true, states: o.states, contrastAgainst: o.contrastAgainst }),
   ];
   if (o.font !== undefined) props.push(prop(`${id}.font`, "Font role", "fontRole", o.font));
   if (o.weight !== undefined) props.push(prop(`${id}.weight`, "Weight", "weight", o.weight));
@@ -208,13 +228,13 @@ function labelPart(
 function iconPart(
   id: string,
   label: string,
-  o: { color: PropSpec["def"]; size?: string; states?: CState[] }
+  o: { color: PropSpec["def"]; size?: string; states?: CState[]; contrastAgainst?: string }
 ): PartSpec {
   return {
     id,
     label,
     props: [
-      prop(`${id}.color`, "Colour", "color", o.color, { stateful: true, states: o.states }),
+      prop(`${id}.color`, "Colour", "color", o.color, { stateful: true, states: o.states, contrastAgainst: o.contrastAgainst }),
       prop(`${id}.size`, "Size", "dimension", o.size ?? "px:14", { min: 8, max: 48 }),
     ],
   };
@@ -249,14 +269,17 @@ const buttonSpec: ComponentSpec = {
       font: "font:body",
       weight: "weight:semibold",
       size: "text:sm",
+      contrastAgainst: "container.bg",
     }),
     iconPart("prefixIcon", "Prefix icon", {
       color: { default: "role:text-on-action", disabled: "role:text-muted" },
       size: "px:14",
+      contrastAgainst: "container.bg",
     }),
     iconPart("suffixIcon", "Suffix icon", {
       color: { default: "role:text-on-action", disabled: "role:text-muted" },
       size: "px:14",
+      contrastAgainst: "container.bg",
     }),
   ],
   options: [
@@ -301,6 +324,7 @@ const inputSpec: ComponentSpec = {
       color: { default: "role:text-primary", disabled: "role:text-muted" },
       font: "font:body",
       size: "text:sm",
+      contrastAgainst: "container.bg",
     }),
   ],
 };
@@ -438,7 +462,6 @@ const sliderSpec: ComponentSpec = {
 const buttonGroupSpec: ComponentSpec = {
   id: "buttonGroup",
   tier: 2,
-  children: ["button"],
   states: ["default", "active"],
   parts: [
     {
@@ -613,6 +636,7 @@ const OTHER_SPECS: ComponentSpec[] = [
       },
     ],
     options: [
+      textOpt("label", "Label text", "Success"),
       enumOpt("tone", "Tone", BADGE_TONES, "brand", true),
       enumOpt("style", "Style", STYLE_OPTS, "subtle"),
       boolOpt("dot", "Status dot", true),
@@ -640,6 +664,10 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
       iconPart("removeIcon", "Remove icon", { color: "role:text-muted", size: "px:11" }),
+    ],
+    options: [
+      textOpt("label", "Tag label", "engineering"),
+      boolOpt("removable", "Removable", true),
     ],
   },
   {
@@ -672,6 +700,11 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      textOpt("initials", "Initials", "JD"),
+      enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large")], "lg"),
+      enumOpt("presence", "Presence status", [opt("online", "Online"), opt("away", "Away"), opt("none", "None")], "online"),
+    ],
   },
   {
     id: "tooltip",
@@ -694,6 +727,9 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("text.font", "Font role", "fontRole", "font:body"),
         ],
       },
+    ],
+    options: [
+      textOpt("label", "Tooltip text", "Tooltip content"),
     ],
   },
   {
@@ -753,7 +789,38 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "alert",
     tier: 2,
-    children: ["button", "iconButton"],
+    slots: [
+      {
+        id: "action",
+        componentId: "button",
+        label: "Action button",
+        content: [
+          textOpt("label", "Label", "Learn more"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "outlined"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "dismiss",
+        componentId: "iconButton",
+        label: "Dismiss button",
+        content: [
+          enumOpt("variant", "Variant", [opt("solid", "Solid"), opt("outline", "Outline"), opt("ghost", "Ghost")], "ghost"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -774,12 +841,45 @@ const OTHER_SPECS: ComponentSpec[] = [
       boolOpt("icon", "Leading icon", true),
       boolOpt("dismissible", "Dismissible", false),
       boolOpt("action", "Action button", false),
+      textOpt("title", "Title text", "Signal Alert"),
+      textOpt("body", "Body text", "Token-mapped alert surface. Wash, border and accent resolve from the primitive ramp per mode."),
     ],
   },
   {
     id: "toast",
     tier: 2,
-    children: ["button", "iconButton"],
+    slots: [
+      {
+        id: "action",
+        componentId: "button",
+        label: "Action button",
+        content: [
+          textOpt("label", "Label", "Undo"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "outlined"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "dismiss",
+        componentId: "iconButton",
+        label: "Dismiss button",
+        content: [
+          enumOpt("variant", "Variant", [opt("solid", "Solid"), opt("outline", "Outline"), opt("ghost", "Ghost")], "ghost"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -806,6 +906,8 @@ const OTHER_SPECS: ComponentSpec[] = [
       boolOpt("icon", "Leading icon", true),
       boolOpt("action", "Action button", false),
       boolOpt("dismissible", "Dismissible", true),
+      textOpt("title", "Title text", "Transaction saved"),
+      textOpt("body", "Body text", "TXN-0459 posted to the operating ledger."),
     ],
   },
   {
@@ -864,7 +966,29 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "emptyState",
     tier: 2,
-    children: ["button"],
+    slots: [
+      {
+        id: "action",
+        componentId: "button",
+        label: "Action button",
+        content: [
+          textOpt("label", "Label", "Record transaction"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "filled"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -917,7 +1041,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "navbar",
     tier: 2,
-    children: ["button", "iconButton", "avatar", "badge"],
     states: ["default"],
     parts: [
       {
@@ -950,7 +1073,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "sidebar",
     tier: 2,
-    children: ["badge", "avatar", "link"],
     states: ["default"],
     parts: [
       {
@@ -1026,7 +1148,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "pagination",
     tier: 2,
-    children: ["button", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -1045,7 +1166,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "dropdown",
     tier: 2,
-    children: ["iconButton", "divider"],
     states: ["default"],
     parts: [
       {
@@ -1089,7 +1209,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "card",
     tier: 2,
-    children: ["badge", "avatar", "button", "divider"],
     states: ["default"],
     parts: [
       {
@@ -1112,11 +1231,23 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      textOpt("title", "Title", "Design Systems Manager"),
+      textOpt("subtitle", "Subtitle", "Updated 2 hours ago"),
+      textOpt("bodyText", "Body text", "Manage tokens, balance scales, and distribute variable definitions."),
+      numOpt("borderWidth", "Border thickness", 1, 0, 8),
+      colorOpt("borderColor", "Border colour", "#e4e4e7"),
+      colorOpt("bg", "Background colour", "#ffffff"),
+      numOpt("radius", "Corner radius", 12, 0, 32),
+      numOpt("padding", "Internal padding", 20, 0, 64),
+      enumOpt("shadow", "Elevation shadow", ELEVATION_OPTS, "md"),
+      textOpt("btnLabel", "Button label", "View Tokens"),
+      boolOpt("showButton", "Show action button", true),
+    ],
   },
   {
     id: "listItem",
     tier: 2,
-    children: ["avatar", "badge"],
     states: ["default"],
     parts: [
       {
@@ -1142,7 +1273,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "feedItem",
     tier: 2,
-    children: ["avatar", "badge", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -1169,7 +1299,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "accordion",
     tier: 2,
-    children: ["iconButton", "divider"],
     states: ["default"],
     parts: [
       {
@@ -1191,11 +1320,45 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      numOpt("radius", "Corner radius", 12, 0, 32),
+    ],
   },
   {
     id: "banner",
     tier: 2,
-    children: ["button", "iconButton"],
+    slots: [
+      {
+        id: "action",
+        componentId: "button",
+        label: "Action button",
+        content: [
+          textOpt("label", "Label", "Action"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "filled"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "dismiss",
+        componentId: "iconButton",
+        label: "Dismiss button",
+        content: [
+          enumOpt("variant", "Variant", [opt("solid", "Solid"), opt("outline", "Outline"), opt("ghost", "Ghost")], "ghost"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -1218,7 +1381,16 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "field",
     tier: 2,
-    children: ["input", "badge"],
+    slots: [
+      {
+        id: "control",
+        componentId: "input",
+        label: "Input field",
+        content: [
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "md"),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -1235,24 +1407,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "statGrid",
     tier: 2,
-    children: ["divider"],
-    states: ["default"],
-    parts: [
-      {
-        id: "cell",
-        label: "Cells",
-        props: [
-          prop("cell.bg", "Background", "color", "role:surface-elevated"),
-          prop("cell.border", "Border", "color", "role:border-muted"),
-          prop("cell.radius", "Corner radius", "radius", "radius:4"),
-        ],
-      },
-    ],
-  },
-  {
-    id: "statGrid",
-    tier: 2,
-    children: ["divider"],
     states: ["default"],
     parts: [
       {
@@ -1269,7 +1423,57 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "modal",
     tier: 2,
-    children: ["primaryButton", "secondaryButton", "iconButton", "input", "select", "alert"],
+    children: ["button", "iconButton", "input", "select", "alert"],
+    slots: [
+      {
+        id: "primaryAction",
+        componentId: "button",
+        label: "Primary action",
+        content: [
+          textOpt("label", "Label", "Confirm"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "filled"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "secondaryAction",
+        componentId: "button",
+        label: "Secondary action",
+        content: [
+          textOpt("label", "Label", "Cancel"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+          ], "outlined"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "closeButton",
+        componentId: "iconButton",
+        label: "Close icon",
+        content: [
+          enumOpt("variant", "Variant", [opt("solid", "Solid"), opt("outline", "Outline"), opt("ghost", "Ghost")], "ghost"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -1301,8 +1505,6 @@ const OTHER_SPECS: ComponentSpec[] = [
       enumOpt("shadow", "Elevation shadow", [opt("none", "None"), opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "lg"),
       numOpt("borderWidth", "Border thickness", 1, 0, 8),
       textOpt("bodyText", "Body text description", "Are you absolutely sure you want to proceed?"),
-      textOpt("primaryLabel", "Primary action text", "Confirm"),
-      textOpt("secondaryLabel", "Secondary action text", "Cancel"),
       boolOpt("showSecondary", "Show cancel action", true),
       enumOpt("width", "Modal size / width", [opt("xs", "Extra Small"), opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large")], "sm"),
       numOpt("overlayOpacity", "Backdrop opacity", 40, 0, 100),
@@ -1313,7 +1515,29 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "tabs",
     tier: 2,
-    children: ["button", "input", "alert", "searchField", "stepper", "badge"],
+    slots: [
+      {
+        id: "panelAction",
+        componentId: "button",
+        label: "Panel action button",
+        content: [
+          textOpt("label", "Label", "Create new"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+            opt("error", "Error Tone"),
+            opt("warning", "Warning Tone"),
+            opt("success", "Success Tone"),
+          ], "filled"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", "add"),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+    ],
     states: ["default"],
     parts: [
       {
@@ -1343,9 +1567,6 @@ const OTHER_SPECS: ComponentSpec[] = [
       ], "1", true),
       numOpt("radius", "Corner radius", 6, 0, 32),
       numOpt("borderWidth", "Border thickness", 1, 0, 8),
-      colorOpt("borderColor", "Border color", "#e4e4e7"),
-      colorOpt("activeBg", "Active background", "#f4f4f5"),
-      colorOpt("activeTextColor", "Active text color", "#18181b"),
       numOpt("padding", "Tab spacing padding", 8, 0, 32),
       boolOpt("showIcons", "Show icons", true),
     ],
@@ -1353,7 +1574,6 @@ const OTHER_SPECS: ComponentSpec[] = [
   {
     id: "table",
     tier: 2,
-    children: ["badge", "avatar", "iconButton"],
     states: ["default"],
     parts: [
       {
@@ -1363,6 +1583,13 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("container.bg", "Table background", "color", "role:surface-elevated"),
           prop("container.border", "Table border", "color", "role:border-muted"),
           prop("container.radius", "Corner radius", "radius", "radius:3"),
+        ],
+      },
+      {
+        id: "cell",
+        label: "Table Cells",
+        props: [
+          prop("cell.accent", "Accent highlight", "color", "role:action-primary-default"),
         ],
       },
     ],
@@ -1375,34 +1602,19 @@ const OTHER_SPECS: ComponentSpec[] = [
       ], "1", true),
       boolOpt("showHeader", "Show table header", true),
       numOpt("borderWidth", "Border thickness", 1, 0, 8),
-      colorOpt("borderColor", "Border color", "#e4e4e7"),
-      colorOpt("bg", "Table background fill", "#ffffff"),
       numOpt("radius", "Corner radius", 8, 0, 32),
       numOpt("padding", "Cell padding", 12, 0, 48),
       boolOpt("striped", "Striped row background", true),
       numOpt("rowHeight", "Row height limit", 44, 24, 80),
-      colorOpt("accentColor", "Accent color highlight", "#4f46e5"),
     ],
   },
 ];
-
-const primaryButtonSpec: ComponentSpec = {
-  ...buttonSpec,
-  id: "primaryButton",
-};
-
-const secondaryButtonSpec: ComponentSpec = {
-  ...buttonSpec,
-  id: "secondaryButton",
-};
 
 /* ────────────────────────────── registry ────────────────────────────── */
 
 export const COMPONENT_SPECS: Record<string, ComponentSpec> = Object.fromEntries(
   [
     buttonSpec,
-    primaryButtonSpec,
-    secondaryButtonSpec,
     inputSpec,
     textareaSpec,
     selectSpec,
@@ -1542,10 +1754,51 @@ export function useComponentBindings(
   id: string
 ): (key: string, state?: CState) => string | undefined {
   const bindings = useDesignSystem((s) => s.components[id]?.bindings);
+  const radiusNames = useDesignSystem((s) => s.primitives.radiusNames);
   return (key, state) => {
     if (!bindings) return undefined;
     const b = (state ? bindings[bindingKey(key, state)] : undefined) ?? bindings[key];
-    return b ? resolveBinding(b) : undefined;
+    return b ? resolveBinding(b, radiusNames) : undefined;
+  };
+}
+
+/**
+ * Variant-aware resolver hook for `TokenButton`.
+ * For color properties, first checks `<variant>.<key>` (variant-scoped override),
+ * then falls back to the shared flat binding. This allows each button variant
+ * (text, outlined, tonal…) to have its own independent color overrides while
+ * still inheriting structural (radius, padding, font) overrides from the shared scope.
+ */
+export function useVariantComponentBindings(
+  id: string,
+  variant: string
+): (key: string, state?: CState) => string | undefined {
+  const bindings = useDesignSystem((s) => s.components[id]?.bindings);
+  const radiusNames = useDesignSystem((s) => s.primitives.radiusNames);
+  const VARIANT_COLOR_KEYS = new Set([
+    "container.bg",
+    "container.border",
+    "label.color",
+    "prefixIcon.color",
+    "suffixIcon.color",
+  ]);
+  return (key, state) => {
+    if (!bindings) return undefined;
+    const isColorKey = VARIANT_COLOR_KEYS.has(key);
+    if (isColorKey && variant && variant !== "filled") {
+      // Try variant-scoped key first (e.g. "text.container.bg.default")
+      const variantKey = state
+        ? `${variant}.${bindingKey(key, state)}`
+        : `${variant}.${key}`;
+      const variantFallbackKey = `${variant}.${key}`;
+      const vb = bindings[variantKey] ?? bindings[variantFallbackKey];
+      if (vb) return resolveBinding(vb, radiusNames);
+      // Don't fall through to shared color bindings for non-filled variants
+      return undefined;
+    }
+    // For non-color props or filled variant, use shared bindings as normal
+    const b = (state ? bindings[bindingKey(key, state)] : undefined) ?? bindings[key];
+    return b ? resolveBinding(b, radiusNames) : undefined;
   };
 }
 
@@ -1573,7 +1826,35 @@ export function getComponentTier(id: string): 1 | 2 {
 }
 
 export function getComponentChildren(id: string): string[] {
-  return COMPONENT_SPECS[id]?.children ?? [];
+  const spec = COMPONENT_SPECS[id];
+  if (spec?.slots?.length) return Array.from(new Set(spec.slots.map((s) => s.componentId)));
+  return spec?.children ?? [];
+}
+
+/** The stored content overrides + schema defaults for one slot, keyed by content option key. */
+export function getSlotSpec(organismId: string, slotId: string): SlotSpec | undefined {
+  return COMPONENT_SPECS[organismId]?.slots?.find((s) => s.id === slotId);
+}
+
+/**
+ * Content-only resolver for one slot instance. `resolve` is the molecule's own
+ * global style resolver (never parameterized by the organism — an organism has
+ * no way to override a slot's colour/padding/radius/border, by construction).
+ * `content` merges the slot's schema defaults with any stored per-instance
+ * override (text/icon/variant/size — never a style field).
+ */
+export function useSlotInstance(
+  organismId: string,
+  slotId: string
+): { resolve: Resolver; content: Record<string, string | number | boolean> } {
+  const slot = getSlotSpec(organismId, slotId);
+  const stored = useDesignSystem((s) => s.components[organismId]?.instances?.[slotId]);
+  const resolve = useComponentBindings(slot?.componentId ?? "");
+  const content: Record<string, string | number | boolean> = {};
+  for (const o of slot?.content ?? []) {
+    content[o.key] = stored?.[o.key] ?? o.def;
+  }
+  return { resolve, content };
 }
 
 export function getParentComponents(childId: string): string[] {

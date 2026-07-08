@@ -55,6 +55,7 @@ import {
   bindingKey,
   componentOptions,
   currentBinding,
+  defBinding,
   previewAxis,
   resolveOptions,
   useComponentBindings,
@@ -923,12 +924,59 @@ export function ComponentStudioControls({
   const opts = resolveOptions(id, properties);
   const options = componentOptions(id).filter((o) => !o.previewAxis);
 
+  const COLOR_KEYS = new Set([
+    "container.bg",
+    "container.border",
+    "label.color",
+    "prefixIcon.color",
+    "suffixIcon.color",
+  ]);
+
+  const getCurrentBindingForProp = (prop: PropSpec, st?: CState) => {
+    const activeVariant = opts.variant as string ?? "filled";
+    const isVariantColorProp = (id === "button" && activeVariant !== "filled" && COLOR_KEYS.has(prop.key));
+    const propKey = bindingKey(prop.key, st);
+
+    if (isVariantColorProp) {
+      const variantStorageKey = `${activeVariant}.${propKey}`;
+      const stored = bindings?.[variantStorageKey];
+      if (stored) {
+        return { binding: stored, overridden: true, storageKey: variantStorageKey };
+      }
+      // Return variant-specific default binding
+      let def = "raw:transparent";
+      if (prop.key === "container.bg") {
+        if (activeVariant === "tonal") def = "role:surface-subtle";
+        else if (activeVariant === "elevated") def = "role:surface-elevated";
+        else if (activeVariant === "error") def = "role:feedback-error-text";
+        else if (activeVariant === "warning") def = "role:feedback-warning-text";
+        else if (activeVariant === "success") def = "role:feedback-success-text";
+        else def = "raw:transparent";
+      } else if (prop.key === "container.border") {
+        if (activeVariant === "outlined") def = "role:border-default";
+        else def = "raw:transparent";
+      } else if (prop.key === "label.color" || prop.key === "prefixIcon.color" || prop.key === "suffixIcon.color") {
+        if (activeVariant === "tonal") def = "role:text-secondary";
+        else if (activeVariant === "error" || activeVariant === "warning" || activeVariant === "success") def = "role:text-on-action";
+        else def = "role:action-primary-default";
+      }
+      return { binding: def, overridden: false, storageKey: variantStorageKey };
+    }
+
+    if (bindings && bindings[propKey]) {
+      return { binding: bindings[propKey], overridden: true, storageKey: propKey };
+    }
+    return { binding: defBinding(prop, st), overridden: false, storageKey: propKey };
+  };
+
   /* compact vertical stacked row for part properties with figma-style icons */
   const renderPropRow = (prop: PropSpec): ReactNode => {
     const st = prop.stateful ? activeState : undefined;
-    const key = bindingKey(prop.key, st);
-    const { binding, overridden } = currentBinding(bindings, prop, activeState);
+    const { binding, overridden, storageKey } = getCurrentBindingForProp(prop, activeState);
+    const key = storageKey;
     const propStates = prop.states ?? spec.states;
+    const activeVariant = opts.variant as string ?? "filled";
+    const isVariantColorProp = (id === "button" && activeVariant !== "filled" && COLOR_KEYS.has(prop.key));
 
     let control: ReactNode;
     if (prop.type === "color") {
@@ -937,7 +985,7 @@ export function ComponentStudioControls({
       if (prop.contrastAgainst) {
         const counterpartPropSpec = spec.parts.flatMap(p => p.props).find(pr => pr.key === prop.contrastAgainst);
         if (counterpartPropSpec) {
-          const { binding: counterpartBinding } = currentBinding(bindings, counterpartPropSpec, activeState);
+          const { binding: counterpartBinding } = getCurrentBindingForProp(counterpartPropSpec, activeState);
           counterpartHex = data.swatch(counterpartBinding);
           counterpartLabel = counterpartPropSpec.label;
         }
@@ -1048,7 +1096,10 @@ export function ComponentStudioControls({
             <button
               type="button"
               onClick={() => {
-                for (const s of propStates) setBinding(id, bindingKey(prop.key, s), binding);
+                for (const s of propStates) {
+                  const targetKey = isVariantColorProp ? `${activeVariant}.${bindingKey(prop.key, s)}` : bindingKey(prop.key, s);
+                  setBinding(id, targetKey, binding);
+                }
               }}
               className="block mt-0.5 text-[8px] text-fg-mute text-right underline decoration-dotted underline-offset-2 hover:text-fg-dim"
             >

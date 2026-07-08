@@ -1728,6 +1728,45 @@ export function useComponentBindings(
   };
 }
 
+/**
+ * Variant-aware resolver hook for `TokenButton`.
+ * For color properties, first checks `<variant>.<key>` (variant-scoped override),
+ * then falls back to the shared flat binding. This allows each button variant
+ * (text, outlined, tonal…) to have its own independent color overrides while
+ * still inheriting structural (radius, padding, font) overrides from the shared scope.
+ */
+export function useVariantComponentBindings(
+  id: string,
+  variant: string
+): (key: string, state?: CState) => string | undefined {
+  const bindings = useDesignSystem((s) => s.components[id]?.bindings);
+  const VARIANT_COLOR_KEYS = new Set([
+    "container.bg",
+    "container.border",
+    "label.color",
+    "prefixIcon.color",
+    "suffixIcon.color",
+  ]);
+  return (key, state) => {
+    if (!bindings) return undefined;
+    const isColorKey = VARIANT_COLOR_KEYS.has(key);
+    if (isColorKey && variant && variant !== "filled") {
+      // Try variant-scoped key first (e.g. "text.container.bg.default")
+      const variantKey = state
+        ? `${variant}.${bindingKey(key, state)}`
+        : `${variant}.${key}`;
+      const variantFallbackKey = `${variant}.${key}`;
+      const vb = bindings[variantKey] ?? bindings[variantFallbackKey];
+      if (vb) return resolveBinding(vb);
+      // Don't fall through to shared color bindings for non-filled variants
+      return undefined;
+    }
+    // For non-color props or filled variant, use shared bindings as normal
+    const b = (state ? bindings[bindingKey(key, state)] : undefined) ?? bindings[key];
+    return b ? resolveBinding(b) : undefined;
+  };
+}
+
 export type Resolver = (key: string, state?: CState) => string | undefined;
 
 /** A no-op resolver for standalone component usage (renders from fallbacks). */

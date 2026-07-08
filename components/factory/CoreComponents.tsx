@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
-import { CState, NO_BINDINGS, Resolver, createChildResolver, useComponentBindings } from "@/lib/componentSchema";
+import { CState, NO_BINDINGS, Resolver, createChildResolver, useComponentBindings, useVariantComponentBindings } from "@/lib/componentSchema";
 import { TokenIconButton } from "./FormControls";
 
 export type InteractionState =
@@ -97,7 +97,12 @@ export function TokenButton({
   const s = SIZE_MAP[size];
   const disabled = state === "disabled";
   const cst = bindState(state);
-  const r = resolve;
+  // Use variant-scoped resolver for color keys so each variant (text, outlined,
+  // tonal…) has independent color overrides that don't bleed into other variants.
+  const variantResolve = useVariantComponentBindings("button", variant);
+  // For structural props (padding, radius, font) still use the passed-in resolver
+  // which falls back through the shared filled-scope bindings.
+  const r = (key: string, st?: CState) => variantResolve(key, st) ?? resolve(key, st);
   const mode = useDesignSystem((s) => s.currentPreviewMode);
 
   let defBg = "transparent";

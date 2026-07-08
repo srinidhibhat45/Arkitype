@@ -855,7 +855,7 @@ export function IconSegmented({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="flex rounded-lg border border-line bg-ink p-0.5 shrink-0">
+    <div className="flex w-full rounded-lg border border-line bg-ink p-0.5">
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -864,7 +864,7 @@ export function IconSegmented({
             type="button"
             title={o.label}
             onClick={() => onChange(o.value)}
-            className={`flex h-6 items-center justify-center rounded-md px-2.5 transition-colors ${
+            className={`flex-1 flex h-6 items-center justify-center rounded-md px-2.5 transition-colors ${
               active
                 ? "bg-line-strong text-fg"
                 : "text-fg-mute hover:bg-surface-subtle hover:text-fg"

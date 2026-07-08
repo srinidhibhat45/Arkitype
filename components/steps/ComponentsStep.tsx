@@ -5,6 +5,9 @@
  * Navigation, Patterns), mirroring how component libraries are organised in
  * practice. Everything consumes roles + scales + motion tokens exclusively.
  * Modal / Tabs / Table keep the strict 4-skeleton structural rule.
+ *
+ * Layout: the center canvas shows an enlarged live preview; the right inspector
+ * pane hosts all configurable options, token bindings and skeleton pickers.
  */
 import { useState } from "react";
 import {
@@ -24,7 +27,7 @@ import { ThemeFrame } from "@/components/ui/ThemeFrame";
 import { MODAL_SKELETONS, ModalScene } from "@/components/factory/ModalSkeletons";
 import { TABS_SKELETONS, TabsSkeleton } from "@/components/factory/TabsSkeletons";
 import { TABLE_SKELETONS, TableSkeleton } from "@/components/factory/TableSkeletons";
-import { ComponentStudio } from "@/components/factory/ComponentStudio";
+import { ComponentStudioPreview, ComponentStudioControls } from "@/components/factory/ComponentStudio";
 import { WIRED_COMPONENTS } from "@/lib/componentSchema";
 
 /* ── lanes & inventory ── */
@@ -130,7 +133,7 @@ const NO_RADIUS = new Set([
   "steps",
   "link",
 ]);
-const SKELETAL = new Set(["modal", "tabs", "table"]);
+const SKELETAL = new Set<string>(["modal", "tabs", "table"]);
 
 const SKELETON_META: Record<
   string,
@@ -181,66 +184,75 @@ function ChipRow({
   );
 }
 
-function SkeletonGrid({ pattern }: { pattern: string }) {
-  const mode = useDesignSystem((s) => s.currentPreviewMode);
+/* ── skeleton picker for the aside (compact version) ── */
+
+function SkeletonPicker({ pattern }: { pattern: string }) {
   const cfg = useDesignSystem((s) => s.components[pattern]);
   const setComponentSkeleton = useDesignSystem((s) => s.setComponentSkeleton);
-  const radiusStep = Number(cfg?.properties.radiusStep ?? 3);
 
   return (
-    <div className="grid grid-cols-1 gap-5 2xl:grid-cols-2">
+    <div className="space-y-1.5">
       {(SKELETON_META[pattern] ?? []).map((sk) => {
         const active = cfg?.skeletonId === sk.id;
         return (
-          // div[role=button]: previews contain real interactive buttons.
-          <div
+          <button
             key={sk.id}
-            role="button"
-            tabIndex={0}
-            aria-pressed={active}
+            type="button"
             onClick={() => setComponentSkeleton(pattern, sk.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setComponentSkeleton(pattern, sk.id);
-              }
-            }}
-            className={`group cursor-pointer rounded-xl border p-3 transition-colors ${
+            className={`flex w-full items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors ${
               active
-                ? "border-line-strong bg-ink-panel"
+                ? "border-line-strong bg-ink-raised"
                 : "border-line hover:border-line-strong"
             }`}
           >
-            <div className="mb-2.5 flex items-center gap-2.5">
-              <span className="font-mono text-[11px] text-fg-mute">{sk.id}</span>
-              <span className="text-[13px] font-medium text-fg">{sk.name}</span>
-              {active ? (
-                <span className="ml-auto rounded-md bg-fg px-1.5 py-0.5 text-[10px] font-semibold text-ink">
-                  In use
-                </span>
-              ) : (
-                <span className="ml-auto text-[11px] text-fg-mute opacity-0 transition-opacity group-hover:opacity-100">
-                  Click to use
-                </span>
-              )}
+            <span className="font-mono text-[10px] text-fg-mute pt-0.5">{sk.id}</span>
+            <div className="min-w-0 flex-1">
+              <span className={`block text-[12px] font-medium ${active ? "text-fg" : "text-fg-dim"}`}>
+                {sk.name}
+              </span>
+              <span className="block text-[10px] text-fg-mute mt-0.5">{sk.desc}</span>
             </div>
-            <p className="mb-3 text-[11px] text-fg-mute">{sk.desc}</p>
-            <ThemeFrame mode={mode}>
-              {pattern === "modal" ? (
-                <div className="relative h-64">
-                  <ModalScene skeletonId={sk.id} radiusStep={radiusStep} />
-                </div>
-              ) : pattern === "tabs" ? (
-                <div className="min-h-[150px]">
-                  <TabsSkeleton skeletonId={sk.id} radiusStep={radiusStep} />
-                </div>
-              ) : (
-                <TableSkeleton skeletonId={sk.id} radiusStep={radiusStep} maxRows={4} />
-              )}
-            </ThemeFrame>
-          </div>
+            {active ? (
+              <span className="shrink-0 rounded-md bg-fg px-1.5 py-0.5 text-[9px] font-semibold text-ink mt-0.5">
+                Active
+              </span>
+            ) : null}
+          </button>
         );
       })}
+    </div>
+  );
+}
+
+/* ── skeleton preview for the center canvas (single enlarged preview) ── */
+
+function SkeletonPreview({ pattern }: { pattern: string }) {
+  const mode = useDesignSystem((s) => s.currentPreviewMode);
+  const cfg = useDesignSystem((s) => s.components[pattern]);
+  const skeletonId = cfg?.skeletonId ?? "1";
+  const radiusStep = Number(cfg?.properties.radiusStep ?? 3);
+  const skeletonName = (SKELETON_META[pattern] ?? []).find((sk) => sk.id === skeletonId)?.name ?? "Preview";
+
+  return (
+    <div>
+      <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
+        {skeletonName}
+      </div>
+      <ThemeFrame mode={mode}>
+        {pattern === "modal" ? (
+          <div className="relative h-[420px]">
+            <ModalScene skeletonId={skeletonId} radiusStep={radiusStep} />
+          </div>
+        ) : pattern === "tabs" ? (
+          <div className="min-h-[280px]">
+            <TabsSkeleton skeletonId={skeletonId} radiusStep={radiusStep} />
+          </div>
+        ) : (
+          <div className="min-h-[280px]">
+            <TableSkeleton skeletonId={skeletonId} radiusStep={radiusStep} maxRows={6} />
+          </div>
+        )}
+      </ThemeFrame>
     </div>
   );
 }
@@ -248,16 +260,12 @@ function SkeletonGrid({ pattern }: { pattern: string }) {
 /* ── the step ── */
 
 export function ComponentsStep() {
-  const [laneId, setLaneId] = useState<LaneId>("controls");
-  const [selected, setSelected] = useState<Record<LaneId, string>>({
-    controls: "button",
-    display: "badge",
-    navigation: "tabs",
-    patterns: "modal",
-  });
+  const activeComponentId = useDesignSystem((s) => s.activeComponentId) || "button";
+  const setActiveComponentId = useDesignSystem((s) => s.setActiveComponentId);
 
-  const lane = LANES.find((l) => l.id === laneId) ?? LANES[0];
-  const itemId = selected[laneId];
+  const lane = LANES.find((l) => l.items.some((i) => i.id === activeComponentId)) ?? LANES[0];
+  const laneId = lane.id;
+  const itemId = activeComponentId;
   const itemLabel = lane.items.find((i) => i.id === itemId)?.label ?? itemId;
 
   const cfg = useDesignSystem((s) => s.components[itemId]);
@@ -265,30 +273,29 @@ export function ComponentsStep() {
 
   const totalCount = LANES.reduce((sum, l) => sum + l.items.length, 0);
 
+  // Shared hover-highlight state between preview (center) and controls (aside)
+  const [hoveredPart, setHoveredPart] = useState<string | null>(null);
+
+  const isSkeletal = SKELETAL.has(itemId);
+  const isWired = WIRED_COMPONENTS.has(itemId);
+
   return (
     <StepScaffold
       step="components"
       title="Assembled from roles, never from values"
       lede={`${totalCount} components in four lanes, every one reading roles, scales and motion tokens exclusively — change a mapping in Roles and all of them follow. Controls and display parts render light and dark simultaneously; structural patterns keep the four-skeleton rule.`}
+      hideHeader={true}
       aside={
         <>
-          <Field label="Lane">
-            <Segmented
-              options={LANES.map((l) => ({ label: l.label, value: l.id }))}
-              value={laneId}
-              onChange={setLaneId}
-            />
-          </Field>
+          {/* Skeleton picker for modal/tabs/table */}
+          {isSkeletal ? (
+            <Field label="Structure / Layout">
+              <SkeletonPicker pattern={itemId} />
+            </Field>
+          ) : null}
 
-          <Field label={`${lane.label} — ${lane.items.length} parts`}>
-            <ChipRow
-              items={lane.items}
-              value={itemId}
-              onChange={(id) => setSelected((s) => ({ ...s, [laneId]: id }))}
-            />
-          </Field>
-
-          {SIZABLE.has(itemId) && !WIRED_COMPONENTS.has(itemId) ? (
+          {/* Size & radius for non-wired sizable components */}
+          {SIZABLE.has(itemId) && !isWired ? (
             <SelectControl
               label="Size"
               value={String(cfg?.properties.size ?? "md")}
@@ -297,7 +304,7 @@ export function ComponentsStep() {
             />
           ) : null}
 
-          {!NO_RADIUS.has(itemId) && !WIRED_COMPONENTS.has(itemId) ? (
+          {!NO_RADIUS.has(itemId) && !isWired ? (
             <SelectControl
               label="Corner radius"
               value={String(cfg?.properties.radiusStep ?? 2)}
@@ -306,14 +313,15 @@ export function ComponentsStep() {
             />
           ) : null}
 
-          {WIRED_COMPONENTS.has(itemId) ? (
-            <AsideNote>
-              Pick a variant and state from the toolbar, then tune each property
-              in the clusters around the preview — hover a cluster to highlight
-              the part it controls. Colours bind to a role or primitive;
-              everything else snaps to your scales. Click any tile in the strip
-              to preview or edit it.
-            </AsideNote>
+          {/* Options + token binding controls for wired components */}
+          {isWired ? (
+            <>
+              <ComponentStudioControls
+                id={itemId}
+                hoveredPart={hoveredPart}
+                setHoveredPart={setHoveredPart}
+              />
+            </>
           ) : null}
 
           <AsideDivider />
@@ -321,16 +329,28 @@ export function ComponentsStep() {
         </>
       }
     >
-      {SKELETAL.has(itemId) ? (
+      {isSkeletal ? (
         <CanvasSection
-          title={`${itemLabel} skeletons`}
-          hint="four structural variants — pick one"
+          title={`${itemLabel}`}
+          hint="every parameter binds to a token"
         >
-          <SkeletonGrid pattern={itemId} />
+          <SkeletonPreview pattern={itemId} />
+        </CanvasSection>
+      ) : isWired ? (
+        <CanvasSection title={itemLabel} hint="every parameter binds to a token">
+          <ComponentStudioPreview
+            id={itemId}
+            hoveredPart={hoveredPart}
+            setHoveredPart={setHoveredPart}
+          />
         </CanvasSection>
       ) : (
         <CanvasSection title={itemLabel} hint="every parameter binds to a token">
-          <ComponentStudio id={itemId} />
+          <ComponentStudioPreview
+            id={itemId}
+            hoveredPart={hoveredPart}
+            setHoveredPart={setHoveredPart}
+          />
         </CanvasSection>
       )}
     </StepScaffold>

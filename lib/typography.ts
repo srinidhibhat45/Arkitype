@@ -29,7 +29,7 @@ export interface TypeStep {
   lineHeight: number; // unitless — override ?? generated
   generatedSize: number; // rounded generated value (before override)
   overridden: boolean; // true when size is pinned by an override
-  role: FontRoleId; // which font-role family this step uses
+  role: string; // which font-role family this step uses (widened to string)
   weight: string; // weight-token name
 }
 
@@ -37,7 +37,7 @@ export const STEP_DEFS: ReadonlyArray<{
   name: string;
   assignment: string;
   exp: number;
-  role: FontRoleId;
+  role: string;
   weight: string;
 }> = [
   { name: "xs", assignment: "Caption / Meta", exp: -2, role: "body", weight: "regular" },
@@ -62,16 +62,17 @@ export interface TypeScaleOptions {
   rounding?: RoundingMode;
   sizeOverrides?: Record<string, number>;
   leadingOverrides?: Record<string, number>;
-  stepAssign?: Record<string, { role: FontRoleId; weight: string }>;
+  stepAssign?: Record<string, { role: string; weight: string }>;
 }
 
 export function generateTypeScale(
   baseSize: number,
   factor: number,
-  opts: TypeScaleOptions = {}
+  opts: TypeScaleOptions = {},
+  stepDefs: ReadonlyArray<{ name: string; assignment: string; exp: number; role: string; weight: string }> = STEP_DEFS
 ): TypeStep[] {
   const { rounding = "integer", sizeOverrides = {}, leadingOverrides = {}, stepAssign = {} } = opts;
-  return STEP_DEFS.map((d) => {
+  return stepDefs.map((d) => {
     const generatedSize = applyRounding(baseSize * Math.pow(factor, d.exp), rounding);
     const override = sizeOverrides[d.name];
     const size = typeof override === "number" ? override : generatedSize;

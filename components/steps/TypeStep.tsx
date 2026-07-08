@@ -12,7 +12,7 @@
  */
 import { useDesignSystem } from "@/store/useDesignSystem";
 import { RoundingMode, FontRoleId } from "@/lib/typography";
-import { SCALE_FACTORS, generateTypeScale } from "@/lib/typography";
+import { SCALE_FACTORS, generateTypeScale, STEP_DEFS } from "@/lib/typography";
 import {
   AsideDivider,
   AsideNote,
@@ -63,7 +63,7 @@ export function TypeStep() {
     sizeOverrides: typography.sizeOverrides,
     leadingOverrides: typography.leadingOverrides,
     stepAssign: typography.stepAssign,
-  });
+  }, typography.stepDefs ?? STEP_DEFS);
   const specimen = [...steps].reverse();
 
   const weightOptions = typography.weights.map((w) => ({
@@ -227,9 +227,9 @@ export function TypeStep() {
                 </span>
               </div>
 
-              <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-16">
-                <label className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-fg-mute">size</span>
+              <div className="mt-3 flex flex-wrap items-center gap-3.5 pl-16">
+                <label className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-fg-mute">size</span>
                   <input
                     type="number"
                     min={6}
@@ -240,13 +240,13 @@ export function TypeStep() {
                       const v = Number(e.target.value);
                       if (Number.isFinite(v) && v > 0) setTypeSizeOverride(step.name, v);
                     }}
-                    className={`h-7 w-16 rounded-md border bg-ink-panel px-2 font-mono text-[11px] focus:outline-none ${
+                    className={`h-8 w-20 rounded-lg border bg-ink-panel px-2.5 font-mono text-[12.5px] font-bold focus:outline-none ${
                       step.overridden
                         ? "border-line-strong text-fg"
                         : "border-line text-fg-dim focus:border-line-strong"
                     }`}
                   />
-                  <span className="font-mono text-[10px] text-fg-mute">
+                  <span className="font-mono text-[11px] text-fg-mute">
                     {step.overridden ? `gen ${step.generatedSize}` : "px"}
                   </span>
                 </label>
@@ -274,9 +274,9 @@ export function TypeStep() {
                     type="button"
                     title="Reset to generated size"
                     onClick={() => clearTypeSizeOverride(step.name)}
-                    className="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-1 text-[10px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-line px-2.5 text-[11px] font-semibold text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
                   >
-                    <RotateCcw size={10} />
+                    <RotateCcw size={11} />
                     reset
                   </button>
                 ) : null}

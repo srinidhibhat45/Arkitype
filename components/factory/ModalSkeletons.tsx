@@ -1,14 +1,26 @@
 "use client";
 
 /**
- * The Modal Node — strict 4-skeleton rule.
- *  1 Centered Overlay · 2 Right Side-Sheet · 3 Full-Screen Overlay · 4 Bottom-Sheet
- * All geometry, spacing, radii and color resolve from --ark-* variables.
+ * The Modal Node — fully customizable layout options.
+ * Renders Centered Overlay, Right Side-Sheet, Full-Screen Overlay, or Bottom-Sheet
+ * based on selected skeletonId, styled using design options from the store.
  */
-import { X } from "lucide-react";
+import { X, Sparkles, Folder, File, Trash, Edit } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
-import { rv, sv, tv } from "@/lib/tokens";
-import { TokenButton, TokenInput, TokenSelect } from "./CoreComponents";
+import { useDesignSystem } from "@/store/useDesignSystem";
+import { resolveOptions, useComponentBindings, createChildResolver, Resolver } from "@/lib/componentSchema";
+import { sv, tv, rv } from "@/lib/tokens";
+import { TokenButton, TokenInput, TokenSelect, TokenAlert } from "./CoreComponents";
+import { TokenIconButton } from "./FormControls";
+
+// Shadows mapping
+const SHADOWS: Record<string, string> = {
+  none: "none",
+  sm: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+  md: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+  lg: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+  xl: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+};
 
 export const MODAL_SKELETONS = [
   { id: "1", name: "Centered Overlay", desc: "Pinned header · form rows · split footer" },
@@ -17,35 +29,96 @@ export const MODAL_SKELETONS = [
   { id: "4", name: "Bottom-Sheet", desc: "Base-pinned drawer, mobile-first" },
 ] as const;
 
+interface ModalResolvedOpts {
+  title: string;
+  subtitle: string;
+  align: "left" | "center";
+  showClose: boolean;
+  forcedAction: boolean;
+  position: "center" | "top" | "bottom";
+  showDivider: boolean;
+  radius: number;
+  shadow: string;
+  borderWidth: number;
+  bodyText: string;
+  primaryLabel: string;
+  secondaryLabel: string;
+  showSecondary: boolean;
+  width: "xs" | "sm" | "md" | "lg";
+  overlayOpacity: number;
+  paddingH: number;
+  paddingV: number;
+  skeletonId: string;
+  borderColor: string;
+}
+
+function useResolvedModalOptions(): ModalResolvedOpts {
+  const cfg = useDesignSystem((s) => s.components.modal);
+  const opts = resolveOptions("modal", cfg?.properties);
+  
+  return {
+    title: (opts.title ?? "Confirm deletion") as string,
+    subtitle: (opts.subtitle ?? "This action cannot be undone") as string,
+    align: (opts.align ?? "left") as "left" | "center",
+    showClose: opts.showClose !== false && opts.forcedAction !== true,
+    forcedAction: !!opts.forcedAction,
+    position: (opts.position ?? "center") as "center" | "top" | "bottom",
+    showDivider: opts.showDivider !== false,
+    radius: Number(opts.radius ?? 12),
+    shadow: (opts.shadow ?? "lg") as string,
+    borderWidth: Number(opts.borderWidth ?? 1),
+    bodyText: (opts.bodyText ?? "This will permanently delete the selected items from your workspace.") as string,
+    primaryLabel: (opts.primaryLabel ?? "Delete") as string,
+    secondaryLabel: (opts.secondaryLabel ?? "Cancel") as string,
+    showSecondary: opts.showSecondary !== false,
+    width: (opts.width ?? "sm") as "xs" | "sm" | "md" | "lg",
+    overlayOpacity: Number(opts.overlayOpacity ?? 48),
+    paddingH: Number(opts.paddingH ?? 24),
+    paddingV: Number(opts.paddingV ?? 20),
+    skeletonId: (cfg?.skeletonId ?? "1") as string,
+    borderColor: (opts.borderColor ?? "#e4e4e7") as string,
+  };
+}
+
 function ModalChrome({
-  title,
-  radiusStep,
+  opts,
   children,
   footer,
   style,
-  square = false,
   onClose,
+  iconButtonResolve,
+  resolve,
+  parentProperties,
 }: {
-  title: string;
-  radiusStep: number;
+  opts: ModalResolvedOpts;
   children: ReactNode;
   footer?: ReactNode;
   style?: CSSProperties;
-  square?: boolean;
   onClose?: () => void;
+  iconButtonResolve?: Resolver;
+  resolve: Resolver;
+  parentProperties?: Record<string, any>;
 }) {
+  const bgColor = resolve("container.bg") ?? tv("surface-elevated");
+  const bColor = resolve("container.border") ?? tv("border-muted");
+
+  const iconBtnSize = (parentProperties?.["iconButton.size"] as any) ?? "sm";
+  const iconBtnVariant = (parentProperties?.["iconButton.variant"] as any) ?? "ghost";
+
   return (
     <div
       role="dialog"
-      aria-label={title}
+      aria-label={opts.title}
       style={{
-        background: tv("surface-elevated"),
-        border: `1px solid ${tv("border-default")}`,
-        borderRadius: square ? 0 : rv(radiusStep),
-        boxShadow: "var(--ark-shadow-high)",
+        backgroundColor: bgColor,
+        border: `${opts.borderWidth}px solid ${bColor}`,
+        borderRadius: `${opts.radius}px`,
+        boxShadow: SHADOWS[opts.shadow] ?? SHADOWS.lg,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
+        width: "100%",
+        height: "100%",
         ...style,
       }}
     >
@@ -54,50 +127,72 @@ function ModalChrome({
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          padding: `${sv(2)} ${sv(3)}`,
-          borderBottom: `1px solid ${tv("border-muted")}`,
+          justifyContent: opts.align === "center" ? "center" : "space-between",
+          padding: `${opts.paddingV / 1.5}px ${opts.paddingH}px`,
+          borderBottom: opts.showDivider ? `1px solid ${bColor}` : "none",
+          position: "relative",
           flexShrink: 0,
         }}
       >
-        <span
-          style={{
-            color: tv("text-primary"),
-            fontSize: "var(--ark-text-sm)",
-            fontWeight: 700,
-          }}
-        >
-          {title}
-        </span>
-        <button
-          type="button"
-          aria-label="Close dialog"
-          onClick={onClose}
-          style={{
-            color: tv("text-muted"),
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            display: "flex",
-            padding: sv(1),
-            borderRadius: rv(1),
-          }}
-        >
-          <X size={14} />
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", textAlign: opts.align, width: "100%" }}>
+          <span
+            style={{
+              color: tv("text-primary"),
+              fontSize: "var(--ark-text-base)",
+              fontWeight: 700,
+            }}
+          >
+            {opts.title}
+          </span>
+          {opts.subtitle && (
+            <span
+              style={{
+                color: tv("text-muted"),
+                fontSize: "var(--ark-text-xs)",
+                marginTop: "2px",
+              }}
+            >
+              {opts.subtitle}
+            </span>
+          )}
+        </div>
+
+        {opts.showClose && (
+          <div
+            style={{
+              position: "absolute",
+              right: `${opts.paddingH / 1.5}px`,
+              top: "50%",
+              transform: "translateY(-50%)",
+            }}
+          >
+            <TokenIconButton
+              variant={iconBtnVariant}
+              size={iconBtnSize}
+              resolve={iconButtonResolve}
+              onClick={onClose}
+            >
+              <X size={14} />
+            </TokenIconButton>
+          </div>
+        )}
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: sv(3) }}>
+
+      {/* Body scroll area */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: `${opts.paddingV}px ${opts.paddingH}px` }}>
         {children}
       </div>
+
+      {/* Footer block */}
       {footer ? (
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
+            justifyContent: opts.align === "center" ? "center" : "space-between",
             alignItems: "center",
-            gap: sv(2),
-            padding: `${sv(2)} ${sv(3)}`,
-            borderTop: `1px solid ${tv("border-muted")}`,
+            gap: "12px",
+            padding: `${opts.paddingV / 1.5}px ${opts.paddingH}px`,
+            borderTop: opts.showDivider ? `1px solid ${bColor}` : "none",
             flexShrink: 0,
           }}
         >
@@ -110,7 +205,7 @@ function ModalChrome({
 
 function FieldRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: sv(1) }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}>
       <span
         style={{
           color: tv("text-secondary"),
@@ -125,67 +220,82 @@ function FieldRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function SplitFooter({ onClose }: { onClose?: () => void }) {
-  return (
-    <>
-      <span style={{ color: tv("text-muted"), fontSize: "var(--ark-text-xs)" }}>
-        Draft autosaved
-      </span>
-      <div style={{ display: "flex", gap: sv(2) }}>
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            background: "transparent",
-            color: tv("text-secondary"),
-            border: `1px solid ${tv("border-default")}`,
-            borderRadius: rv(2),
-            padding: `${sv(1)} ${sv(3)}`,
-            fontSize: "var(--ark-text-xs)",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          Cancel
-        </button>
-        <TokenButton size="sm" radiusStep={2} onClick={onClose}>
-          Save Transaction
-        </TokenButton>
-      </div>
-    </>
-  );
-}
-
-/** The modal body itself, positioned by skeleton inside a relative parent. */
 export function ModalSkeleton({
   skeletonId,
-  radiusStep,
   onClose,
 }: {
   skeletonId: string;
-  radiusStep: number;
   onClose?: () => void;
 }) {
-  const formRows = (twoCol: boolean) => (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: twoCol ? "1fr 1fr" : "1fr",
-        gap: sv(3),
-      }}
-    >
-      <FieldRow label="Payee">
-        <TokenInput size="sm" radiusStep={2} placeholder="Vendor name" />
-      </FieldRow>
-      <FieldRow label="Category">
-        <TokenSelect size="sm" radiusStep={2} value="Operating Budget" />
-      </FieldRow>
-      <FieldRow label="Amount">
-        <TokenInput size="sm" radiusStep={2} placeholder="0.00" />
-      </FieldRow>
-      <FieldRow label="Cost Center">
-        <TokenSelect size="sm" radiusStep={2} value="CC-104 · Platform" />
-      </FieldRow>
+  const opts = useResolvedModalOptions();
+
+  const cfg = useDesignSystem((s) => s.components.modal);
+  const parentProperties = cfg?.properties;
+  const mode = useDesignSystem((s) => s.currentPreviewMode);
+
+  const buttonResolve = useComponentBindings("button");
+  const iconButtonResolve = useComponentBindings("iconButton");
+  const inputResolve = useComponentBindings("input");
+  const selectResolve = useComponentBindings("select");
+  const alertResolve = useComponentBindings("alert");
+
+  const parentResolve = useComponentBindings("modal");
+  const childPrimaryButtonResolve = createChildResolver("primaryButton", parentResolve, buttonResolve);
+  const childSecondaryButtonResolve = createChildResolver("secondaryButton", parentResolve, buttonResolve);
+  const childIconButtonResolve = createChildResolver("iconButton", parentResolve, iconButtonResolve);
+  const childInputResolve = createChildResolver("input", parentResolve, inputResolve);
+  const childSelectResolve = createChildResolver("select", parentResolve, selectResolve);
+  const childAlertResolve = createChildResolver("alert", parentResolve, alertResolve);
+
+  // Retrieve primary and secondary button modifier options from parent properties
+  const primarySize = (parentProperties?.["primaryButton.size"] as any) ?? "sm";
+  const primaryVariant = (parentProperties?.["primaryButton.variant"] as any) ?? "filled";
+  const primaryPrefix = (parentProperties?.["primaryButton.prefixIcon"] as string) ?? "";
+  const primarySuffix = (parentProperties?.["primaryButton.suffixIcon"] as string) ?? "";
+
+  const secondarySize = (parentProperties?.["secondaryButton.size"] as any) ?? "sm";
+  const secondaryVariant = (parentProperties?.["secondaryButton.variant"] as any) ?? "outlined";
+  const secondaryPrefix = (parentProperties?.["secondaryButton.prefixIcon"] as string) ?? "";
+  const secondarySuffix = (parentProperties?.["secondaryButton.suffixIcon"] as string) ?? "";
+
+  const selectSize = (parentProperties?.["select.size"] as any) ?? "sm";
+  const inputSize = (parentProperties?.["input.size"] as any) ?? "sm";
+  const iconBtnSize = (parentProperties?.["iconButton.size"] as any) ?? "sm";
+  const iconBtnVariant = (parentProperties?.["iconButton.variant"] as any) ?? "ghost";
+
+  // Width translation
+  const widthMap = {
+    xs: "280px",
+    sm: "420px",
+    md: "600px",
+    lg: "820px",
+  };
+  const modalWidth = widthMap[opts.width] ?? widthMap.sm;
+
+  const footer = (
+    <div style={{ display: "flex", width: "100%", justifyContent: opts.align === "center" ? "center" : "flex-end", gap: "10px" }}>
+      {opts.showSecondary && (
+        <TokenButton
+          size={secondarySize}
+          variant={secondaryVariant}
+          prefixIcon={secondaryPrefix}
+          suffixIcon={secondarySuffix}
+          resolve={childSecondaryButtonResolve}
+          onClick={onClose}
+        >
+          {opts.secondaryLabel}
+        </TokenButton>
+      )}
+      <TokenButton
+        size={primarySize}
+        variant={primaryVariant}
+        prefixIcon={primaryPrefix}
+        suffixIcon={primarySuffix}
+        resolve={childPrimaryButtonResolve}
+        onClick={onClose}
+      >
+        {opts.primaryLabel}
+      </TokenButton>
     </div>
   );
 
@@ -193,37 +303,46 @@ export function ModalSkeleton({
     case "2": // Right side-sheet
       return (
         <ModalChrome
-          title="Configure Ledger Filters"
-          radiusStep={0}
-          square
+          opts={opts}
+          resolve={parentResolve}
           onClose={onClose}
-          footer={<SplitFooter onClose={onClose} />}
+          footer={footer}
+          iconButtonResolve={childIconButtonResolve}
+          parentProperties={parentProperties}
           style={{
             position: "absolute",
             top: 0,
             right: 0,
             bottom: 0,
-            width: "min(340px, 62%)",
+            width: `min(${modalWidth}, 100%)`,
+            borderTopLeftRadius: `${opts.radius}px`,
+            borderBottomLeftRadius: `${opts.radius}px`,
+            borderTopRightRadius: 0,
+            borderBottomRightRadius: 0,
             borderTop: "none",
             borderRight: "none",
             borderBottom: "none",
+            maxHeight: "100%",
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: sv(3) }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5", marginBottom: "8px" }}>
+              {opts.bodyText}
+            </p>
             <FieldRow label="Date Range">
-              <TokenSelect size="sm" radiusStep={2} value="Last 30 days" />
+              <TokenSelect size={selectSize} value="Last 30 days" resolve={childSelectResolve} />
             </FieldRow>
             <FieldRow label="Status">
-              <TokenSelect size="sm" radiusStep={2} value="Cleared + Pending" />
+              <TokenSelect size={selectSize} value="Cleared + Pending" resolve={childSelectResolve} />
             </FieldRow>
             <FieldRow label="Minimum Amount">
-              <TokenInput size="sm" radiusStep={2} placeholder="0.00" />
+              <TokenInput size={inputSize} placeholder="0.00" resolve={childInputResolve} />
             </FieldRow>
             <FieldRow label="Category">
-              <TokenSelect size="sm" radiusStep={2} value="All categories" />
+              <TokenSelect size={selectSize} value="All categories" resolve={childSelectResolve} />
             </FieldRow>
             <FieldRow label="Search Memo">
-              <TokenInput size="sm" radiusStep={2} placeholder="Contains…" />
+              <TokenInput size={inputSize} placeholder="Contains…" resolve={childInputResolve} />
             </FieldRow>
           </div>
         </ModalChrome>
@@ -232,31 +351,56 @@ export function ModalSkeleton({
     case "3": // Full-screen overlay
       return (
         <ModalChrome
-          title="Compose Budget Report"
-          radiusStep={radiusStep}
+          opts={opts}
+          resolve={parentResolve}
           onClose={onClose}
-          footer={<SplitFooter onClose={onClose} />}
-          style={{ position: "absolute", inset: sv(2) }}
+          footer={footer}
+          iconButtonResolve={childIconButtonResolve}
+          parentProperties={parentProperties}
+          style={{ 
+            position: "absolute", 
+            inset: "20px",
+            width: "calc(100% - 40px)",
+            height: "calc(100% - 40px)"
+          }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: sv(3), height: "100%" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px", height: "100%", maxWidth: "600px", width: "100%", margin: "0 auto" }}>
+            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5" }}>
+              {opts.bodyText}
+            </p>
             <FieldRow label="Report Title">
-              <TokenInput size="md" radiusStep={2} placeholder="FY26 Q3 Consolidated Spend" />
+              <TokenInput size={inputSize} placeholder="FY26 Q3 Consolidated Spend" resolve={childInputResolve} />
             </FieldRow>
             <div
               style={{
                 flex: 1,
-                minHeight: 60,
-                border: `1px dashed ${tv("border-default")}`,
-                borderRadius: rv(2),
+                minHeight: 100,
+                border: `1px dashed ${opts.borderColor}`,
+                borderRadius: `${opts.radius - 4 > 0 ? opts.radius - 4 : 4}px`,
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                color: tv("text-muted"),
-                fontSize: "var(--ark-text-xs)",
-                fontFamily: "var(--ark-font-mono)",
+                padding: "20px",
+                gap: "12px",
+                backgroundColor: tv("surface-subtle"),
               }}
             >
-              document composition canvas
+              <div style={{ width: "100%", maxWidth: "400px" }}>
+                <TokenAlert
+                  variant={(parentProperties?.["alert.variant"] as any) ?? "info"}
+                  mode={mode}
+                  title="Document Composition Canvas"
+                  body="Drag elements here or edit parameters to update."
+                  style={(parentProperties?.["alert.style"] as any) ?? "subtle"}
+                  accent={(parentProperties?.["alert.accent"] as any) ?? "left"}
+                  icon={parentProperties?.["alert.icon"] !== false}
+                  resolve={childAlertResolve}
+                />
+              </div>
+              <span style={{ color: tv("text-muted"), fontSize: "var(--ark-text-xs)", fontFamily: "var(--ark-font-mono)" }}>
+                composition workbench
+              </span>
             </div>
           </div>
         </ModalChrome>
@@ -265,46 +409,78 @@ export function ModalSkeleton({
     case "4": // Bottom-sheet
       return (
         <ModalChrome
-          title="Attach Receipt Media"
-          radiusStep={radiusStep}
+          opts={opts}
+          resolve={parentResolve}
           onClose={onClose}
+          footer={footer}
+          iconButtonResolve={childIconButtonResolve}
+          parentProperties={parentProperties}
           style={{
             position: "absolute",
-            left: 0,
-            right: 0,
+            left: "50%",
+            transform: "translateX(-50%)",
             bottom: 0,
-            height: "58%",
+            width: `min(${modalWidth}, 100%)`,
+            height: "65%",
+            borderTopLeftRadius: `${opts.radius}px`,
+            borderTopRightRadius: `${opts.radius}px`,
             borderBottomLeftRadius: 0,
             borderBottomRightRadius: 0,
             borderBottom: "none",
+            maxHeight: "100%",
           }}
         >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: sv(2),
-            }}
-          >
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                style={{
-                  aspectRatio: "1 / 1",
-                  background: tv("surface-subtle"),
-                  border: `1px solid ${tv("border-muted")}`,
-                  borderRadius: rv(2),
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: tv("text-muted"),
-                  fontSize: "var(--ark-text-xs)",
-                  fontFamily: "var(--ark-font-mono)",
-                }}
-              >
-                {String(i + 1).padStart(2, "0")}
-              </div>
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", height: "100%" }}>
+            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5", marginBottom: "8px" }}>
+              {opts.bodyText}
+            </p>
+            
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
+                alignContent: "start",
+                gap: "10px",
+                overflowY: "auto",
+                flex: 1,
+                paddingBottom: "10px",
+              }}
+            >
+              {[
+                { icon: Folder, name: "Ledgers.pdf" },
+                { icon: File, name: "Receipt_0451.png" },
+                { icon: File, name: "Receipt_0452.png" },
+                { icon: Sparkles, name: "Audit_Summary.docx" },
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    aspectRatio: "1 / 1",
+                    background: tv("surface-subtle"),
+                    border: `1px solid ${opts.borderColor}`,
+                    borderRadius: `${opts.radius - 4 > 0 ? opts.radius - 4 : 4}px`,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "8px",
+                    gap: "6px",
+                    position: "relative",
+                  }}
+                >
+                  <item.icon size={20} style={{ color: tv("action-primary-default") }} />
+                  <span style={{ color: tv("text-primary"), fontSize: "10px", fontWeight: 500, textAlign: "center", width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {item.name}
+                  </span>
+                  
+                  <div style={{ position: "absolute", top: 4, right: 4 }}>
+                    <TokenIconButton variant={iconBtnVariant} size={iconBtnSize} resolve={childIconButtonResolve}>
+                      <Trash size={10} style={{ color: tv("text-muted") }} />
+                    </TokenIconButton>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </ModalChrome>
       );
@@ -312,20 +488,50 @@ export function ModalSkeleton({
     default: // 1 — Centered overlay
       return (
         <ModalChrome
-          title="New Transaction"
-          radiusStep={radiusStep}
+          opts={opts}
+          resolve={parentResolve}
           onClose={onClose}
-          footer={<SplitFooter onClose={onClose} />}
+          footer={footer}
+          iconButtonResolve={childIconButtonResolve}
+          parentProperties={parentProperties}
           style={{
             position: "absolute",
-            top: "50%",
+            top: opts.position === "top" ? "10%" : opts.position === "bottom" ? "auto" : "50%",
+            bottom: opts.position === "bottom" ? "10%" : "auto",
             left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: "min(420px, 86%)",
-            maxHeight: "88%",
+            transform: opts.position === "top" ? "translate(-50%, 0)" : opts.position === "bottom" ? "translate(-50%, 0)" : "translate(-50%, -50%)",
+            width: `min(${modalWidth}, 90%)`,
+            maxHeight: "95%",
+            height: "fit-content",
           }}
         >
-          {formRows(true)}
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-sm)", lineHeight: "1.5" }}>
+              {opts.bodyText}
+            </p>
+            
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "12px",
+                marginTop: "4px",
+              }}
+            >
+              <FieldRow label="Payee">
+                <TokenInput size={inputSize} state="active" value="Acme Corp" placeholder="Vendor name" resolve={childInputResolve} />
+              </FieldRow>
+              <FieldRow label="Category">
+                <TokenSelect size={selectSize} state="active" value="Operating Budget" resolve={childSelectResolve} />
+              </FieldRow>
+              <FieldRow label="Amount">
+                <TokenInput size={inputSize} state="active" value="1,240.00" placeholder="0.00" resolve={childInputResolve} />
+              </FieldRow>
+              <FieldRow label="Cost Center">
+                <TokenSelect size={selectSize} state="active" value="CC-104 · Platform" resolve={childSelectResolve} />
+              </FieldRow>
+            </div>
+          </div>
         </ModalChrome>
       );
   }
@@ -334,29 +540,37 @@ export function ModalSkeleton({
 /** Backdrop + modal, for embedding inside any relative container. */
 export function ModalScene({
   skeletonId,
-  radiusStep,
   onClose,
 }: {
   skeletonId: string;
-  radiusStep: number;
+  radiusStep?: number;
   onClose?: () => void;
 }) {
+  const opts = useResolvedModalOptions();
+  const resolve = useComponentBindings("modal");
+  const overlayBg = resolve("overlay.bg") ?? `rgba(9, 9, 11, ${opts.overlayOpacity / 100})`;
+
   return (
-    <div style={{ position: "absolute", inset: 0 }}>
+    <div style={{ position: "relative", width: "100%", height: "100%", minHeight: "360px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* Backdrop */}
       <div
-        onClick={onClose}
+        onClick={opts.forcedAction ? undefined : onClose}
         style={{
           position: "absolute",
           inset: 0,
-          background: "rgba(9, 9, 11, 0.55)",
+          backgroundColor: overlayBg,
           backdropFilter: "blur(1.5px)",
+          zIndex: 1,
         }}
       />
-      <ModalSkeleton
-        skeletonId={skeletonId}
-        radiusStep={radiusStep}
-        onClose={onClose}
-      />
+      
+      {/* Container wrapper for modal */}
+      <div style={{ position: "absolute", inset: 0, zIndex: 2 }}>
+        <ModalSkeleton
+          skeletonId={skeletonId}
+          onClose={onClose}
+        />
+      </div>
     </div>
   );
 }

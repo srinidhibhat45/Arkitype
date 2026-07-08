@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,28 +10,28 @@
  * `ink` = surfaces, `fg` = text. Luminance flips per theme by design.
  */
 :root {
-  --c-ink: 247 247 245; /* page — warm near-white */
-  --c-ink-panel: 255 255 255; /* sunken panels, inputs */
-  --c-ink-raised: 255 255 255; /* raised cards, popovers */
-  --c-ink-hover: 240 240 238; /* interactive hover wash */
-  --c-line: 228 228 228; /* hairline dividers */
-  --c-line-strong: 208 208 208; /* emphasised borders */
-  --c-fg: 24 24 27; /* primary text */
-  --c-fg-dim: 82 82 91; /* secondary text */
-  --c-fg-mute: 122 122 128; /* tertiary / labels */
+  --c-ink: 232 232 235; /* warmed up slightly darker grey, #e8e8eb */
+  --c-ink-panel: 244 244 246; /* sunken inputs/panels, #f4f4f6 */
+  --c-ink-raised: 255 255 255; /* white elements */
+  --c-ink-hover: 220 220 224;
+  --c-line: 200 200 205; /* darker divider lines */
+  --c-line-strong: 142 142 147; /* high contrast border strokes */
+  --c-fg: 18 18 20; /* pure solid black text */
+  --c-fg-dim: 60 60 65; /* highly legible secondary text */
+  --c-fg-mute: 85 85 90; /* highly legible tertiary text */
   color-scheme: light;
 }
 
 .dark {
-  --c-ink: 12 12 13;
-  --c-ink-panel: 18 18 20;
-  --c-ink-raised: 24 24 27;
-  --c-ink-hover: 30 30 33;
-  --c-line: 35 35 39;
-  --c-line-strong: 46 46 51;
-  --c-fg: 244 244 245;
-  --c-fg-dim: 161 161 170;
-  --c-fg-mute: 110 110 118;
+  --c-ink: 26 26 30; /* lighter charcoal background, #1a1a1e */
+  --c-ink-panel: 34 34 39; /* panel background, #222227 */
+  --c-ink-raised: 42 42 48; /* raised cards, #2a2a30 */
+  --c-ink-hover: 50 50 57; /* hover wash, #323239 */
+  --c-line: 60 60 67; /* stronger dividers, #3c3c43 */
+  --c-line-strong: 80 80 88; /* stronger borders, #505058 */
+  --c-fg: 255 255 255; /* pure white text */
+  --c-fg-dim: 190 190 198; /* higher contrast secondary, #bebec6 */
+  --c-fg-mute: 145 145 152; /* higher contrast tertiary, #919198 */
   color-scheme: dark;
 }
 
@@ -40,6 +42,11 @@ body {
   color: rgb(var(--c-fg));
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Global input font accessibility override */
+input, select, textarea {
+  font-weight: 600 !important;
 }
 
 /* Fade the chrome when the appearance toggle flips themes. */
@@ -85,53 +92,39 @@ body {
   animation: ark-spin 0.8s linear infinite;
 }
 
-/* ── Component Studio: a live preview flanked by parameter clusters ──
-   Container queries so the layout tracks the studio's own width, not the
-   viewport (the rail + step aside eat ~600px before the studio even starts). */
+/* ── Component Studio: enlarged preview in the center canvas ──
+   Controls have moved to the right inspector pane; the studio scope
+   is kept for any future container-query needs. */
 .studio-scope {
   container-type: inline-size;
 }
-.studio-grid {
-  display: grid;
-  gap: 1.25rem;
-  grid-template-columns: 1fr;
-  align-items: start;
+
+/* Figma Dotted Canvas Grid */
+.canvas-dotted {
+  background-color: rgb(var(--c-ink));
+  background-image: radial-gradient(rgb(var(--c-line-strong) / 0.75) 1.25px, transparent 1.25px);
+  background-size: 16px 16px;
 }
-.studio-grid > .studio-canvas {
-  order: -1; /* the preview leads when everything is stacked */
+.dark .canvas-dotted {
+  background-color: #0d0d0f;
+  background-image: radial-gradient(#222226 1.25px, transparent 1.25px);
 }
 
-/* cols-2 — preview + one docked rail (few clusters) */
-@container (min-width: 560px) {
-  .studio-grid.cols-2 {
-    grid-template-columns: minmax(0, 1fr) minmax(200px, 240px);
-  }
-  .studio-grid.cols-2 > .studio-canvas {
-    order: 0;
-  }
+@keyframes generative-border {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
-/* cols-3 — preview on top of two rails, then a full left/right flank */
-@container (min-width: 500px) {
-  .studio-grid.cols-3 {
-    grid-template-columns: 1fr 1fr;
-  }
-  .studio-grid.cols-3 > .studio-canvas {
-    grid-column: 1 / -1;
-  }
-}
-@container (min-width: 840px) {
-  .studio-grid.cols-3 {
-    grid-template-columns: minmax(184px, 224px) minmax(0, 1fr) minmax(184px, 224px);
-  }
-  .studio-grid.cols-3 > .studio-left {
-    grid-column: 1;
-  }
-  .studio-grid.cols-3 > .studio-canvas {
-    grid-column: 2;
-    order: 0;
-  }
-  .studio-grid.cols-3 > .studio-right {
-    grid-column: 3;
-  }
+.generative-loading-border {
+  background-size: 200% 200% !important;
+  background-image: linear-gradient(
+    90deg,
+    var(--ark-action-primary-default, #0052cc),
+    #8f00ff,
+    #ff007f,
+    var(--ark-action-primary-default, #0052cc)
+  ) !important;
+  animation: generative-border 2.5s ease infinite !important;
+  color: #ffffff !important;
 }

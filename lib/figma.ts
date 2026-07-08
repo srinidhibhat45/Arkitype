@@ -15,7 +15,7 @@ import {
 } from "@/store/useDesignSystem";
 import { hexToFigmaRgba, isValidHex, rampStepLabels } from "@/lib/color";
 import { resolveToken } from "@/lib/tokens";
-import { generateTypeScale } from "@/lib/typography";
+import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 
 export interface FigmaRgba {
   r: number;
@@ -88,9 +88,10 @@ export function compileFigmaBundle(state: ArkitypeState): FigmaBundle {
     });
   });
 
+  const radiusNames = primitives.radiusNames ?? RADII_NAMES;
   primitives.radii.forEach((px, i) => {
     primitiveVars.push({
-      name: `radius/${RADII_NAMES[i]}`,
+      name: `radius/${radiusNames[i]}`,
       resolvedType: "FLOAT",
       scopes: ["CORNER_RADIUS"],
       valuesByMode: { [VALUE_MODE]: px },
@@ -103,7 +104,7 @@ export function compileFigmaBundle(state: ArkitypeState): FigmaBundle {
     sizeOverrides: t.sizeOverrides,
     leadingOverrides: t.leadingOverrides,
     stepAssign: t.stepAssign,
-  });
+  }, t.stepDefs ?? STEP_DEFS);
   const weightValue = (name: string): number =>
     t.weights.find((w) => w.name === name)?.value ?? 400;
   typeSteps.forEach((s) => {

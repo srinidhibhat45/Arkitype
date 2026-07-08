@@ -25,7 +25,7 @@ import {
 
 export type IconButtonVariant = "solid" | "outline" | "ghost";
 
-const ICON_BOX: Record<SizeToken, number> = { sm: 28, md: 34, lg: 40 };
+const ICON_BOX: Record<SizeToken, number> = { sm: 28, md: 34, lg: 40, xl: 46 };
 
 export function TokenIconButton({
   state = "default",
@@ -33,12 +33,16 @@ export function TokenIconButton({
   size = "md",
   radiusStep = 2,
   resolve = NO_BINDINGS,
+  children,
+  onClick,
 }: {
   state?: InteractionState;
   variant?: IconButtonVariant;
   size?: SizeToken;
   radiusStep?: number;
   resolve?: Resolver;
+  children?: React.ReactNode;
+  onClick?: () => void;
 }) {
   const disabled = state === "disabled";
   const box = ICON_BOX[size];
@@ -92,8 +96,8 @@ export function TokenIconButton({
   };
 
   return (
-    <button type="button" style={style} disabled={disabled} aria-label="Add">
-      <Plus size={pxNum(r("icon.size"), Math.round(box * 0.42))} strokeWidth={2.2} />
+    <button type="button" style={style} disabled={disabled} aria-label="Action" onClick={onClick}>
+      {children ? children : <Plus size={pxNum(r("icon.size"), Math.round(box * 0.42))} strokeWidth={2.2} />}
     </button>
   );
 }
@@ -316,12 +320,14 @@ export function TokenSearchField({
   size = "md",
   radiusStep = 2,
   placeholder = "Search transactions…",
+  value,
   resolve = NO_BINDINGS,
 }: {
   state?: InteractionState;
   size?: SizeToken;
   radiusStep?: number;
   placeholder?: string;
+  value?: string;
   resolve?: Resolver;
 }) {
   const s = SIZE_MAP[size];
@@ -368,7 +374,7 @@ export function TokenSearchField({
           textOverflow: "ellipsis",
         }}
       >
-        {filled ? "TXN-0459" : placeholder}
+        {value !== undefined ? value : (filled ? "TXN-0459" : placeholder)}
       </span>
       {filled ? (
         <X size={pxNum(r("clearIcon.size"), 13)} style={{ color: r("clearIcon.color") ?? tv("text-muted"), cursor: "pointer", flexShrink: 0 }} aria-label="Clear" />

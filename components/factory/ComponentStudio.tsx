@@ -21,7 +21,25 @@
  */
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Moon, RotateCcw, Sun } from "lucide-react";
+import {
+  Moon,
+  RotateCcw,
+  Sun,
+  AlignLeft,
+  AlignCenter,
+  ArrowUpToLine,
+  ArrowDownToLine,
+  CornerUpRight,
+  Square,
+  ArrowLeftRight,
+  ArrowUpDown,
+  Flame,
+  Sparkles,
+  ArrowRight,
+  Lock,
+  Eye,
+  Sliders,
+} from "lucide-react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
 import {
@@ -40,6 +58,7 @@ import {
 } from "@/lib/componentSchema";
 import { useInspectorData } from "@/components/factory/studioShared";
 import { usePartBox } from "@/components/factory/useHighlight";
+import { HexInput } from "@/components/ui/controls";
 import {
   OptionRow,
   OptionToggle,
@@ -114,6 +133,9 @@ import {
   TokenListItem,
   TokenStatGrid,
 } from "@/components/factory/PatternComponents";
+import { ModalScene } from "@/components/factory/ModalSkeletons";
+import { TabsSkeleton } from "@/components/factory/TabsSkeletons";
+import { TableSkeleton } from "@/components/factory/TableSkeletons";
 
 /* ── which controls expose a Size card ── */
 
@@ -131,6 +153,7 @@ const SIZE_OPTIONS = [
   { label: "Sm", value: "sm" },
   { label: "Md", value: "md" },
   { label: "Lg", value: "lg" },
+  { label: "Xl", value: "xl" },
 ];
 
 /* ── one representative instance of a component, in one state/variant ── */
@@ -141,7 +164,7 @@ type HeroCtx = {
   radiusStep: number;
   resolve: Resolver;
   mode: PreviewMode;
-  opts: Record<string, string | boolean>;
+  opts: Record<string, string | boolean | number>;
 };
 
 function renderHero(id: string, ctx: HeroCtx): ReactNode {
@@ -151,7 +174,17 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
   switch (id) {
     /* controls */
     case "button":
-      return <TokenButton state={state} size={size} radiusStep={radiusStep} resolve={resolve} prefixIcon suffixIcon />;
+      return (
+        <TokenButton
+          state={state}
+          size={size}
+          variant={os("variant") as any}
+          radiusStep={radiusStep}
+          resolve={resolve}
+          prefixIcon={os("prefixIcon")}
+          suffixIcon={os("suffixIcon")}
+        />
+      );
     case "input":
       return <TokenInput state={state} size={size} radiusStep={radiusStep} resolve={resolve} />;
     case "textarea":
@@ -338,6 +371,12 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
           <TokenStatGrid mode={mode} radiusStep={radiusStep} resolve={resolve} />
         </div>
       );
+    case "modal":
+      return <ModalScene skeletonId={os("skeletonId") || "1"} />;
+    case "tabs":
+      return <TabsSkeleton skeletonId={os("skeletonId") || "1"} />;
+    case "table":
+      return <TableSkeleton skeletonId={os("skeletonId") || "1"} />;
 
     default:
       return <span className="text-[12px] text-fg-mute">No preview</span>;
@@ -380,9 +419,9 @@ function ToolbarSegmented<T extends string>({
   );
 }
 
-/* ── the studio ── */
+/* ── shared studio hooks ── */
 
-export function ComponentStudio({ id }: { id: string }) {
+function useStudioData(id: string) {
   const spec = COMPONENT_SPECS[id];
   const cfg = useDesignSystem((s) => s.components[id]);
   const bindings = useDesignSystem((s) => s.components[id]?.bindings);
@@ -400,13 +439,60 @@ export function ComponentStudio({ id }: { id: string }) {
   const radiusStep = Number(properties?.radiusStep ?? 2);
   const overrideCount = bindings ? Object.keys(bindings).length : 0;
 
-  const [activeState, setActiveState] = useState<CState>(spec?.states[0] ?? "default");
-  const mode = currentMode;
+  return {
+    spec,
+    cfg,
+    bindings,
+    setBinding,
+    clearBinding,
+    resetAll,
+    setProperty,
+    currentMode,
+    setPreviewMode,
+    resolve,
+    data,
+    properties,
+    size,
+    radiusStep,
+    overrideCount,
+  };
+}
 
-  // Hover-link: a parameter cluster names a schema part; the overlay measures
-  // its `data-ark-part` box inside the preview and rings it.
+/* ── Cluster type shared between preview and controls ── */
+export type Cluster = {
+  key: string;
+  title: string;
+  count?: number;
+  part: string | null;
+  content: ReactNode;
+};
+
+/* ── preview component (hero + toolbar + strip) ── */
+
+export function ComponentStudioPreview({
+  id,
+  hoveredPart,
+  setHoveredPart,
+}: {
+  id: string;
+  hoveredPart: string | null;
+  setHoveredPart: (part: string | null) => void;
+}) {
+  const {
+    spec,
+    setProperty,
+    currentMode: mode,
+    setPreviewMode,
+    resolve,
+    size,
+    radiusStep,
+    overrideCount,
+    resetAll,
+    properties,
+  } = useStudioData(id);
+
+  const [activeState, setActiveState] = useState<CState>(spec?.states[0] ?? "default");
   const previewRef = useRef<HTMLDivElement>(null);
-  const [hoveredPart, setHoveredPart] = useState<string | null>(null);
   const box = usePartBox(previewRef, hoveredPart);
 
   if (!spec) return null;
@@ -414,191 +500,11 @@ export function ComponentStudio({ id }: { id: string }) {
   const axis = previewAxis(id);
   const opts = resolveOptions(id, properties);
   const axisValue = axis ? (opts[axis.key] as string) : undefined;
-  const options = componentOptions(id).filter((o) => !o.previewAxis);
   const multiState = spec.states.length > 1;
   const hoveredLabel = spec.parts.find((p) => p.id === hoveredPart)?.label ?? "";
 
-  const hero = (st: CState, o: Record<string, string | boolean> = opts): ReactNode =>
+  const hero = (st: CState, o: Record<string, string | boolean | number> = opts): ReactNode =>
     renderHero(id, { state: st, size, radiusStep, resolve, mode, opts: o });
-
-  /* one card per schema property (colour / scale / space / dimension) */
-  const renderPropCard = (prop: PropSpec): ReactNode => {
-    const st = prop.stateful ? activeState : undefined;
-    const key = bindingKey(prop.key, st);
-    const { binding, overridden } = currentBinding(bindings, prop, activeState);
-    const propStates = prop.states ?? spec.states;
-
-    let control: ReactNode;
-    if (prop.type === "color") {
-      control = (
-        <>
-          <TokenSwatchCard data={data} binding={binding} onPick={(b) => setBinding(id, key, b)} />
-          {prop.stateful && propStates.length > 1 ? (
-            <button
-              type="button"
-              onClick={() => {
-                for (const s of propStates) setBinding(id, bindingKey(prop.key, s), binding);
-              }}
-              className="mt-1 text-[9.5px] text-fg-mute underline decoration-dotted underline-offset-2 hover:text-fg-dim"
-            >
-              apply to all states
-            </button>
-          ) : null}
-        </>
-      );
-    } else if (prop.type === "space") {
-      const spaceOpts = data.spaceOptions;
-      const idx = Math.min(
-        Math.max(binding.startsWith("space:") ? Number(binding.slice(6)) - 1 : 0, 0),
-        spaceOpts.length - 1
-      );
-      control = (
-        <TokenSlider
-          value={idx}
-          min={0}
-          max={spaceOpts.length - 1}
-          valueLabel={spaceOpts[idx]?.label ?? `space-${idx + 1}`}
-          onChange={(v) => setBinding(id, key, `space:${v + 1}`)}
-        />
-      );
-    } else if (prop.type === "dimension") {
-      const n = binding.startsWith("px:") ? Number(binding.slice(3)) : Number(binding) || 0;
-      control = (
-        <TokenSlider
-          value={n}
-          min={prop.min ?? 0}
-          max={prop.max ?? 64}
-          valueLabel={`${n}px`}
-          onChange={(v) => setBinding(id, key, `px:${v}`)}
-        />
-      );
-    } else {
-      const scaleOpts =
-        prop.type === "radius"
-          ? data.radiusOptions
-          : prop.type === "textSize"
-            ? data.textOptions
-            : prop.type === "weight"
-              ? data.weightOptions
-              : data.fontOptions;
-      control = (
-        <TokenSegmented options={scaleOpts} value={binding} onChange={(v) => setBinding(id, key, v)} />
-      );
-    }
-
-    return (
-      <ParamCard
-        key={key}
-        label={prop.label}
-        overridden={overridden}
-        onReset={() => clearBinding(id, key)}
-      >
-        {control}
-      </ParamCard>
-    );
-  };
-
-  /* an Options-section control (functional choice, persisted to properties) */
-  const renderOption = (o: OptionSpec): ReactNode => {
-    const val = opts[o.key];
-    if (o.type === "boolean") {
-      return (
-        <OptionRow key={o.key} label={o.label}>
-          <OptionToggle value={val as boolean} onChange={(v) => setProperty(id, o.key, v)} />
-        </OptionRow>
-      );
-    }
-    return (
-      <ParamCard key={o.key} label={o.label}>
-        <TokenSegmented
-          options={(o.options ?? []).map((c) => ({ label: c.label, value: c.value }))}
-          value={val as string}
-          onChange={(v) => setProperty(id, o.key, v)}
-        />
-      </ParamCard>
-    );
-  };
-
-  const hasOptionsSection = options.length > 0 || SIZABLE.has(id);
-
-  /* parameter clusters: an Options group (functional choices) plus one group per
-     schema part. Each part cluster is a hover target that rings its region. */
-  type Cluster = {
-    key: string;
-    title: string;
-    count?: number;
-    part: string | null;
-    content: ReactNode;
-  };
-  const clusters: Cluster[] = [];
-  if (hasOptionsSection) {
-    clusters.push({
-      key: "options",
-      title: "Options",
-      part: null,
-      content: (
-        <>
-          {SIZABLE.has(id) ? (
-            <ParamCard
-              label="Size"
-              overridden={size !== "md"}
-              onReset={() => setProperty(id, "size", "md")}
-            >
-              <TokenSegmented
-                options={SIZE_OPTIONS}
-                value={size}
-                onChange={(v) => setProperty(id, "size", v)}
-              />
-            </ParamCard>
-          ) : null}
-          {options.map(renderOption)}
-        </>
-      ),
-    });
-  }
-  for (const part of spec.parts) {
-    clusters.push({
-      key: part.id,
-      title: part.label,
-      count: part.props.length,
-      part: part.id,
-      content: <>{part.props.map(renderPropCard)}</>,
-    });
-  }
-
-  // Flank the preview with two rails when there are enough clusters; otherwise
-  // dock a single rail beside it. Either way each cluster keeps its hover-link.
-  const dualRail = clusters.length >= 3;
-  const leftClusters = dualRail ? clusters.filter((_, i) => i % 2 === 0) : [];
-  const rightClusters = dualRail ? clusters.filter((_, i) => i % 2 === 1) : clusters;
-
-  const renderCluster = (c: Cluster): ReactNode => {
-    const active = c.part != null && hoveredPart === c.part;
-    return (
-      <div
-        key={c.key}
-        onMouseEnter={() => c.part && setHoveredPart(c.part)}
-        onMouseLeave={() =>
-          c.part && setHoveredPart((h) => (h === c.part ? null : h))
-        }
-        className={`rounded-2xl border p-3 transition-colors ${
-          active ? "border-line-strong bg-ink-panel" : "border-line bg-ink-panel/50"
-        }`}
-      >
-        <div className="mb-2.5 flex items-center justify-between px-0.5">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-fg-dim">
-            {c.title}
-          </span>
-          {c.count != null ? (
-            <span className="font-mono text-[10px] text-fg-mute">{c.count}</span>
-          ) : null}
-        </div>
-        <div className="space-y-2.5">{c.content}</div>
-      </div>
-    );
-  };
-
-  const RING = "#0d99ff"; // selection-blue ring; reads on light + dark previews
 
   /* the clickable canvas strip: states for controls, variants for display */
   const stripItems: Array<{ key: string; label: string; node: ReactNode; active: boolean; onClick: () => void }> =
@@ -614,11 +520,13 @@ export function ComponentStudio({ id }: { id: string }) {
         ? (axis.options ?? []).map((c) => ({
             key: c.value,
             label: c.label,
-            node: hero(activeState, { ...opts, [axis.key]: c.value }),
+            node: hero(activeState, { ...opts, [axis.key]: c.value } as Record<string, string | boolean | number>),
             active: c.value === axisValue,
             onClick: () => setProperty(id, axis.key, c.value),
           }))
         : [];
+
+  const RING = "#0d99ff";
 
   const dotted = {
     backgroundImage: "radial-gradient(circle, rgb(var(--c-fg) / 0.07) 1px, transparent 1px)",
@@ -676,95 +584,865 @@ export function ComponentStudio({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* grouped clusters flanking the live preview */}
-      <div className="studio-scope">
-        <div className={`studio-grid ${dualRail ? "cols-3" : "cols-2"}`}>
-          {dualRail ? (
-            <div className="studio-left space-y-4">
-              {leftClusters.map(renderCluster)}
-            </div>
-          ) : null}
-
-          <div className="studio-canvas">
-            <div className="rounded-2xl border border-line p-5" style={dotted}>
-              <div className="flex items-center justify-center py-8">
-                <div ref={previewRef} className="relative w-full max-w-lg">
-                  <ThemeFrame mode={mode} className="w-full">
-                    <div className="flex min-h-[180px] items-center justify-center p-10">
-                      {hero(activeState)}
-                    </div>
-                  </ThemeFrame>
-
-                  {/* hover-highlight overlay: rings the part named by the hovered cluster */}
-                  <div className="pointer-events-none absolute inset-0 z-20">
-                    <div
-                      className="absolute rounded-md"
-                      style={{
-                        top: (box?.top ?? 0) - 5,
-                        left: (box?.left ?? 0) - 5,
-                        width: (box?.width ?? 0) + 10,
-                        height: (box?.height ?? 0) + 10,
-                        boxShadow: `0 0 0 2px ${RING}`,
-                        background: `${RING}14`,
-                        opacity: box ? 1 : 0,
-                        // Fade only — snapping geometry avoids a fly-in from the corner.
-                        transition: "opacity 120ms ease-out",
-                      }}
-                    />
-                    {box ? (
-                      <span
-                        className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
-                        style={{ top: box.top - 7, left: box.left - 5, background: RING }}
-                      >
-                        {hoveredLabel}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
+      {/* enlarged live preview — full canvas width */}
+      <div className="rounded-2xl border border-line p-6" style={dotted}>
+        <div className="flex items-center justify-center py-10">
+          <div ref={previewRef} className="relative w-full">
+            <ThemeFrame mode={mode} className="w-full">
+              <div className="flex min-h-[240px] items-center justify-center p-10">
+                {hero(activeState)}
               </div>
+            </ThemeFrame>
 
-              {stripItems.length > 0 ? (
-                <div className="mt-6 border-t border-line pt-4">
-                  <div className="mb-3 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
-                    {multiState ? "Interaction states — click to edit" : `${axis?.label ?? "Variants"} — click to preview`}
-                  </div>
-                  <ThemeFrame mode={mode}>
-                    <div className="flex flex-wrap items-start gap-x-8 gap-y-5 p-5">
-                      {stripItems.map((it) => (
-                        <div
-                          key={it.key}
-                          role="button"
-                          tabIndex={0}
-                          onClick={it.onClick}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              it.onClick();
-                            }
-                          }}
-                          className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-3 transition-colors ${
-                            it.active
-                              ? "border-line-strong bg-ink-panel/60"
-                              : "border-transparent hover:border-line"
-                          }`}
-                        >
-                          {it.node}
-                          <span className={`text-[10px] ${it.active ? "text-fg" : "text-fg-mute"}`}>
-                            {it.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </ThemeFrame>
-                </div>
+            {/* hover-highlight overlay: rings the part named by the hovered cluster */}
+            <div className="pointer-events-none absolute inset-0 z-20">
+              <div
+                className="absolute rounded-md"
+                style={{
+                  top: (box?.top ?? 0) - 5,
+                  left: (box?.left ?? 0) - 5,
+                  width: (box?.width ?? 0) + 10,
+                  height: (box?.height ?? 0) + 10,
+                  boxShadow: `0 0 0 2px ${RING}`,
+                  background: `${RING}14`,
+                  opacity: box ? 1 : 0,
+                  transition: "opacity 120ms ease-out",
+                }}
+              />
+              {box ? (
+                <span
+                  className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
+                  style={{ top: box.top - 7, left: box.left - 5, background: RING }}
+                >
+                  {hoveredLabel}
+                </span>
               ) : null}
             </div>
           </div>
-
-          <div className="studio-right space-y-4">
-            {rightClusters.map(renderCluster)}
-          </div>
         </div>
+
+        {stripItems.length > 0 ? (
+          <div className="mt-6 border-t border-line pt-4">
+            <div className="mb-3 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
+              {multiState ? "Interaction states — click to edit" : `${axis?.label ?? "Variants"} — click to preview`}
+            </div>
+            <ThemeFrame mode={mode}>
+              <div className="flex flex-wrap items-start gap-x-8 gap-y-5 p-5">
+                {stripItems.map((it) => (
+                  <div
+                    key={it.key}
+                    role="button"
+                    tabIndex={0}
+                    onClick={it.onClick}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        it.onClick();
+                      }
+                    }}
+                    className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-3 transition-colors ${
+                      it.active
+                        ? "border-line-strong bg-ink-panel/60"
+                        : "border-transparent hover:border-line"
+                    }`}
+                  >
+                    {it.node}
+                    <span className={`text-[10px] ${it.active ? "text-fg" : "text-fg-mute"}`}>
+                      {it.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </ThemeFrame>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+import { useEffect } from "react";
+
+/* ── figma-style scrubbable numeric input ── */
+
+export function ScrubberInput({
+  label,
+  value,
+  min = 0,
+  max = 100,
+  step = 1,
+  onChange,
+  unit = "",
+  icon,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  onChange: (val: number) => void;
+  unit?: string;
+  icon?: ReactNode;
+}) {
+  const [inputValue, setInputValue] = useState(String(value));
+
+  useEffect(() => {
+    setInputValue(String(value));
+  }, [value]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startValue = value;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      // sensitivity: 1px of drag = 0.25 of step units
+      const deltaValue = Math.round((deltaX * 0.25) / step) * step;
+      const newValue = Math.min(max, Math.max(min, startValue + deltaValue));
+      onChange(newValue);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+    };
+
+    document.body.style.cursor = "ew-resize";
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+  };
+
+  const handleBlur = () => {
+    const num = parseFloat(inputValue);
+    if (!isNaN(num)) {
+      const newValue = Math.min(max, Math.max(min, num));
+      onChange(newValue);
+    } else {
+      setInputValue(String(value));
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.currentTarget.blur();
+    }
+  };
+
+  // Map label to Figma-like icons
+  let resolvedIcon: ReactNode = icon;
+  if (!resolvedIcon && label) {
+    const l = label.toLowerCase();
+    if (l.includes("radius")) resolvedIcon = <CornerUpRight size={11} className="text-fg-mute" />;
+    else if (l.includes("border") || l.includes("thickness")) resolvedIcon = <Square size={11} className="text-fg-mute" />;
+    else if (l.includes("opacity")) resolvedIcon = <Eye size={11} className="text-fg-mute" />;
+    else if (l.includes("paddingh") || l.includes("padding · horizontal") || l.includes("horizontal")) resolvedIcon = <ArrowLeftRight size={11} className="text-fg-mute" />;
+    else if (l.includes("paddingv") || l.includes("padding · vertical") || l.includes("vertical")) resolvedIcon = <ArrowUpDown size={11} className="text-fg-mute" />;
+  }
+
+  const shorthandLabel = label.replace(/Modal size \/ width|Backdrop opacity|Elevation shadow|Border thickness|Corner radius|Body text description|Primary action text|Secondary action text/gi, (m) => {
+    if (/width/i.test(m)) return "W";
+    if (/opacity/i.test(m)) return "Opacity";
+    if (/shadow/i.test(m)) return "Shadow";
+    if (/thickness/i.test(m)) return "Border";
+    if (/radius/i.test(m)) return "Radius";
+    if (/text/i.test(m)) return "Text";
+    if (/primary/i.test(m)) return "Primary";
+    if (/secondary/i.test(m)) return "Cancel";
+    return m;
+  });
+
+  return (
+    <div className="flex h-7 items-center justify-between rounded-lg border border-line bg-ink px-2 py-0.5 transition-colors focus-within:border-focus hover:border-line-strong">
+      {resolvedIcon ? (
+        <span
+          onMouseDown={handleMouseDown}
+          className="cursor-ew-resize select-none flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wide text-fg-mute hover:text-fg mr-1 shrink-0"
+          title={`Drag to slide: ${label}`}
+        >
+          {resolvedIcon}
+          <span className="text-[8px] font-medium text-fg-mute">{shorthandLabel.substring(0, 3)}</span>
+        </span>
+      ) : label ? (
+        <span
+          onMouseDown={handleMouseDown}
+          className="cursor-ew-resize select-none text-[9px] font-bold uppercase tracking-wide text-fg-mute hover:text-fg mr-1 shrink-0"
+          title="Drag to slide value"
+        >
+          {shorthandLabel}
+        </span>
+      ) : (
+        <span
+          onMouseDown={handleMouseDown}
+          className="cursor-ew-resize select-none text-[10px] text-fg-mute hover:text-fg mr-1 shrink-0"
+          title="Drag to slide value"
+        >
+          ↔
+        </span>
+      )}
+      <div className="flex items-center gap-0.5 min-w-0 flex-1 justify-end">
+        <input
+          type="text"
+          value={inputValue}
+          onChange={handleInputChange}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          className="w-full bg-transparent text-right font-mono text-[10.5px] text-fg focus:outline-none"
+        />
+        {unit ? (
+          <span className="text-[9px] text-fg-mute font-mono shrink-0 ml-0.5">{unit}</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* ── styled compact dropdown menu selector ── */
+
+export function CompactSelect({
+  options,
+  value,
+  onChange,
+  className = "w-28",
+}: {
+  options: Array<{ label: string; value: string }>;
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={`relative ${className}`}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-7 w-full appearance-none rounded-lg border border-line bg-ink pl-2.5 pr-7 text-left font-mono text-[10.5px] text-fg hover:border-line-strong focus:border-focus focus:outline-none"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[8px] text-fg-mute font-mono">
+        ▼
+      </span>
+    </div>
+  );
+}
+
+/* ── compact icon segmented control ── */
+
+export function IconSegmented({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<{ label: string; value: string; icon?: ReactNode }>;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex rounded-lg border border-line bg-ink p-0.5 shrink-0">
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            title={o.label}
+            onClick={() => onChange(o.value)}
+            className={`flex h-6 items-center justify-center rounded-md px-2.5 transition-colors ${
+              active
+                ? "bg-line-strong text-fg"
+                : "text-fg-mute hover:bg-surface-subtle hover:text-fg"
+            }`}
+          >
+            {o.icon ? o.icon : <span className="text-[10px] font-medium">{o.label}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const getEnumIcon = (key: string, value: string): ReactNode | null => {
+  if (key === "align") {
+    if (value === "left") return <AlignLeft size={11} />;
+    if (value === "center") return <AlignCenter size={11} />;
+  }
+  if (key === "position") {
+    if (value === "top") return <ArrowUpToLine size={11} />;
+    if (value === "center") return <AlignCenter size={11} />;
+    if (value === "bottom") return <ArrowDownToLine size={11} />;
+  }
+  return null;
+};
+
+/* ── controls component (all clusters, for the right inspector pane) ── */
+
+export function ComponentStudioControls({
+  id,
+  hoveredPart,
+  setHoveredPart,
+}: {
+  id: string;
+  hoveredPart: string | null;
+  setHoveredPart: (part: string | null) => void;
+}) {
+  const {
+    spec,
+    bindings,
+    setBinding,
+    clearBinding,
+    setProperty,
+    resolve,
+    data,
+    properties,
+    size,
+  } = useStudioData(id);
+
+  const [activeState] = useState<CState>(spec?.states[0] ?? "default");
+
+  if (!spec) return null;
+
+  const opts = resolveOptions(id, properties);
+  const options = componentOptions(id).filter((o) => !o.previewAxis);
+
+  /* compact inline row for part properties */
+  const renderPropRow = (prop: PropSpec): ReactNode => {
+    const st = prop.stateful ? activeState : undefined;
+    const key = bindingKey(prop.key, st);
+    const { binding, overridden } = currentBinding(bindings, prop, activeState);
+    const propStates = prop.states ?? spec.states;
+
+    let control: ReactNode;
+    if (prop.type === "color") {
+      control = (
+        <div className="w-28 flex justify-end">
+          <TokenSwatchCard data={data} binding={binding} onPick={(b) => setBinding(id, key, b)} align="right" />
+        </div>
+      );
+    } else if (prop.type === "space") {
+      const spaceOpts = data.spaceOptions;
+      const idx = Math.min(
+        Math.max(binding.startsWith("space:") ? Number(binding.slice(6)) - 1 : 0, 0),
+        spaceOpts.length - 1
+      );
+      control = (
+        <CompactSelect
+          options={spaceOpts.map((o) => ({
+            label: o.label.split(" · ")[0],
+            value: o.value,
+          }))}
+          value={`space:${idx + 1}`}
+          onChange={(v) => setBinding(id, key, v)}
+        />
+      );
+    } else if (prop.type === "dimension") {
+      const n = binding.startsWith("px:") ? Number(binding.slice(3)) : Number(binding) || 0;
+      control = (
+        <div className="w-20">
+          <ScrubberInput
+            label=""
+            value={n}
+            min={prop.min ?? 0}
+            max={prop.max ?? 64}
+            step={1}
+            onChange={(v) => setBinding(id, key, `px:${v}`)}
+            unit="px"
+          />
+        </div>
+      );
+    } else {
+      const scaleOpts =
+        prop.type === "radius"
+          ? data.radiusOptions
+          : prop.type === "textSize"
+            ? data.textOptions
+            : prop.type === "weight"
+              ? data.weightOptions
+              : data.fontOptions;
+      control = (
+        <CompactSelect
+          options={scaleOpts}
+          value={binding}
+          onChange={(v) => setBinding(id, key, v)}
+        />
+      );
+    }
+
+    return (
+      <div key={key} className="flex items-center justify-between py-1.5 border-b border-line last:border-0 pb-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[11px] text-fg-dim font-medium truncate">{prop.label}</span>
+          {overridden && (
+            <button
+              type="button"
+              title="Reset to default"
+              onClick={() => clearBinding(id, key)}
+              className="rounded p-0.5 text-fg-mute transition-colors hover:text-fg shrink-0 animate-pulse"
+            >
+              <RotateCcw size={10} />
+            </button>
+          )}
+        </div>
+        <div className="shrink-0">
+          {control}
+          {prop.type === "color" && prop.stateful && propStates.length > 1 ? (
+            <button
+              type="button"
+              onClick={() => {
+                for (const s of propStates) setBinding(id, bindingKey(prop.key, s), binding);
+              }}
+              className="block mt-0.5 text-[8.5px] text-fg-mute text-right underline decoration-dotted underline-offset-2 hover:text-fg-dim"
+            >
+              apply to all states
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
+  const hasOptionsSection = options.length > 0 || SIZABLE.has(id);
+
+  /* build clusters */
+  const clusters: Cluster[] = [];
+  if (hasOptionsSection) {
+    // split options by type for compact grouped layout
+    const numOpts = options.filter((o) => o.type === "number");
+    const boolOpts = options.filter((o) => o.type === "boolean");
+    const textOpts = options.filter((o) => o.type === "text");
+    const colorOpts = options.filter((o) => o.type === "color");
+    const enumOpts = options.filter((o) => o.type !== "number" && o.type !== "boolean" && o.type !== "text" && o.type !== "color");
+
+    // Group alignments and position if both exist
+    const hasAlign = enumOpts.some((o) => o.key === "align");
+    const hasPosition = enumOpts.some((o) => o.key === "position");
+    const filteredEnumOpts = enumOpts.filter((o) => o.key !== "align" && o.key !== "position");
+
+    // Number option pairing
+    const pairedNumKeys = new Set<string>();
+    const numPairs: ReactNode[] = [];
+
+    const radiusOpt = numOpts.find((o) => o.key === "radius");
+    const borderOpt = numOpts.find((o) => o.key === "borderWidth");
+    if (radiusOpt && borderOpt) {
+      pairedNumKeys.add("radius");
+      pairedNumKeys.add("borderWidth");
+      numPairs.push(
+        <div key="radius-border" className="grid grid-cols-2 gap-2">
+          <ScrubberInput
+            label={radiusOpt.label}
+            value={opts.radius as number ?? radiusOpt.def as number}
+            min={radiusOpt.min}
+            max={radiusOpt.max}
+            onChange={(v) => setProperty(id, "radius", v)}
+          />
+          <ScrubberInput
+            label={borderOpt.label}
+            value={opts.borderWidth as number ?? borderOpt.def as number}
+            min={borderOpt.min}
+            max={borderOpt.max}
+            onChange={(v) => setProperty(id, "borderWidth", v)}
+          />
+        </div>
+      );
+    }
+
+    const padHOpt = numOpts.find((o) => o.key === "paddingH");
+    const padVOpt = numOpts.find((o) => o.key === "paddingV");
+    if (padHOpt && padVOpt) {
+      pairedNumKeys.add("paddingH");
+      pairedNumKeys.add("paddingV");
+      numPairs.push(
+        <div key="padding-hv" className="grid grid-cols-2 gap-2">
+          <ScrubberInput
+            label={padHOpt.label}
+            value={opts.paddingH as number ?? padHOpt.def as number}
+            min={padHOpt.min}
+            max={padHOpt.max}
+            onChange={(v) => setProperty(id, "paddingH", v)}
+          />
+          <ScrubberInput
+            label={padVOpt.label}
+            value={opts.paddingV as number ?? padVOpt.def as number}
+            min={padVOpt.min}
+            max={padVOpt.max}
+            onChange={(v) => setProperty(id, "paddingV", v)}
+          />
+        </div>
+      );
+    }
+
+    const remainingNumOpts = numOpts.filter((o) => !pairedNumKeys.has(o.key));
+
+    clusters.push({
+      key: "options",
+      title: "Options",
+      part: null,
+      content: (
+        <div className="space-y-3">
+          {/* Size segmented option */}
+          {SIZABLE.has(id) && (
+            <div className="flex items-center justify-between py-1 border-b border-line pb-2">
+              <span className="text-[11px] text-fg-dim font-medium">Size</span>
+              <TokenSegmented
+                options={SIZE_OPTIONS}
+                value={size}
+                onChange={(v) => setProperty(id, "size", v)}
+              />
+            </div>
+          )}
+
+          {/* Alignment & Position Row */}
+          {(hasAlign || hasPosition) && (
+            <div className="flex items-center justify-between gap-4 py-1.5 border-b border-line pb-2">
+              {hasAlign && (
+                <div className="flex flex-col gap-1 flex-1">
+                  <span className="text-[9.5px] text-fg-mute font-semibold uppercase tracking-wide">Text Align</span>
+                  <IconSegmented
+                    options={[
+                      { label: "Left", value: "left", icon: <AlignLeft size={11} /> },
+                      { label: "Center", value: "center", icon: <AlignCenter size={11} /> },
+                    ]}
+                    value={opts.align as string ?? "left"}
+                    onChange={(v) => setProperty(id, "align", v)}
+                  />
+                </div>
+              )}
+              {hasPosition && (
+                <div className="flex flex-col gap-1 flex-1 items-end">
+                  <span className="text-[9.5px] text-fg-mute font-semibold uppercase tracking-wide self-start">Positioning</span>
+                  <IconSegmented
+                    options={[
+                      { label: "Top", value: "top", icon: <ArrowUpToLine size={11} /> },
+                      { label: "Center", value: "center", icon: <AlignCenter size={11} /> },
+                      { label: "Bottom", value: "bottom", icon: <ArrowDownToLine size={11} /> },
+                    ]}
+                    value={opts.position as string ?? "center"}
+                    onChange={(v) => setProperty(id, "position", v)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Remaining Enum options */}
+          {filteredEnumOpts.map((o) => {
+            const val = opts[o.key] as string;
+            const choices = o.options ?? [];
+            const hasIcons = choices.every((c) => !!getEnumIcon(o.key, c.value));
+            return (
+              <div key={o.key} className="flex items-center justify-between py-1 border-b border-line last:border-0 pb-1.5">
+                <span className="text-[11px] text-fg-dim font-medium">{o.label}</span>
+                {hasIcons ? (
+                  <IconSegmented
+                    options={choices.map((c) => ({
+                      label: c.label,
+                      value: c.value,
+                      icon: getEnumIcon(o.key, c.value) || undefined,
+                    }))}
+                    value={val}
+                    onChange={(v) => setProperty(id, o.key, v)}
+                  />
+                ) : choices.length <= 3 ? (
+                  <TokenSegmented
+                    options={choices.map((c) => ({ label: c.label, value: c.value }))}
+                    value={val}
+                    onChange={(v) => setProperty(id, o.key, v)}
+                  />
+                ) : (
+                  <CompactSelect
+                    options={choices.map((c) => ({ label: c.label, value: c.value }))}
+                    value={val}
+                    onChange={(v) => setProperty(id, o.key, v)}
+                    className="w-32"
+                  />
+                )}
+              </div>
+            );
+          })}
+
+          {/* Paired Numeric settings */}
+          {numPairs.length > 0 && (
+            <div className="space-y-2 py-1.5 border-b border-line pb-2">
+              {numPairs}
+            </div>
+          )}
+
+          {/* Remaining Number options */}
+          {remainingNumOpts.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 py-1.5 border-b border-line last:border-0 pb-2">
+              {remainingNumOpts.map((o) => {
+                const val = opts[o.key] as number;
+                return (
+                  <ScrubberInput
+                    key={o.key}
+                    label={o.label}
+                    value={val}
+                    min={o.min ?? 0}
+                    max={o.max ?? 100}
+                    onChange={(v) => setProperty(id, o.key, v)}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* Boolean switch options in 2-column grid */}
+          {boolOpts.length > 0 && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 py-1.5 border-b border-line last:border-0 pb-2">
+              {boolOpts.map((o) => {
+                const val = opts[o.key] as boolean;
+                return (
+                  <div key={o.key} className="flex items-center justify-between text-[11px] gap-2">
+                    <span className="text-fg-dim font-medium truncate" title={o.label}>{o.label}</span>
+                    <OptionToggle value={val} onChange={(v) => setProperty(id, o.key, v)} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Color inputs */}
+          {colorOpts.map((o) => {
+            const val = opts[o.key] as string;
+            return (
+              <div key={o.key} className="flex items-center justify-between py-1.5 border-b border-line last:border-0 pb-1.5">
+                <span className="text-[11px] text-fg-dim font-medium">{o.label}</span>
+                <HexInput value={val} onChange={(v) => setProperty(id, o.key, v)} size="sm" />
+              </div>
+            );
+          })}
+
+          {/* Inline Text options */}
+          {textOpts.length > 0 && (
+            <div className="space-y-2 py-1.5 last:border-0 pb-1">
+              {textOpts.map((o) => {
+                const val = opts[o.key] as string;
+                return (
+                  <div key={o.key} className="flex items-center justify-between gap-3 py-1 border-b border-line last:border-0 pb-1.5">
+                    <span className="text-[11px] text-fg-dim font-medium w-24 shrink-0 truncate">{o.label}</span>
+                    <input
+                      type="text"
+                      value={val}
+                      onChange={(e) => setProperty(id, o.key, e.target.value)}
+                      className="flex-1 rounded-md border border-line bg-ink px-2 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono text-right"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ),
+    });
+  }
+
+  for (const part of spec.parts) {
+    clusters.push({
+      key: part.id,
+      title: part.label,
+      count: part.props.length,
+      part: part.id,
+      content: <>{part.props.map(renderPropRow)}</>,
+    });
+  }
+
+  if (spec.children && spec.children.length > 0) {
+    for (const childId of spec.children) {
+      const childSpec = COMPONENT_SPECS[childId];
+      if (!childSpec) continue;
+
+      const childOptions = childSpec.options?.filter((o) => !o.previewAxis) ?? [];
+      const hasChildSize = SIZABLE.has(childId);
+      const hasChildOptions = childOptions.length > 0 || hasChildSize;
+
+      if (!hasChildOptions) continue;
+
+      const numOpts = childOptions.filter((o) => o.type === "number");
+      const boolOpts = childOptions.filter((o) => o.type === "boolean");
+      const textOpts = childOptions.filter((o) => o.type === "text");
+      const colorOpts = childOptions.filter((o) => o.type === "color");
+      const enumOpts = childOptions.filter((o) => o.type !== "number" && o.type !== "boolean" && o.type !== "text" && o.type !== "color");
+
+      const getChildPropVal = (key: string, def: string | boolean | number) => {
+        const fullKey = `${childId}.${key}`;
+        const val = properties?.[fullKey];
+        if (typeof val !== "undefined") return val;
+        return def;
+      };
+
+      const childSizeVal = getChildPropVal("size", "sm") as SizeToken;
+
+      // Clean label (e.g. primaryButton -> Primary Button, iconButton -> Icon Button)
+      let childTitle = childId;
+      if (childId === "primaryButton") childTitle = "Primary Button";
+      else if (childId === "secondaryButton") childTitle = "Secondary Button";
+      else if (childId === "iconButton") childTitle = "Icon Button";
+      else childTitle = childId.charAt(0).toUpperCase() + childId.slice(1);
+
+      clusters.push({
+        key: `child.${childId}.options`,
+        title: `${childTitle} Options`,
+        part: null,
+        content: (
+          <div className="space-y-2">
+            {/* Size & Enum options (Variant) side-by-side */}
+            {(hasChildSize || enumOpts.length > 0) && (
+              <div className="flex items-center justify-between gap-3 py-1 border-b border-line pb-2">
+                {hasChildSize && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wide">Size</span>
+                    <TokenSegmented
+                      options={SIZE_OPTIONS}
+                      value={childSizeVal}
+                      onChange={(v) => setProperty(id, `${childId}.size`, v)}
+                    />
+                  </div>
+                )}
+                {enumOpts.map((o) => {
+                  const val = getChildPropVal(o.key, o.def) as string;
+                  const choices = o.options ?? [];
+                  return (
+                    <div key={o.key} className="flex items-center gap-1.5 ml-auto">
+                      <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wide">{o.label}</span>
+                      {choices.length <= 3 ? (
+                        <TokenSegmented
+                          options={choices.map((c) => ({ label: c.label, value: c.value }))}
+                          value={val}
+                          onChange={(v) => setProperty(id, `${childId}.${o.key}`, v)}
+                        />
+                      ) : (
+                        <CompactSelect
+                          options={choices.map((c) => ({ label: c.label, value: c.value }))}
+                          value={val}
+                          onChange={(v) => setProperty(id, `${childId}.${o.key}`, v)}
+                          className="w-24"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Boolean switch options in 2-column grid */}
+            {boolOpts.length > 0 && (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 py-1.5 border-b border-line last:border-0 pb-2">
+                {boolOpts.map((o) => {
+                  const val = getChildPropVal(o.key, o.def) as boolean;
+                  return (
+                    <div key={o.key} className="flex items-center justify-between text-[11px] gap-2">
+                      <span className="text-fg-dim font-medium truncate" title={o.label}>{o.label}</span>
+                      <OptionToggle value={val} onChange={(v) => setProperty(id, `${childId}.${o.key}`, v)} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Number options grid */}
+            {numOpts.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 py-1 border-b border-line last:border-0 pb-1.5">
+                {numOpts.map((o) => {
+                  const val = getChildPropVal(o.key, o.def) as number;
+                  return (
+                    <ScrubberInput
+                      key={o.key}
+                      label={o.label}
+                      value={val}
+                      min={o.min ?? 0}
+                      max={o.max ?? 100}
+                      onChange={(v) => setProperty(id, `${childId}.${o.key}`, v)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Color options */}
+            {colorOpts.map((o) => {
+              const val = getChildPropVal(o.key, o.def) as string;
+              return (
+                <div key={o.key} className="flex items-center justify-between py-1 border-b border-line last:border-0 pb-1.5">
+                  <span className="text-[11px] text-fg-dim font-medium">{o.label}</span>
+                  <HexInput value={val} onChange={(v) => setProperty(id, `${childId}.${o.key}`, v)} size="sm" />
+                </div>
+              );
+            })}
+
+            {/* Text options inline */}
+            {textOpts.length > 0 && (
+              <div className="space-y-1.5 py-1 last:border-0 pb-1">
+                {textOpts.map((o) => {
+                  const val = getChildPropVal(o.key, o.def) as string;
+                  return (
+                    <div key={o.key} className="flex items-center justify-between gap-3 py-1 border-b border-line last:border-0 pb-1.5">
+                      <span className="text-[11px] text-fg-dim font-medium w-24 shrink-0 truncate">{o.label}</span>
+                      <input
+                        type="text"
+                        value={val}
+                        onChange={(e) => setProperty(id, `${childId}.${o.key}`, e.target.value)}
+                        className="flex-1 rounded-md border border-line bg-ink px-2 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono text-right"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )
+      });
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {clusters.map((c) => {
+        const active = c.part != null && hoveredPart === c.part;
+        return (
+          <div
+            key={c.key}
+            onMouseEnter={() => c.part && setHoveredPart(c.part)}
+            onMouseLeave={() =>
+              c.part && hoveredPart === c.part && setHoveredPart(null)
+            }
+            className={`rounded-2xl border p-3 transition-colors ${
+              active ? "border-line-strong bg-ink-panel" : "border-line bg-ink-panel/50"
+            }`}
+          >
+            <div className="mb-2.5 flex items-center justify-between px-0.5">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-fg-dim">
+                {c.title}
+              </span>
+              {c.count != null ? (
+                <span className="font-mono text-[10px] text-fg-mute">{c.count}</span>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">{c.content}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── backward-compatible wrapper (kept for any legacy usage) ── */
+
+export function ComponentStudio({ id }: { id: string }) {
+  const [hoveredPart, setHoveredPart] = useState<string | null>(null);
+  return (
+    <div>
+      <ComponentStudioPreview id={id} hoveredPart={hoveredPart} setHoveredPart={setHoveredPart} />
+      <div className="mt-6">
+        <ComponentStudioControls id={id} hoveredPart={hoveredPart} setHoveredPart={setHoveredPart} />
       </div>
     </div>
   );

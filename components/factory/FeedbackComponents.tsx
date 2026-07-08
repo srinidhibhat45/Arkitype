@@ -10,7 +10,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Inbox, Loader2 } from "lucide-react";
 import { PreviewMode } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
-import { NO_BINDINGS, Resolver } from "@/lib/componentSchema";
+import { NO_BINDINGS, Resolver, useComponentBindings } from "@/lib/componentSchema";
 import { useTone } from "./DisplayComponents";
 import { TokenButton } from "./CoreComponents";
 
@@ -193,6 +193,7 @@ export function TokenEmptyState({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const buttonResolve = useComponentBindings("button");
   return (
     <div
       style={{
@@ -227,7 +228,7 @@ export function TokenEmptyState({
         Once activity posts to this ledger it will show up here, newest first.
       </span>
       <div style={{ marginTop: sv(1) }}>
-        <TokenButton size="sm" radiusStep={radiusStep}>
+        <TokenButton size="sm" radiusStep={radiusStep} resolve={buttonResolve}>
           Record transaction
         </TokenButton>
       </div>

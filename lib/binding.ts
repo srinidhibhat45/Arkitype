@@ -56,7 +56,7 @@ export function parseBinding(binding: string): ParsedBinding {
 }
 
 /** Resolve a binding string to a CSS value (a var() reference or a literal). */
-export function resolveBinding(binding: string): string {
+export function resolveBinding(binding: string, radiusNames?: string[]): string {
   if (!binding) return "transparent";
   const { kind, value } = parseBinding(binding);
   switch (kind) {
@@ -68,8 +68,9 @@ export function resolveBinding(binding: string): string {
     case "space":
       return `var(--ark-space-${value})`;
     case "radius": {
-      const i = Math.min(Math.max(Number(value) || 0, 0), RADII_NAMES.length - 1);
-      return `var(--ark-radius-${RADII_NAMES[i]})`;
+      const names = radiusNames ?? RADII_NAMES;
+      const i = Math.min(Math.max(Number(value) || 0, 0), names.length - 1);
+      return `var(--ark-radius-${names[i]})`;
     }
     case "text":
       return `var(--ark-text-${value})`;
@@ -126,7 +127,7 @@ export function bindingSource(binding: string): BindingSource {
 }
 
 /** A short human label for a binding, for the "currently bound to…" chip. */
-export function describeBinding(binding: string): { kind: string; label: string } {
+export function describeBinding(binding: string, radiusNames?: string[]): { kind: string; label: string } {
   const { kind, value } = parseBinding(binding);
   switch (kind) {
     case "role":
@@ -137,8 +138,10 @@ export function describeBinding(binding: string): { kind: string; label: string 
       return { kind: "custom", label: value.toUpperCase() };
     case "space":
       return { kind: "space", label: `space-${value}` };
-    case "radius":
-      return { kind: "radius", label: `radius-${RADII_NAMES[Number(value)] ?? value}` };
+    case "radius": {
+      const names = radiusNames ?? RADII_NAMES;
+      return { kind: "radius", label: `radius-${names[Number(value)] ?? value}` };
+    }
     case "text":
       return { kind: "size", label: `text-${value}` };
     case "leading":

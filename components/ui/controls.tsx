@@ -24,9 +24,9 @@ export function Field({
   return (
     <div className="mb-6">
       <div className="mb-2 flex items-baseline justify-between gap-2">
-        <span className="text-[12px] font-medium text-fg-dim">{label}</span>
+        <span className="text-[13.5px] font-semibold text-fg-dim">{label}</span>
         {hint ? (
-          <span className="font-mono text-[11px] text-fg-mute">{hint}</span>
+          <span className="font-mono text-[12px] text-fg-mute">{hint}</span>
         ) : null}
       </div>
       {children}
@@ -36,7 +36,7 @@ export function Field({
 
 export function AsideNote({ children }: { children: ReactNode }) {
   return (
-    <p className="mb-6 text-[12px] leading-relaxed text-fg-mute">{children}</p>
+    <p className="mb-6 text-[13.5px] leading-relaxed text-fg-mute">{children}</p>
   );
 }
 
@@ -111,7 +111,7 @@ export function Segmented<T extends string>({
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+          className={`rounded-md px-2.5 py-1 text-[13.5px] font-bold transition-colors ${
             value === o.value
               ? "bg-ink-hover text-fg shadow-[inset_0_0_0_1px_#2e2e33]"
               : "text-fg-mute hover:text-fg-dim"
@@ -189,7 +189,7 @@ export function SelectControl({
     <RadixSelect.Root value={value} onValueChange={onChange}>
       <RadixSelect.Trigger
         className={`flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-ink-panel text-left text-fg transition-colors hover:border-line-strong focus:outline-none data-[state=open]:border-line-strong ${
-          compact ? "px-2 py-1 text-[12px]" : "px-3 py-2 text-[13px]"
+          compact ? "px-2.5 h-8 text-[12.5px] font-medium" : "px-3 py-2 text-[13.5px] font-bold"
         }`}
       >
         <RadixSelect.Value />
@@ -259,7 +259,7 @@ export function HexInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={`w-full rounded-lg border bg-ink-panel font-mono uppercase tracking-wide transition-colors focus:outline-none ${
-          size === "md" ? "h-9 px-3 text-[12px]" : "h-7 px-2 text-[11px]"
+          size === "md" ? "h-9 px-3 text-[13.5px]" : "h-7 px-2 text-[12px]"
         } ${
           valid
             ? "border-line text-fg focus:border-line-strong"
@@ -281,7 +281,7 @@ export function WcagBadge({
 }) {
   return (
     <span
-      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold leading-none ${
         pass
           ? "bg-emerald-500/10 text-emerald-400"
           : "bg-red-500/10 text-red-400"
@@ -306,8 +306,8 @@ export function CanvasSection({
   return (
     <section className="mb-10">
       <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-[14px] font-semibold text-fg">{title}</h2>
-        {hint ? <span className="text-[12px] text-fg-mute">{hint}</span> : null}
+        <h2 className="text-[16px] font-bold text-fg">{title}</h2>
+        {hint ? <span className="text-[13px] text-fg-mute">{hint}</span> : null}
       </div>
       {children}
     </section>

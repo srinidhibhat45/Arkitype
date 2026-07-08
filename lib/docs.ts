@@ -78,9 +78,10 @@ export function generateHandoffDocs(state: ArkitypeState): string {
       .map((s, i) => `\`space-${i + 1}=${s}px\``)
       .join(" · ")}`
   );
+  const overviewRadiusNames = primitives.radiusNames ?? RADII_NAMES;
   push(
     `- **Radii**: ${primitives.radii
-      .map((r, i) => `\`radius-${RADII_NAMES[i]}=${r}px\``)
+      .map((r, i) => `\`radius-${overviewRadiusNames[i]}=${r}px\``)
       .join(" · ")}`
   );
   push(
@@ -241,8 +242,9 @@ export function generateHandoffDocs(state: ArkitypeState): string {
     push(`  --ark-${token}: ${resolveToken(state, "light", token)};`);
   });
   primitives.spacing.forEach((px, i) => push(`  --ark-space-${i + 1}: ${px}px;`));
+  const cssRadiusNames = primitives.radiusNames ?? RADII_NAMES;
   primitives.radii.forEach((px, i) =>
-    push(`  --ark-radius-${RADII_NAMES[i]}: ${px}px;`)
+    push(`  --ark-radius-${cssRadiusNames[i]}: ${px}px;`)
   );
   push("}");
   push("```");

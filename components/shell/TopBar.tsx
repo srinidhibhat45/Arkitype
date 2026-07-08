@@ -1,10 +1,4 @@
-"use client";
-
-/**
- * Top bar: identity + the two global concerns (preview mode, shipping).
- * Everything else lives inside its step — the bar stays quiet.
- */
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, Folder, HelpCircle } from "lucide-react";
 import { Segmented } from "@/components/ui/controls";
 import { STEP_ORDER, useDesignSystem } from "@/store/useDesignSystem";
 
@@ -17,13 +11,27 @@ export function TopBar() {
   const toggleChromeTheme = useDesignSystem((s) => s.toggleChromeTheme);
   const done = useDesignSystem((s) => s.journey.done);
   const goToStep = useDesignSystem((s) => s.goToStep);
+  
+  const setView = useDesignSystem((s) => s.setView);
+  const setTutorialStep = useDesignSystem((s) => s.setTutorialStep);
 
   const readyToShip = STEP_ORDER.slice(0, -1).every((id) => done[id]);
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-ink px-5">
       <div className="flex items-center gap-3">
-        <div className="h-4 w-4 rounded-[5px] bg-fg" aria-hidden />
+        <button
+          type="button"
+          onClick={() => setView("dashboard")}
+          title="Back to Dashboard files"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-white/5 border border-transparent hover:border-line text-fg-mute hover:text-fg transition-all text-xs font-bold"
+        >
+          <Folder size={13} className="text-indigo-400" />
+          <span>Files</span>
+        </button>
+        
+        <span className="text-fg-mute" aria-hidden>/</span>
+        
         <span className="text-[13px] font-semibold tracking-tight text-fg">
           Arkitype
         </span>
@@ -39,10 +47,20 @@ export function TopBar() {
         className="w-56 rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] text-fg-dim transition-colors hover:border-line focus:border-line-strong focus:text-fg focus:outline-none"
       />
 
-      <div className="ml-auto flex items-center gap-3">
+      <div id="workspace-topbar-actions" className="ml-auto flex items-center gap-3">
         <span className="hidden text-[11px] text-fg-mute sm:block">
           Autosaved
         </span>
+
+        {/* Guided Tour Launcher */}
+        <button
+          type="button"
+          onClick={() => setTutorialStep(0)}
+          title="Start Guided Tour"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+        >
+          <HelpCircle size={14} />
+        </button>
 
         {/* Appearance: themes the tool chrome (distinct from the preview toggle) */}
         <button

@@ -16,9 +16,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { rv, sv, tv } from "@/lib/tokens";
-import { NO_BINDINGS, Resolver } from "@/lib/componentSchema";
+import { NO_BINDINGS, Resolver, resolveOptions, useComponentBindings } from "@/lib/componentSchema";
 import { TokenBadge } from "./DisplayComponents";
-import type { PreviewMode } from "@/store/useDesignSystem";
+import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
+import { TokenButton } from "./CoreComponents";
 
 /* ── Breadcrumbs ── */
 
@@ -208,73 +209,87 @@ export function TokenCard({
   resolve?: Resolver;
 }) {
   const r = resolve;
-  const border = r("container.border") ?? tv("border-muted");
+  const cfg = useDesignSystem((s) => s.components.card);
+  const opts = resolveOptions("card", cfg?.properties);
+  const buttonResolve = useComponentBindings("button");
+
+  const title = (opts.title ?? "Design Systems Manager") as string;
+  const subtitle = (opts.subtitle ?? "Updated 2 hours ago") as string;
+  const bodyText = (opts.bodyText ?? "Manage tokens, balance scales, and distribute variable definitions.") as string;
+  const borderWidth = Number(opts.borderWidth ?? 1);
+  const borderColor = (opts.borderColor ?? "#e4e4e7") as string;
+  const bg = (opts.bg ?? "#ffffff") as string;
+  const radius = Number(opts.radius ?? 12);
+  const padding = Number(opts.padding ?? 20);
+  const shadow = (opts.shadow ?? "md") as string;
+  const btnLabel = (opts.btnLabel ?? "View Tokens") as string;
+  const showButton = opts.showButton !== false;
+
+  const shadows: Record<string, string> = {
+    none: "none",
+    sm: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+    md: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+    lg: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+    xl: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+  };
+
   return (
     <div
       style={{
+        border: `${borderWidth}px solid ${r("container.border") ?? borderColor}`,
         borderRadius: r("container.radius") ?? rv(radiusStep),
-        background: r("container.bg") ?? tv("surface-elevated"),
-        border: `1px solid ${border}`,
-        boxShadow: "var(--ark-shadow-low)",
+        backgroundColor: r("container.bg") ?? bg,
+        boxShadow: shadows[shadow] ?? shadows.md,
         overflow: "hidden",
         maxWidth: 380,
+        width: "100%",
         fontFamily: "var(--ark-font-sans)",
+        transition: "all 0.2s ease",
       }}
     >
       <div
         style={{
-          padding: `${sv(2)} ${sv(3)}`,
-          borderBottom: `1px solid ${border}`,
+          padding: `${padding / 1.5}px ${padding}px`,
+          borderBottom: `${borderWidth}px solid ${borderColor}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          gap: "12px",
         }}
       >
-        <span style={{ color: r("text.title") ?? tv("text-primary"), fontSize: "var(--ark-text-sm)", fontWeight: 700 }}>
-          Marketing budget
-        </span>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <span style={{ color: r("text.title") ?? tv("text-primary"), fontSize: "var(--ark-text-sm)", fontWeight: 700 }}>
+            {title}
+          </span>
+          {subtitle && (
+            <span style={{ color: tv("text-muted"), fontSize: "10px", marginTop: "1px" }}>
+              {subtitle}
+            </span>
+          )}
+        </div>
         <TokenBadge variant="warning" mode={mode}>
-          82% used
+          active
         </TokenBadge>
       </div>
-      <div style={{ padding: sv(3), display: "flex", flexDirection: "column", gap: sv(2) }}>
-        <span
-          style={{
-            color: r("text.value") ?? tv("text-primary"),
-            fontSize: "var(--ark-text-2xl)",
-            fontWeight: 800,
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          $41,200 <span style={{ color: tv("text-muted"), fontSize: "var(--ark-text-sm)", fontWeight: 500 }}>of $50,000</span>
-        </span>
-        <span style={{ color: r("text.body") ?? tv("text-secondary"), fontSize: "var(--ark-text-xs)" }}>
-          Campaigns, sponsorships and content. Renews on the 1st.
+      <div style={{ padding: `${padding}px`, display: "flex", flexDirection: "column", gap: "10px" }}>
+        <span style={{ color: r("text.body") ?? tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5" }}>
+          {bodyText}
         </span>
       </div>
-      <div
-        style={{
-          padding: `${sv(2)} ${sv(3)}`,
-          borderTop: `1px solid ${border}`,
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: sv(2),
-        }}
-      >
-        <span style={{ color: tv("text-muted"), fontSize: "var(--ark-text-xs)", fontWeight: 600, cursor: "pointer" }}>
-          View history
-        </span>
-        <span
+      {showButton && (
+        <div
           style={{
-            color: r("text.action") ?? tv("action-primary-default"),
-            fontSize: "var(--ark-text-xs)",
-            fontWeight: 700,
-            cursor: "pointer",
+            padding: `${padding / 1.5}px ${padding}px`,
+            borderTop: `${borderWidth}px solid ${borderColor}`,
+            display: "flex",
+            justifyContent: "flex-end",
           }}
         >
-          Adjust limit →
-        </span>
-      </div>
+          <TokenButton size="sm" resolve={buttonResolve}>
+            {btnLabel}
+          </TokenButton>
+        </div>
+      )}
     </div>
   );
 }

@@ -100,6 +100,7 @@ export function systemCssVars(
     vars[`--ark-text-${s.name}`] = `${s.size}px`;
     vars[`--ark-leading-${s.name}`] = `${s.lineHeight}`;
     vars[`--ark-weight-${s.name}`] = `${weightValue(s.weight)}`;
+    vars[`--ark-font-role-${s.name}`] = `var(--ark-font-${s.role})`;
   });
 
   // Weight tokens + font-role families

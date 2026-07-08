@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
-import { CState, NO_BINDINGS, Resolver, createChildResolver, useComponentBindings, useVariantComponentBindings } from "@/lib/componentSchema";
+import { CState, NO_BINDINGS, Resolver, createChildResolver, resolveOptions, useComponentBindings, useVariantComponentBindings } from "@/lib/componentSchema";
 import { TokenIconButton } from "./FormControls";
 
 export type InteractionState =
@@ -472,6 +472,12 @@ export function TokenAlert({
   const washText = mode === "light" ? ramp[8] : ramp[1];
   const accentC = ramp[5];
 
+  const opts = resolveOptions("alert", cfg?.properties);
+  const alertTitle = (opts.title || title) as string;
+  const alertBody = (opts.body || body) as string;
+  const titleSize = (opts["title.size"] ?? "sm") as string;
+  const bodySize = (opts["body.size"] ?? "xs") as string;
+
   // Style resolves the surface/border/text triple; solid inverts to a filled tone.
   const surface =
     style === "solid" ? ramp[6] : style === "outline" ? "transparent" : wash;
@@ -512,12 +518,26 @@ export function TokenAlert({
         <Icon size={16} style={{ color: glyph, flexShrink: 0 }} />
       ) : null}
       <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: sv(0.5) }}>
-        <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: 700 }}>
-          {title ?? `${variant.charAt(0).toUpperCase()}${variant.slice(1)} signal`}
+        <span
+          style={{
+            fontSize: `var(--ark-text-${titleSize})`,
+            lineHeight: `var(--ark-leading-${titleSize})`,
+            fontWeight: `var(--ark-weight-${titleSize})`,
+            fontFamily: `var(--ark-font-role-${titleSize})`,
+          }}
+        >
+          {alertTitle || `${variant.charAt(0).toUpperCase()}${variant.slice(1)} signal`}
         </span>
-        <span style={{ fontSize: "var(--ark-text-xs)", opacity: 0.85 }}>
-          {body ??
-            "Token-mapped alert surface. Wash, border and accent resolve from the primitive ramp per mode."}
+        <span
+          style={{
+            fontSize: `var(--ark-text-${bodySize})`,
+            lineHeight: `var(--ark-leading-${bodySize})`,
+            fontWeight: `var(--ark-weight-${bodySize})`,
+            fontFamily: `var(--ark-font-role-${bodySize})`,
+            opacity: 0.85,
+          }}
+        >
+          {alertBody || "Token-mapped alert surface. Wash, border and accent resolve from the primitive ramp per mode."}
         </span>
       </span>
       {action ? (

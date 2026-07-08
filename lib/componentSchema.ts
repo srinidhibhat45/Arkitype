@@ -828,6 +828,8 @@ const OTHER_SPECS: ComponentSpec[] = [
       boolOpt("icon", "Leading icon", true),
       boolOpt("dismissible", "Dismissible", false),
       boolOpt("action", "Action button", false),
+      textOpt("title", "Title text", "Signal Alert"),
+      textOpt("body", "Body text", "Token-mapped alert surface. Wash, border and accent resolve from the primitive ramp per mode."),
     ],
   },
   {
@@ -891,6 +893,8 @@ const OTHER_SPECS: ComponentSpec[] = [
       boolOpt("icon", "Leading icon", true),
       boolOpt("action", "Action button", false),
       boolOpt("dismissible", "Dismissible", true),
+      textOpt("title", "Title text", "Transaction saved"),
+      textOpt("body", "Body text", "TXN-0459 posted to the operating ledger."),
     ],
   },
   {
@@ -1214,6 +1218,19 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      textOpt("title", "Title", "Design Systems Manager"),
+      textOpt("subtitle", "Subtitle", "Updated 2 hours ago"),
+      textOpt("bodyText", "Body text", "Manage tokens, balance scales, and distribute variable definitions."),
+      numOpt("borderWidth", "Border thickness", 1, 0, 8),
+      colorOpt("borderColor", "Border colour", "#e4e4e7"),
+      colorOpt("bg", "Background colour", "#ffffff"),
+      numOpt("radius", "Corner radius", 12, 0, 32),
+      numOpt("padding", "Internal padding", 20, 0, 64),
+      enumOpt("shadow", "Elevation shadow", ELEVATION_OPTS, "md"),
+      textOpt("btnLabel", "Button label", "View Tokens"),
+      boolOpt("showButton", "Show action button", true),
+    ],
   },
   {
     id: "listItem",
@@ -1289,6 +1306,9 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("chevron.color", "Chevron", "color", "role:text-muted"),
         ],
       },
+    ],
+    options: [
+      numOpt("radius", "Corner radius", 12, 0, 32),
     ],
   },
   {

@@ -50,6 +50,12 @@ const ROLE_LABEL: Record<FontRoleId, string> = {
 
 export function TypeStep() {
   const [showPairings, setShowPairings] = useState(false);
+  const [previewText, setPreviewText] = useState("Systems age well when ratios do");
+  const [contextPreset, setContextPreset] = useState<"article" | "columns" | "card">("article");
+  const [bodyStepName, setBodyStepName] = useState("base");
+  const [measureWidth, setMeasureWidth] = useState(600); // px
+  const [paraSpacing, setParaSpacing] = useState(16); // px
+
   const typography = useDesignSystem((s) => s.primitives.typography);
   const setTypographyBase = useDesignSystem((s) => s.setTypographyBase);
   const setScaleFactor = useDesignSystem((s) => s.setScaleFactor);
@@ -60,6 +66,8 @@ export function TypeStep() {
   const removeWeight = useDesignSystem((s) => s.removeWeight);
   const setTypeSizeOverride = useDesignSystem((s) => s.setTypeSizeOverride);
   const clearTypeSizeOverride = useDesignSystem((s) => s.clearTypeSizeOverride);
+  const setTypeLeadingOverride = useDesignSystem((s) => s.setTypeLeadingOverride);
+  const clearTypeLeadingOverride = useDesignSystem((s) => s.clearTypeLeadingOverride);
   const setStepAssign = useDesignSystem((s) => s.setStepAssign);
 
   function applyPairing(p: typeof FONT_PAIRINGS[0]) {
@@ -254,6 +262,26 @@ export function TypeStep() {
         title="Specimen"
         hint={`base ${typography.baseSize}px × ${typography.scaleFactor} · ${typography.rounding}`}
       >
+        <div className="mb-4 flex items-center gap-3 px-6 py-2.5 bg-ink-panel rounded-xl border border-line">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-mute">Preview Text</span>
+          <input
+            type="text"
+            value={previewText}
+            onChange={(e) => setPreviewText(e.target.value)}
+            placeholder="Type something to test the scale..."
+            className="flex-1 bg-transparent border-none text-[13px] text-fg focus:outline-none placeholder:text-fg-mute"
+          />
+          {previewText !== "Systems age well when ratios do" && (
+            <button
+              type="button"
+              onClick={() => setPreviewText("Systems age well when ratios do")}
+              className="text-[11px] text-fg-mute hover:text-fg transition-colors font-medium"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+
         <div className="rounded-xl border border-line">
           {specimen.map((step, i) => (
             <div
@@ -273,14 +301,14 @@ export function TypeStep() {
                     fontWeight: weightValue(step.weight),
                   }}
                 >
-                  Systems age well when ratios do
+                  {previewText || " "}
                 </span>
                 <span className="hidden shrink-0 text-right text-[11px] text-fg-mute lg:block">
                   {step.assignment}
                 </span>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-3.5 pl-16">
+              <div className="mt-3 flex flex-wrap items-center gap-4 pl-16">
                 <label className="flex items-center gap-2">
                   <span className="text-[11px] font-semibold text-fg-mute">size</span>
                   <input
@@ -304,6 +332,27 @@ export function TypeStep() {
                   </span>
                 </label>
 
+                <label className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-fg-mute">leading</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={3}
+                    step={0.05}
+                    value={step.lineHeight}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (Number.isFinite(v) && v > 0) setTypeLeadingOverride(step.name, v);
+                    }}
+                    className={`h-8 w-16 rounded-lg border bg-ink-panel px-2.5 font-mono text-[12.5px] font-bold focus:outline-none ${
+                      typography.leadingOverrides?.[step.name] !== undefined
+                        ? "border-line-strong text-fg"
+                        : "border-line text-fg-dim focus:border-line-strong"
+                    }`}
+                  />
+                  <span className="font-mono text-[11px] text-fg-mute">lh</span>
+                </label>
+
                 <div className="w-40">
                   <SelectControl
                     compact
@@ -322,17 +371,20 @@ export function TypeStep() {
                   />
                 </div>
 
-                {step.overridden ? (
+                {(step.overridden || typography.leadingOverrides?.[step.name] !== undefined) && (
                   <button
                     type="button"
-                    title="Reset to generated size"
-                    onClick={() => clearTypeSizeOverride(step.name)}
+                    title="Reset overrides"
+                    onClick={() => {
+                      if (step.overridden) clearTypeSizeOverride(step.name);
+                      if (typography.leadingOverrides?.[step.name] !== undefined) clearTypeLeadingOverride(step.name);
+                    }}
                     className="inline-flex h-8 items-center gap-1 rounded-lg border border-line px-2.5 text-[11px] font-semibold text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
                   >
                     <RotateCcw size={11} />
                     reset
                   </button>
-                ) : null}
+                )}
               </div>
             </div>
           ))}
@@ -340,44 +392,306 @@ export function TypeStep() {
       </CanvasSection>
 
       <CanvasSection title="In context" hint="how the scale reads together">
-        <div className="max-w-2xl rounded-xl border border-line px-8 py-7">
-          <p
-            className="text-fg-mute"
-            style={{
-              fontSize: steps[1].size,
-              lineHeight: steps[1].lineHeight,
-              fontFamily: typography.fontRoles[steps[1].role].family,
-              fontWeight: weightValue(steps[1].weight),
-            }}
-          >
-            Release notes
-          </p>
-          <h2
-            className="mt-1 text-fg"
-            style={{
-              fontSize: Math.min(steps[6].size, 44),
-              lineHeight: steps[6].lineHeight,
-              fontFamily: typography.fontRoles[steps[6].role].family,
-              fontWeight: weightValue(steps[6].weight),
-            }}
-          >
-            Typography that scales itself
-          </h2>
-          <p
-            className="mt-3 text-fg-dim"
-            style={{
-              fontSize: steps[2].size,
-              lineHeight: steps[2].lineHeight,
-              fontFamily: typography.fontRoles[steps[2].role].family,
-              fontWeight: weightValue(steps[2].weight),
-            }}
-          >
-            Because every size derives from the same base and ratio, changing
-            either re-tunes the entire hierarchy at once. Pin a single step when
-            you need a specific value, and let roles and weights carry the
-            difference between body, headings and display.
-          </p>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-ink-panel p-4">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-mute">Layout:</span>
+            <div className="flex rounded-lg border border-line bg-ink p-0.5">
+              {(["article", "columns", "card"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setContextPreset(mode)}
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-all ${
+                    contextPreset === mode ? "bg-ink-raised text-fg shadow-sm border border-line" : "text-fg-mute hover:text-fg border border-transparent"
+                  }`}
+                >
+                  {mode === "article" ? "Article" : mode === "columns" ? "Split Columns" : "UI Card"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-fg-mute">Body step:</span>
+              <div className="w-20">
+                <SelectControl
+                  compact
+                  value={bodyStepName}
+                  options={steps.map((s) => ({ label: s.name, value: s.name }))}
+                  onChange={setBodyStepName}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-fg-mute">Measure:</span>
+              <input
+                type="range"
+                min={320}
+                max={900}
+                step={20}
+                value={measureWidth}
+                onChange={(e) => setMeasureWidth(Number(e.target.value))}
+                className="w-24 accent-fg"
+              />
+              <span className="font-mono text-[10px] text-fg-mute">{measureWidth}px</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-fg-mute">Spacing:</span>
+              <input
+                type="range"
+                min={8}
+                max={36}
+                step={4}
+                value={paraSpacing}
+                onChange={(e) => setParaSpacing(Number(e.target.value))}
+                className="w-20 accent-fg"
+              />
+              <span className="font-mono text-[10px] text-fg-mute">{paraSpacing}px</span>
+            </div>
+          </div>
         </div>
+
+        {/* Content rendering block based on contextPreset */}
+        {(() => {
+          const bodyStep = steps.find((s) => s.name === bodyStepName) ?? steps[2]; // fallback to base
+          const h1Step = steps.find((s) => s.name === "4xl") ?? steps[7];
+          const h2Step = steps.find((s) => s.name === "3xl") ?? steps[6];
+          const h3Step = steps.find((s) => s.name === "2xl") ?? steps[5];
+          const metaStep = steps.find((s) => s.name === "xs") ?? steps[0];
+          const buttonTextStep = steps.find((s) => s.name === "sm") ?? steps[1];
+
+          if (contextPreset === "article") {
+            return (
+              <div className="rounded-xl border border-line bg-ink-panel p-8">
+                <div style={{ maxWidth: `${measureWidth}px`, margin: "0 auto" }}>
+                  <span
+                    className="text-fg-mute uppercase tracking-wider block mb-2"
+                    style={{
+                      fontSize: `${metaStep.size}px`,
+                      lineHeight: metaStep.lineHeight,
+                      fontFamily: typography.fontRoles[metaStep.role].family,
+                      fontWeight: weightValue(metaStep.weight),
+                    }}
+                  >
+                    Design systems &middot; July 2026
+                  </span>
+                  <h1
+                    className="text-fg font-bold tracking-tight mb-4"
+                    style={{
+                      fontSize: `${Math.min(h1Step.size, 52)}px`,
+                      lineHeight: h1Step.lineHeight,
+                      fontFamily: typography.fontRoles[h1Step.role].family,
+                      fontWeight: weightValue(h1Step.weight),
+                    }}
+                  >
+                    Typography that scales itself
+                  </h1>
+                  <p
+                    className="text-fg-dim font-medium"
+                    style={{
+                      fontSize: `${bodyStep.size * 1.15}px`,
+                      lineHeight: bodyStep.lineHeight * 1.05,
+                      fontFamily: typography.fontRoles[bodyStep.role].family,
+                      fontWeight: weightValue(bodyStep.weight),
+                      marginBottom: `${paraSpacing * 1.2}px`,
+                    }}
+                  >
+                    Because every size derives from the same base and ratio, changing either re-tunes the entire hierarchy at once. Pin a single step when you need a specific value.
+                  </p>
+                  <p
+                    className="text-fg-mute"
+                    style={{
+                      fontSize: `${bodyStep.size}px`,
+                      lineHeight: bodyStep.lineHeight,
+                      fontFamily: typography.fontRoles[bodyStep.role].family,
+                      fontWeight: weightValue(bodyStep.weight),
+                      marginBottom: `${paraSpacing}px`,
+                    }}
+                  >
+                    In design, typography is not just about choosing pretty letters. It is about establishing a readable structure, a mathematical harmony that guides the reader’s eye across the page. Setting ratios allows you to scale displays, headers, body, and micro-text relative to each other automatically.
+                  </p>
+                  <p
+                    className="text-fg-mute"
+                    style={{
+                      fontSize: `${bodyStep.size}px`,
+                      lineHeight: bodyStep.lineHeight,
+                      fontFamily: typography.fontRoles[bodyStep.role].family,
+                      fontWeight: weightValue(bodyStep.weight),
+                    }}
+                  >
+                    Try changing the base font size, scale factor, or the line height (leading) of the &quot;{bodyStep.name}&quot; step in the table above. You will see how this preview adapts instantly to test the readability and measure of your choice.
+                  </p>
+                </div>
+              </div>
+            );
+          }
+
+          if (contextPreset === "columns") {
+            return (
+              <div className="rounded-xl border border-line bg-ink-panel p-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8" style={{ maxWidth: `${measureWidth}px`, margin: "0 auto" }}>
+                  <div>
+                    <h2
+                      className="text-fg font-semibold mb-3"
+                      style={{
+                        fontSize: `${h3Step.size}px`,
+                        lineHeight: h3Step.lineHeight,
+                        fontFamily: typography.fontRoles[h3Step.role].family,
+                        fontWeight: weightValue(h3Step.weight),
+                      }}
+                    >
+                      Left Column Heading
+                    </h2>
+                    <p
+                      className="text-fg-mute"
+                      style={{
+                        fontSize: `${bodyStep.size}px`,
+                        lineHeight: bodyStep.lineHeight,
+                        fontFamily: typography.fontRoles[bodyStep.role].family,
+                        fontWeight: weightValue(bodyStep.weight),
+                        marginBottom: `${paraSpacing}px`,
+                      }}
+                    >
+                      A two-column layout is excellent for checking how line wrap and measure (the number of characters per line) feel. When columns are too narrow, the eye jumps too frequently, causing fatigue.
+                    </p>
+                    <p
+                      className="text-fg-mute"
+                      style={{
+                        fontSize: `${bodyStep.size}px`,
+                        lineHeight: bodyStep.lineHeight,
+                        fontFamily: typography.fontRoles[bodyStep.role].family,
+                        fontWeight: weightValue(bodyStep.weight),
+                      }}
+                    >
+                      Use the Max-width slider to adjust the boundaries and see where the lines break. Optimal measure is typically between 45 and 75 characters per line.
+                    </p>
+                  </div>
+                  <div>
+                    <h2
+                      className="text-fg font-semibold mb-3"
+                      style={{
+                        fontSize: `${h3Step.size}px`,
+                        lineHeight: h3Step.lineHeight,
+                        fontFamily: typography.fontRoles[h3Step.role].family,
+                        fontWeight: weightValue(h3Step.weight),
+                      }}
+                    >
+                      Right Column Heading
+                    </h2>
+                    <p
+                      className="text-fg-mute"
+                      style={{
+                        fontSize: `${bodyStep.size}px`,
+                        lineHeight: bodyStep.lineHeight,
+                        fontFamily: typography.fontRoles[bodyStep.role].family,
+                        fontWeight: weightValue(bodyStep.weight),
+                        marginBottom: `${paraSpacing}px`,
+                      }}
+                    >
+                      Notice how serif fonts excel in long-form paragraphs whereas sans-serif fonts remain clean and legible in small widgets and user interface items.
+                    </p>
+                    <p
+                      className="text-fg-mute"
+                      style={{
+                        fontSize: `${bodyStep.size}px`,
+                        lineHeight: bodyStep.lineHeight,
+                        fontFamily: typography.fontRoles[bodyStep.role].family,
+                        fontWeight: weightValue(bodyStep.weight),
+                      }}
+                    >
+                      By isolating font roles, you can assign Serifs to Display/Heading and clean Sans-serifs or Monospaces to Body/Code.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="rounded-xl border border-line bg-ink p-8 flex justify-center">
+              <div
+                className="rounded-xl border border-line bg-ink-panel p-6 shadow-md w-full"
+                style={{ maxWidth: `${Math.min(measureWidth, 420)}px` }}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <span
+                    className="text-fg-mute uppercase tracking-wide"
+                    style={{
+                      fontSize: `${metaStep.size}px`,
+                      lineHeight: metaStep.lineHeight,
+                      fontFamily: typography.fontRoles[metaStep.role].family,
+                      fontWeight: weightValue(metaStep.weight),
+                    }}
+                  >
+                    Billing Analytics
+                  </span>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                </div>
+                
+                <div className="mb-2">
+                  <span
+                    className="text-fg-mute block text-[11px]"
+                    style={{
+                      fontFamily: typography.fontRoles[bodyStep.role].family,
+                    }}
+                  >
+                    Monthly Active Usage
+                  </span>
+                  <h3
+                    className="text-fg font-bold tracking-tight mt-1"
+                    style={{
+                      fontSize: `${h2Step.size}px`,
+                      lineHeight: h2Step.lineHeight,
+                      fontFamily: typography.fontRoles[h2Step.role].family,
+                      fontWeight: weightValue(h2Step.weight),
+                    }}
+                  >
+                    14,892,102
+                  </h3>
+                </div>
+
+                <p
+                  className="text-fg-dim"
+                  style={{
+                    fontSize: `${bodyStep.size * 0.95}px`,
+                    lineHeight: bodyStep.lineHeight,
+                    fontFamily: typography.fontRoles[bodyStep.role].family,
+                    fontWeight: weightValue(bodyStep.weight),
+                    marginBottom: `${paraSpacing}px`,
+                  }}
+                >
+                  Your API request volume grew by 12.4% over the last 30 days. Most of the traffic was consumed by the token synthesis endpoint.
+                </p>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    className="flex-1 rounded-lg bg-fg px-4 py-2 text-center text-ink font-semibold transition-opacity hover:opacity-90"
+                    style={{
+                      fontSize: `${buttonTextStep.size}px`,
+                      fontFamily: typography.fontRoles[buttonTextStep.role].family,
+                    }}
+                  >
+                    View invoice
+                  </button>
+                  <button
+                    type="button"
+                    className="flex-1 rounded-lg border border-line px-4 py-2 text-center text-fg font-semibold transition-colors hover:bg-ink-hover"
+                    style={{
+                      fontSize: `${buttonTextStep.size}px`,
+                      fontFamily: typography.fontRoles[buttonTextStep.role].family,
+                    }}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </CanvasSection>
     </StepScaffold>
   );

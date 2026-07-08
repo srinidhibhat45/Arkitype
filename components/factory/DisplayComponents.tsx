@@ -9,7 +9,7 @@ import { AlertTriangle, Bell, CheckCircle2, Info, X, XCircle } from "lucide-reac
 import type { CSSProperties } from "react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
-import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver } from "@/lib/componentSchema";
+import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver, resolveOptions } from "@/lib/componentSchema";
 import { pxNum, TokenButton } from "./CoreComponents";
 import { TokenIconButton } from "./FormControls";
 
@@ -402,6 +402,12 @@ export function TokenToast({
   const dismissVariant = (dismissOpts.variant as any) ?? "ghost";
   const dismissSize = (dismissOpts.size as any) ?? "sm";
 
+  const opts = resolveOptions("toast", cfg?.properties);
+  const toastTitle = (opts.title || title) as string;
+  const toastBody = (opts.body || body) as string;
+  const titleSize = (opts["title.size"] ?? "sm") as string;
+  const bodySize = (opts["body.size"] ?? "xs") as string;
+
   return (
     <div
       role="status"
@@ -442,20 +448,25 @@ export function TokenToast({
           style={{
             display: "block",
             color: r("text.title") ?? tv("text-primary"),
-            fontSize: "var(--ark-text-sm)",
-            fontWeight: 600,
+            fontSize: `var(--ark-text-${titleSize})`,
+            lineHeight: `var(--ark-leading-${titleSize})`,
+            fontWeight: `var(--ark-weight-${titleSize})`,
+            fontFamily: `var(--ark-font-role-${titleSize})`,
           }}
         >
-          {title ?? "Transaction saved"}
+          {toastTitle || "Transaction saved"}
         </span>
         <span
           style={{
             display: "block",
             color: r("text.body") ?? tv("text-muted"),
-            fontSize: "var(--ark-text-xs)",
+            fontSize: `var(--ark-text-${bodySize})`,
+            lineHeight: `var(--ark-leading-${bodySize})`,
+            fontWeight: `var(--ark-weight-${bodySize})`,
+            fontFamily: `var(--ark-font-role-${bodySize})`,
           }}
         >
-          {body ?? "TXN-0459 posted to the operating ledger."}
+          {toastBody || "TXN-0459 posted to the operating ledger."}
         </span>
       </span>
       {action ? (

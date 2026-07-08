@@ -214,8 +214,11 @@ export function TokenCard({
   const buttonResolve = useComponentBindings("button");
 
   const title = (opts.title ?? "Design Systems Manager") as string;
+  const titleSize = (opts["title.size"] ?? "sm") as string;
   const subtitle = (opts.subtitle ?? "Updated 2 hours ago") as string;
+  const subtitleSize = (opts["subtitle.size"] ?? "xs") as string;
   const bodyText = (opts.bodyText ?? "Manage tokens, balance scales, and distribute variable definitions.") as string;
+  const bodyTextSize = (opts["bodyText.size"] ?? "xs") as string;
   const borderWidth = Number(opts.borderWidth ?? 1);
   const borderColor = (opts.borderColor ?? "#e4e4e7") as string;
   const bg = (opts.bg ?? "#ffffff") as string;
@@ -237,7 +240,7 @@ export function TokenCard({
     <div
       style={{
         border: `${borderWidth}px solid ${r("container.border") ?? borderColor}`,
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        borderRadius: r("container.radius") ?? `${radius}px`,
         backgroundColor: r("container.bg") ?? bg,
         boxShadow: shadows[shadow] ?? shadows.md,
         overflow: "hidden",
@@ -258,11 +261,28 @@ export function TokenCard({
         }}
       >
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <span style={{ color: r("text.title") ?? tv("text-primary"), fontSize: "var(--ark-text-sm)", fontWeight: 700 }}>
+          <span
+            style={{
+              color: r("text.title") ?? tv("text-primary"),
+              fontSize: `var(--ark-text-${titleSize})`,
+              lineHeight: `var(--ark-leading-${titleSize})`,
+              fontWeight: `var(--ark-weight-${titleSize})`,
+              fontFamily: `var(--ark-font-role-${titleSize})`,
+            }}
+          >
             {title}
           </span>
           {subtitle && (
-            <span style={{ color: tv("text-muted"), fontSize: "10px", marginTop: "1px" }}>
+            <span
+              style={{
+                color: tv("text-muted"),
+                fontSize: `var(--ark-text-${subtitleSize})`,
+                lineHeight: `var(--ark-leading-${subtitleSize})`,
+                fontWeight: `var(--ark-weight-${subtitleSize})`,
+                fontFamily: `var(--ark-font-role-${subtitleSize})`,
+                marginTop: "1px",
+              }}
+            >
               {subtitle}
             </span>
           )}
@@ -272,7 +292,15 @@ export function TokenCard({
         </TokenBadge>
       </div>
       <div style={{ padding: `${padding}px`, display: "flex", flexDirection: "column", gap: "10px" }}>
-        <span style={{ color: r("text.body") ?? tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5" }}>
+        <span
+          style={{
+            color: r("text.body") ?? tv("text-secondary"),
+            fontSize: `var(--ark-text-${bodyTextSize})`,
+            lineHeight: `var(--ark-leading-${bodyTextSize})`,
+            fontWeight: `var(--ark-weight-${bodyTextSize})`,
+            fontFamily: `var(--ark-font-role-${bodyTextSize})`,
+          }}
+        >
           {bodyText}
         </span>
       </div>
@@ -320,12 +348,16 @@ export function TokenAccordion({
 }) {
   const [open, setOpen] = useState(0);
   const r = resolve;
+  const cfg = useDesignSystem((s) => s.components.accordion);
+  const opts = resolveOptions("accordion", cfg?.properties);
+  const radius = Number(opts.radius ?? 12);
+
   const border = r("container.border") ?? tv("border-muted");
   const openBg = r("container.openBg") ?? tv("surface-elevated");
   return (
     <div
       style={{
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        borderRadius: r("container.radius") ?? `${radius}px`,
         border: `1px solid ${border}`,
         overflow: "hidden",
         fontFamily: "var(--ark-font-sans)",

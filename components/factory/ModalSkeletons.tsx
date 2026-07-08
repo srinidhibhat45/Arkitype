@@ -31,7 +31,9 @@ export const MODAL_SKELETONS = [
 
 interface ModalResolvedOpts {
   title: string;
+  titleSize: string;
   subtitle: string;
+  subtitleSize: string;
   align: "left" | "center";
   showClose: boolean;
   forcedAction: boolean;
@@ -41,6 +43,7 @@ interface ModalResolvedOpts {
   shadow: string;
   borderWidth: number;
   bodyText: string;
+  bodyTextSize: string;
   showSecondary: boolean;
   width: "xs" | "sm" | "md" | "lg";
   overlayOpacity: number;
@@ -56,7 +59,9 @@ function useResolvedModalOptions(): ModalResolvedOpts {
   
   return {
     title: (opts.title ?? "Confirm deletion") as string,
+    titleSize: (opts["title.size"] ?? "xl") as string,
     subtitle: (opts.subtitle ?? "This action cannot be undone") as string,
+    subtitleSize: (opts["subtitle.size"] ?? "sm") as string,
     align: (opts.align ?? "left") as "left" | "center",
     showClose: opts.showClose !== false && opts.forcedAction !== true,
     forcedAction: !!opts.forcedAction,
@@ -66,6 +71,7 @@ function useResolvedModalOptions(): ModalResolvedOpts {
     shadow: (opts.shadow ?? "lg") as string,
     borderWidth: Number(opts.borderWidth ?? 1),
     bodyText: (opts.bodyText ?? "This will permanently delete the selected items from your workspace.") as string,
+    bodyTextSize: (opts["bodyText.size"] ?? "sm") as string,
     showSecondary: opts.showSecondary !== false,
     width: (opts.width ?? "sm") as "xs" | "sm" | "md" | "lg",
     overlayOpacity: Number(opts.overlayOpacity ?? 48),
@@ -110,7 +116,7 @@ function ModalChrome({
       style={{
         backgroundColor: bgColor,
         border: `${opts.borderWidth}px solid ${bColor}`,
-        borderRadius: `${opts.radius}px`,
+        borderRadius: resolve("container.radius") ?? `${opts.radius}px`,
         boxShadow: SHADOWS[opts.shadow] ?? SHADOWS.lg,
         display: "flex",
         flexDirection: "column",
@@ -136,8 +142,10 @@ function ModalChrome({
           <span
             style={{
               color: tv("text-primary"),
-              fontSize: "var(--ark-text-base)",
-              fontWeight: 700,
+              fontSize: `var(--ark-text-${opts.titleSize})`,
+              lineHeight: `var(--ark-leading-${opts.titleSize})`,
+              fontWeight: `var(--ark-weight-${opts.titleSize})`,
+              fontFamily: `var(--ark-font-role-${opts.titleSize})`,
             }}
           >
             {opts.title}
@@ -146,7 +154,10 @@ function ModalChrome({
             <span
               style={{
                 color: tv("text-muted"),
-                fontSize: "var(--ark-text-xs)",
+                fontSize: `var(--ark-text-${opts.subtitleSize})`,
+                lineHeight: `var(--ark-leading-${opts.subtitleSize})`,
+                fontWeight: `var(--ark-weight-${opts.subtitleSize})`,
+                fontFamily: `var(--ark-font-role-${opts.subtitleSize})`,
                 marginTop: "2px",
               }}
             >
@@ -332,7 +343,16 @@ export function ModalSkeleton({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5", marginBottom: "8px" }}>
+            <p
+              style={{
+                color: tv("text-secondary"),
+                fontSize: `var(--ark-text-${opts.bodyTextSize})`,
+                lineHeight: `var(--ark-leading-${opts.bodyTextSize})`,
+                fontWeight: `var(--ark-weight-${opts.bodyTextSize})`,
+                fontFamily: `var(--ark-font-role-${opts.bodyTextSize})`,
+                marginBottom: "8px",
+              }}
+            >
               {opts.bodyText}
             </p>
             <FieldRow label="Date Range">
@@ -372,7 +392,15 @@ export function ModalSkeleton({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "14px", height: "100%", maxWidth: "600px", width: "100%", margin: "0 auto" }}>
-            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5" }}>
+            <p
+              style={{
+                color: tv("text-secondary"),
+                fontSize: `var(--ark-text-${opts.bodyTextSize})`,
+                lineHeight: `var(--ark-leading-${opts.bodyTextSize})`,
+                fontWeight: `var(--ark-weight-${opts.bodyTextSize})`,
+                fontFamily: `var(--ark-font-role-${opts.bodyTextSize})`,
+              }}
+            >
               {opts.bodyText}
             </p>
             <FieldRow label="Report Title">
@@ -439,7 +467,16 @@ export function ModalSkeleton({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "12px", height: "100%" }}>
-            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-xs)", lineHeight: "1.5", marginBottom: "8px" }}>
+            <p
+              style={{
+                color: tv("text-secondary"),
+                fontSize: `var(--ark-text-${opts.bodyTextSize})`,
+                lineHeight: `var(--ark-leading-${opts.bodyTextSize})`,
+                fontWeight: `var(--ark-weight-${opts.bodyTextSize})`,
+                fontFamily: `var(--ark-font-role-${opts.bodyTextSize})`,
+                marginBottom: "8px",
+              }}
+            >
               {opts.bodyText}
             </p>
             
@@ -515,7 +552,15 @@ export function ModalSkeleton({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <p style={{ color: tv("text-secondary"), fontSize: "var(--ark-text-sm)", lineHeight: "1.5" }}>
+            <p
+              style={{
+                color: tv("text-secondary"),
+                fontSize: `var(--ark-text-${opts.bodyTextSize})`,
+                lineHeight: `var(--ark-leading-${opts.bodyTextSize})`,
+                fontWeight: `var(--ark-weight-${opts.bodyTextSize})`,
+                fontFamily: `var(--ark-font-role-${opts.bodyTextSize})`,
+              }}
+            >
               {opts.bodyText}
             </p>
             

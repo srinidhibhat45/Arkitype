@@ -1340,19 +1340,40 @@ export function ComponentStudioControls({
 
           {/* Inline Text options */}
           {textOpts.map((o) => {
-            const val = opts[o.key] as string;
+            const val = (opts[o.key] as string) ?? "";
+            const sizeKey = `${o.key}.size`;
+            // Default size mappings depending on key name
+            const defaultSize = o.key.includes("title") ? "xl" : o.key.includes("subtitle") ? "sm" : o.key.includes("body") ? "base" : "base";
+            const sizeVal = (opts[sizeKey] as string) ?? defaultSize;
+
             return (
               <div key={o.key} className="col-span-2 flex flex-col gap-1">
-                <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
-                  <Type size={10} />
-                  <span>{o.label}</span>
-                </span>
-                <input
-                  type="text"
-                  value={val}
-                  onChange={(e) => setProperty(id, o.key, e.target.value)}
-                  className="w-full h-7 rounded-md border border-line bg-ink px-2.5 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono"
-                />
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                    <Type size={10} />
+                    <span>{o.label}</span>
+                  </span>
+                  <span className="text-[9px] uppercase tracking-wide text-fg-mute font-semibold">Scale Step</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={val}
+                    onChange={(e) => setProperty(id, o.key, e.target.value)}
+                    className="flex-1 h-7 rounded-md border border-line bg-ink px-2.5 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono"
+                  />
+                  <select
+                    value={sizeVal}
+                    onChange={(e) => setProperty(id, sizeKey, e.target.value)}
+                    className="w-20 h-7 rounded-md border border-line bg-ink px-1.5 py-0.5 text-[11px] text-fg focus:border-focus focus:outline-none font-mono bg-ink-panel cursor-pointer"
+                  >
+                    {["xs", "sm", "base", "lg", "xl", "2xl", "3xl", "4xl"].map((step) => (
+                      <option key={step} value={step}>
+                        {step}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             );
           })}

@@ -140,29 +140,31 @@ export function TokenButton({
       defBg = state === "hover" ? (mode === "dark" ? tv("error-400") : tv("error-700")) : state === "active" ? (mode === "dark" ? tv("error-300") : tv("error-800")) : (mode === "dark" ? tv("error-500") : tv("error-600"));
       defColor = tv("text-on-action");
     } else if (variant === "warning") {
-      defBg = state === "hover" ? (mode === "dark" ? tv("warning-400") : tv("warning-700")) : (mode === "dark" ? tv("warning-500") : tv("warning-600"));
+      defBg = state === "hover" ? (mode === "dark" ? tv("warning-400") : tv("warning-700")) : state === "active" ? (mode === "dark" ? tv("warning-300") : tv("warning-800")) : (mode === "dark" ? tv("warning-500") : tv("warning-600"));
       defColor = tv("text-on-action");
     } else if (variant === "success") {
-      defBg = state === "hover" ? (mode === "dark" ? tv("success-400") : tv("success-700")) : (mode === "dark" ? tv("success-500") : tv("success-600"));
+      defBg = state === "hover" ? (mode === "dark" ? tv("success-400") : tv("success-700")) : state === "active" ? (mode === "dark" ? tv("success-300") : tv("success-800")) : (mode === "dark" ? tv("success-500") : tv("success-600"));
       defColor = tv("text-on-action");
     }
   }
 
-  const prefixColor = r("prefixIcon.color", cst) ?? defColor;
-  const suffixColor = r("suffixIcon.color", cst) ?? defColor;
+  const isFeedbackVariant = variant === "error" || variant === "warning" || variant === "success";
+
+  const prefixColor = isFeedbackVariant ? defColor : (r("prefixIcon.color", cst) ?? defColor);
+  const suffixColor = isFeedbackVariant ? defColor : (r("suffixIcon.color", cst) ?? defColor);
   const prefixIconSize = r("prefixIcon.size") ?? "16px";
   const suffixIconSize = r("suffixIcon.size") ?? "16px";
 
   const style: CSSProperties = {
-    background: r("container.bg", cst) ?? defBg,
-    color: r("label.color", cst) ?? defColor,
+    background: isFeedbackVariant ? defBg : (r("container.bg", cst) ?? defBg),
+    color: isFeedbackVariant ? defColor : (r("label.color", cst) ?? defColor),
     padding: `${r("container.padY") ?? sv(s.py)} ${r("container.padX") ?? sv(s.px)}`,
     borderRadius: r("container.radius") ?? rv(radiusStep),
     fontSize: r("label.size") ?? `var(--ark-text-${s.text})`,
     fontFamily: r("label.font") ?? "var(--ark-font-sans)",
     fontWeight: r("label.weight") ?? 600,
     border: `${r("container.borderWidth") ?? "1px"} solid ${
-      r("container.border", cst) ?? defBorder
+      isFeedbackVariant ? defBorder : (r("container.border", cst) ?? defBorder)
     }`,
     display: "inline-flex",
     alignItems: "center",

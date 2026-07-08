@@ -10,6 +10,7 @@
  *    weight from a named weight scale — because real systems don't ship one
  *    family at one weight.
  */
+import { useState } from "react";
 import { useDesignSystem } from "@/store/useDesignSystem";
 import { RoundingMode, FontRoleId } from "@/lib/typography";
 import { SCALE_FACTORS, generateTypeScale, STEP_DEFS } from "@/lib/typography";
@@ -23,7 +24,9 @@ import {
   SliderControl,
 } from "@/components/ui/controls";
 import { StepScaffold } from "@/components/shell/StepScaffold";
-import { RotateCcw, Trash2, Plus } from "lucide-react";
+import { RotateCcw, Trash2, Plus, Sparkles, ChevronDown } from "lucide-react";
+import { FontPicker } from "@/components/ui/FontPicker";
+import { FONT_PAIRINGS } from "@/lib/googleFonts";
 
 const ROUNDING_OPTIONS: Array<{ label: string; value: RoundingMode }> = [
   { label: "0.00", value: "none" },
@@ -46,6 +49,7 @@ const ROLE_LABEL: Record<FontRoleId, string> = {
 };
 
 export function TypeStep() {
+  const [showPairings, setShowPairings] = useState(false);
   const typography = useDesignSystem((s) => s.primitives.typography);
   const setTypographyBase = useDesignSystem((s) => s.setTypographyBase);
   const setScaleFactor = useDesignSystem((s) => s.setScaleFactor);
@@ -57,6 +61,13 @@ export function TypeStep() {
   const setTypeSizeOverride = useDesignSystem((s) => s.setTypeSizeOverride);
   const clearTypeSizeOverride = useDesignSystem((s) => s.clearTypeSizeOverride);
   const setStepAssign = useDesignSystem((s) => s.setStepAssign);
+
+  function applyPairing(p: typeof FONT_PAIRINGS[0]) {
+    setFontRole("display", { family: p.display });
+    setFontRole("heading", { family: p.heading });
+    setFontRole("body", { family: p.body });
+    setFontRole("mono", { family: p.mono });
+  }
 
   const steps = generateTypeScale(typography.baseSize, typography.scaleFactor, {
     rounding: typography.rounding,
@@ -132,15 +143,57 @@ export function TypeStep() {
 
           <AsideDivider />
 
+          {/* Font pairings toggle */}
+          <button
+            type="button"
+            onClick={() => setShowPairings((v) => !v)}
+            className="mb-3 flex w-full items-center justify-between rounded-lg border border-line px-2.5 py-2 text-[11px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+          >
+            <span className="flex items-center gap-1.5">
+              <Sparkles size={12} />
+              Pairing presets
+            </span>
+            <ChevronDown size={12} className={`transition-transform ${showPairings ? "rotate-180" : ""}`} />
+          </button>
+
+          {showPairings && (
+            <div className="mb-3 space-y-1.5">
+              {FONT_PAIRINGS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => applyPairing(p)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-left transition-all hover:border-line-strong hover:bg-ink-hover"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span
+                      className="text-[15px] text-fg"
+                      style={{ fontFamily: `"${p.display}", sans-serif`, fontWeight: 700 }}
+                    >
+                      {p.label}
+                    </span>
+                    <span className="shrink-0 text-[9px] uppercase tracking-wide text-fg-mute">
+                      {p.display}
+                    </span>
+                  </div>
+                  <p
+                    className="mt-0.5 text-[11px] text-fg-mute"
+                    style={{ fontFamily: `"${p.body}", sans-serif` }}
+                  >
+                    {p.description}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="mb-2 text-[12px] font-medium text-fg-dim">Font roles</div>
           {(Object.keys(ROLE_LABEL) as FontRoleId[]).map((role) => (
             <div key={role} className="mb-3">
               <div className="mb-1 text-[11px] text-fg-mute">{ROLE_LABEL[role]}</div>
-              <input
-                type="text"
+              <FontPicker
                 value={typography.fontRoles[role].family}
-                onChange={(e) => setFontRole(role, { family: e.target.value })}
-                className="h-8 w-full rounded-lg border border-line bg-ink-panel px-2.5 font-mono text-[11px] text-fg focus:border-line-strong focus:outline-none"
+                onChange={(family) => setFontRole(role, { family })}
               />
             </div>
           ))}

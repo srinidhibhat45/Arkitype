@@ -19,6 +19,7 @@ import { ComponentsStep } from "@/components/steps/ComponentsStep";
 import { PreviewStep } from "@/components/steps/PreviewStep";
 import { ShipStep } from "@/components/steps/ShipStep";
 import { GateKeeper } from "@/components/ui/GateKeeper";
+import { FontLoader } from "@/components/ui/FontLoader";
 
 export default function WorkspacePage() {
   // Gate on client mount so the persisted store hydrates before first paint
@@ -40,6 +41,7 @@ export default function WorkspacePage() {
 
   return (
     <GateKeeper>
+      <FontLoader />
       {!started ? (
         <Welcome />
       ) : (

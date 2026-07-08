@@ -541,7 +541,7 @@ export function ComponentStudioPreview({
   const hoveredLabel = spec.parts.find((p) => p.id === hoveredPart)?.label ?? "";
 
   const hero = (st: CState, o: Record<string, string | boolean | number> = opts): ReactNode =>
-    renderHero(id, { state: st, size, radiusStep, resolve, mode, opts: o });
+    renderHero(id, { state: st, size: "md", radiusStep, resolve, mode, opts: o });
 
   /* the clickable canvas strip: states for controls, variants for display */
   const stripItems: Array<{ key: string; label: string; node: ReactNode; active: boolean; onClick: () => void }> =
@@ -570,68 +570,62 @@ export function ComponentStudioPreview({
     backgroundSize: "16px 16px",
   } as const;
 
+  const isSizable = SIZABLE.has(id);
+  const friendlySizes: Record<string, string> = {
+    sm: "Small",
+    md: "Medium",
+    lg: "Large",
+    xl: "Extra Large",
+  };
+
   return (
-    <div>
-      {/* top toolbar: variant · state · reset · light/dark */}
-      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-        {axis && axisValue ? (
-          <ToolbarSegmented
-            label={axis.label}
-            options={(axis.options ?? []).map((c) => ({ value: c.value, label: c.label }))}
-            value={axisValue}
-            onChange={(v) => setProperty(id, axis.key, v)}
-          />
-        ) : null}
-
-        {multiState ? (
-          <ToolbarSegmented
-            label="Editing"
-            options={spec.states.map((s) => ({ value: s, label: STATE_LABEL[s] }))}
-            value={activeState}
-            onChange={setActiveState}
-          />
-        ) : null}
-
-        <div className="ml-auto flex items-center gap-3">
+    <div className="space-y-6">
+      {/* top toolbar: reset · zoom · light/dark */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="text-[12px] font-bold uppercase tracking-wider text-fg-mute">
+          Live Studio Preview
+        </div>
+        <div className="flex items-center gap-3">
           {overrideCount > 0 ? (
             <button
               type="button"
               onClick={() => resetAll(id)}
-              className="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-1 text-[10.5px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+              className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg h-7"
             >
-              <RotateCcw size={10} /> Reset all · {overrideCount}
+              <RotateCcw size={11} /> Reset all ({overrideCount})
             </button>
           ) : null}
 
           {/* Zoom Controller */}
           <div className="flex items-center gap-1.5 rounded-lg border border-line bg-ink-panel p-0.5 px-2.5 h-7">
-            <span className="text-[10px] font-semibold text-fg-mute uppercase tracking-wider">Zoom</span>
+            <span className="text-[9.5px] font-semibold text-fg-mute uppercase tracking-wider">Zoom</span>
             <input
               type="range"
-              min={1}
-              max={5}
-              step={0.5}
+              min={0.5}
+              max={2.5}
+              step={0.25}
               value={canvasZoom}
               onChange={(e) => setCanvasZoom(Number(e.target.value))}
               className="w-16 accent-fg cursor-ew-resize"
             />
-            <span className="font-mono text-[9.5px] font-bold text-fg-mute w-8 text-right">
+            <span className="font-mono text-[9px] font-bold text-fg-mute w-8 text-right">
               {Math.round(canvasZoom * 100)}%
             </span>
           </div>
 
-          <div className="inline-flex rounded-lg border border-line bg-ink-panel p-0.5">
+          {/* Light/Dark Toggle */}
+          <div className="inline-flex rounded-lg border border-line bg-ink-panel p-0.5 h-7 items-center">
             {(["light", "dark"] as PreviewMode[]).map((m) => (
               <button
                 key={m}
                 type="button"
                 aria-label={m}
                 onClick={() => setPreviewMode(m)}
-                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-medium capitalize transition-colors h-full ${
                   mode === m ? "bg-fg text-ink" : "text-fg-mute hover:text-fg-dim"
                 }`}
               >
-                {m === "light" ? <Sun size={12} /> : <Moon size={12} />}
+                {m === "light" ? <Sun size={11} /> : <Moon size={11} />}
                 {m}
               </button>
             ))}
@@ -639,49 +633,84 @@ export function ComponentStudioPreview({
         </div>
       </div>
 
-      {/* enlarged live preview — full canvas width */}
-      <div className="rounded-2xl border border-line p-6" style={dotted}>
-        <div className="flex items-center justify-center py-6">
-          <div ref={previewRef} className="relative w-full">
-            <ThemeFrame mode={mode} className="w-full">
-              <div className="relative border-b border-line bg-ink-panel/10 flex items-center justify-center min-h-[340px] overflow-hidden">
-                {/* Horizontal Ruler (Top) */}
-                <div 
-                  className="absolute top-0 left-8 right-0 h-6 border-b border-line flex items-end select-none pointer-events-none font-mono text-[8px] text-fg-mute bg-ink/90 z-10"
-                  style={{
-                    backgroundImage: "repeating-linear-gradient(90deg, var(--c-border) 0px, var(--c-border) 1px, transparent 1px, transparent 10px), repeating-linear-gradient(90deg, var(--c-border-strong) 0px, var(--c-border-strong) 1px, transparent 1px, transparent 50px)",
-                    backgroundSize: "100% 6px",
-                    backgroundPosition: "bottom",
-                    backgroundRepeat: "repeat-x",
-                  }}
-                >
-                  {Array.from({ length: 25 }).map((_, idx) => (
-                    <div key={idx} className="absolute font-semibold leading-none" style={{ left: `${idx * 50 + 4}px`, bottom: "7px" }}>
-                      {idx * 50}
-                    </div>
-                  ))}
-                </div>
+      {/* VARIANTS / PREVIEW Card (Full Width) */}
+      <div className="flex flex-col rounded-2xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-5 py-2.5 select-none">
+          <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-fg-mute">
+            {axis ? (axis.label || "Variants") : "Preview"}
+          </span>
+          <span className="text-[10px] font-bold text-fg-dim uppercase tracking-wider font-mono">
+            {axis ? (axis.options?.find((o) => o.value === axisValue)?.label ?? axisValue) : spec.id}
+          </span>
+        </div>
+        <div className="relative overflow-hidden w-full">
+          <ThemeFrame mode={mode} className="w-full">
+            <div className="flex flex-row flex-wrap items-center justify-center gap-x-12 gap-y-10 p-10 min-h-[180px] w-full overflow-x-auto" style={dotted}>
+              {axis ? (
+                (axis.options ?? []).map((opt) => {
+                  const isActive = opt.value === axisValue;
+                  return (
+                    <div
+                      key={opt.value}
+                      role="button"
+                      onClick={() => setProperty(id, axis.key, opt.value)}
+                      ref={isActive ? previewRef : undefined}
+                      className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border transition-all cursor-pointer ${
+                        isActive
+                          ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-105 z-10"
+                          : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
+                      }`}
+                    >
+                      <div
+                        className="flex items-center justify-center p-2"
+                        style={{
+                          transform: `scale(${canvasZoom})`,
+                          transformOrigin: "center",
+                          transition: "transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+                        }}
+                      >
+                        {hero(activeState, { ...opts, [axis.key]: opt.value })}
+                      </div>
+                      <span className={`text-[10px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
+                        {opt.label}
+                      </span>
 
-                {/* Vertical Ruler (Left) */}
-                <div 
-                  className="absolute top-6 left-0 bottom-0 w-8 border-r border-line flex flex-col justify-start select-none pointer-events-none font-mono text-[8px] text-fg-mute bg-ink/90 z-10"
-                  style={{
-                    backgroundImage: "repeating-linear-gradient(180deg, var(--c-border) 0px, var(--c-border) 1px, transparent 1px, transparent 10px), repeating-linear-gradient(180deg, var(--c-border-strong) 0px, var(--c-border-strong) 1px, transparent 1px, transparent 50px)",
-                    backgroundSize: "6px 100%",
-                    backgroundPosition: "right",
-                    backgroundRepeat: "repeat-y",
-                  }}
-                >
-                  {Array.from({ length: 15 }).map((_, idx) => (
-                    <div key={idx} className="absolute font-semibold leading-none" style={{ top: `${idx * 50 + 4}px`, right: "7px" }}>
-                      {idx * 50}
+                      {isActive && (
+                        /* hover-highlight overlay: rings the part named by the hovered cluster */
+                        <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-xl">
+                          <div
+                            className="absolute rounded-md"
+                            style={{
+                              top: (box?.top ?? 0) - 5,
+                              left: (box?.left ?? 0) - 5,
+                              width: (box?.width ?? 0) + 10,
+                              height: (box?.height ?? 0) + 10,
+                              boxShadow: `0 0 0 2px ${RING}`,
+                              background: `${RING}14`,
+                              opacity: box ? 1 : 0,
+                              transition: "opacity 120ms ease-out",
+                            }}
+                          />
+                          {box ? (
+                            <span
+                              className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
+                              style={{ top: box.top - 7, left: box.left - 5, background: RING }}
+                            >
+                              {hoveredLabel}
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
-
-                {/* Grid Content Sandbox */}
-                <div className="pl-8 pt-6 w-full h-full flex items-center justify-center min-h-[316px] relative">
+                  );
+                })
+              ) : (
+                <div
+                  ref={previewRef}
+                  className="relative flex flex-col items-center gap-2 p-4 rounded-xl border border-transparent"
+                >
                   <div
+                    className="flex items-center justify-center p-2"
                     style={{
                       transform: `scale(${canvasZoom})`,
                       transformOrigin: "center",
@@ -690,72 +719,127 @@ export function ComponentStudioPreview({
                   >
                     {hero(activeState)}
                   </div>
-                </div>
-              </div>
-            </ThemeFrame>
 
-            {/* hover-highlight overlay: rings the part named by the hovered cluster */}
-            <div className="pointer-events-none absolute inset-0 z-20">
-              <div
-                className="absolute rounded-md"
-                style={{
-                  top: (box?.top ?? 0) - 5,
-                  left: (box?.left ?? 0) - 5,
-                  width: (box?.width ?? 0) + 10,
-                  height: (box?.height ?? 0) + 10,
-                  boxShadow: `0 0 0 2px ${RING}`,
-                  background: `${RING}14`,
-                  opacity: box ? 1 : 0,
-                  transition: "opacity 120ms ease-out",
-                }}
-              />
-              {box ? (
-                <span
-                  className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
-                  style={{ top: box.top - 7, left: box.left - 5, background: RING }}
-                >
-                  {hoveredLabel}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {stripItems.length > 0 ? (
-          <div className="mt-6 border-t border-line pt-4">
-            <div className="mb-3 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
-              {multiState ? "Interaction states — click to edit" : `${axis?.label ?? "Variants"} — click to preview`}
-            </div>
-            <ThemeFrame mode={mode}>
-              <div className="flex flex-wrap items-start gap-x-8 gap-y-5 p-5">
-                {stripItems.map((it) => (
-                  <div
-                    key={it.key}
-                    role="button"
-                    tabIndex={0}
-                    onClick={it.onClick}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        it.onClick();
-                      }
-                    }}
-                    className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-3 transition-colors ${
-                      it.active
-                        ? "border-line-strong bg-ink-panel/60"
-                        : "border-transparent hover:border-line"
-                    }`}
-                  >
-                    {it.node}
-                    <span className={`text-[10px] ${it.active ? "text-fg" : "text-fg-mute"}`}>
-                      {it.label}
-                    </span>
+                  {/* hover-highlight overlay */}
+                  <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-xl">
+                    <div
+                      className="absolute rounded-md"
+                      style={{
+                        top: (box?.top ?? 0) - 5,
+                        left: (box?.left ?? 0) - 5,
+                        width: (box?.width ?? 0) + 10,
+                        height: (box?.height ?? 0) + 10,
+                        boxShadow: `0 0 0 2px ${RING}`,
+                        background: `${RING}14`,
+                        opacity: box ? 1 : 0,
+                        transition: "opacity 120ms ease-out",
+                      }}
+                    />
+                    {box ? (
+                      <span
+                        className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
+                        style={{ top: box.top - 7, left: box.left - 5, background: RING }}
+                      >
+                        {hoveredLabel}
+                      </span>
+                    ) : null}
                   </div>
-                ))}
-              </div>
-            </ThemeFrame>
+                </div>
+              )}
+            </div>
+          </ThemeFrame>
+        </div>
+      </div>
+
+      {/* Two Column Section for STATES & SIZES */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* STATES Card */}
+        {multiState && (
+          <div className={`flex flex-col rounded-2xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm ${!isSizable ? "md:col-span-2" : ""}`}>
+            <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-5 py-2.5 select-none">
+              <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-fg-mute">States</span>
+              <span className="text-[10px] font-bold text-fg-dim uppercase tracking-wider font-mono">{STATE_LABEL[activeState]}</span>
+            </div>
+            <div className="relative overflow-hidden w-full">
+              <ThemeFrame mode={mode} className="w-full">
+                <div className="flex flex-row flex-wrap items-center justify-center gap-x-10 gap-y-8 p-8 min-h-[160px] w-full overflow-x-auto" style={dotted}>
+                  {spec.states.map((st) => {
+                    const isActive = st === activeState;
+                    return (
+                      <div
+                        key={st}
+                        role="button"
+                        onClick={() => setActiveState(st)}
+                        className={`flex flex-col items-center gap-2 p-3.5 rounded-xl border transition-all cursor-pointer ${
+                          isActive
+                            ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-105 z-10"
+                            : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
+                        }`}
+                      >
+                        <div
+                          className="flex items-center justify-center p-1.5"
+                          style={{
+                            transform: `scale(${canvasZoom * 0.85})`,
+                            transformOrigin: "center",
+                          }}
+                        >
+                          {hero(st)}
+                        </div>
+                        <span className={`text-[9.5px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
+                          {STATE_LABEL[st]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ThemeFrame>
+            </div>
           </div>
-        ) : null}
+        )}
+
+        {/* SIZES Card */}
+        {isSizable && (
+          <div className={`flex flex-col rounded-2xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm ${!multiState ? "md:col-span-2" : ""}`}>
+            <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-5 py-2.5 select-none">
+              <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-fg-mute">Sizes</span>
+              <span className="text-[10px] font-bold text-fg-dim uppercase tracking-wider font-mono">{friendlySizes[size] ?? size}</span>
+            </div>
+            <div className="relative overflow-hidden w-full">
+              <ThemeFrame mode={mode} className="w-full">
+                <div className="flex flex-row flex-wrap items-center justify-center gap-x-10 gap-y-8 p-8 min-h-[160px] w-full overflow-x-auto" style={dotted}>
+                  {SIZE_OPTIONS.map((sz) => {
+                    const isActive = sz.value === size;
+                    return (
+                      <div
+                        key={sz.value}
+                        role="button"
+                        onClick={() => setProperty(id, "size", sz.value)}
+                        className={`flex flex-col items-center gap-2 p-3.5 rounded-xl border transition-all cursor-pointer ${
+                          isActive
+                            ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-105 z-10"
+                            : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
+                        }`}
+                      >
+                        <div
+                          className="flex items-center justify-center p-1.5"
+                          style={{
+                            transform: `scale(${canvasZoom * 0.85})`,
+                            transformOrigin: "center",
+                          }}
+                        >
+                          {renderHero(id, { state: activeState, size: sz.value as any, radiusStep, resolve, mode, opts })}
+                        </div>
+                        <span className={`text-[9.5px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
+                          {friendlySizes[sz.value] ?? sz.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ThemeFrame>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

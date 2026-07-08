@@ -56,6 +56,11 @@ export function TypeStep() {
   const [measureWidth, setMeasureWidth] = useState(600); // px
   const [paraSpacing, setParaSpacing] = useState(16); // px
 
+  const [showAddStep, setShowAddStep] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newAssignment, setNewAssignment] = useState("");
+  const [newExp, setNewExp] = useState(0);
+
   const typography = useDesignSystem((s) => s.primitives.typography);
   const setTypographyBase = useDesignSystem((s) => s.setTypographyBase);
   const setScaleFactor = useDesignSystem((s) => s.setScaleFactor);
@@ -69,6 +74,8 @@ export function TypeStep() {
   const setTypeLeadingOverride = useDesignSystem((s) => s.setTypeLeadingOverride);
   const clearTypeLeadingOverride = useDesignSystem((s) => s.clearTypeLeadingOverride);
   const setStepAssign = useDesignSystem((s) => s.setStepAssign);
+  const addTypeStep = useDesignSystem((s) => s.addTypeStep);
+  const removeTypeStep = useDesignSystem((s) => s.removeTypeStep);
 
   function applyPairing(p: typeof FONT_PAIRINGS[0]) {
     setFontRole("display", { family: p.display });
@@ -148,6 +155,118 @@ export function TypeStep() {
           <Field label="Rounding" hint="applied to generated sizes">
             <Segmented options={ROUNDING_OPTIONS} value={typography.rounding} onChange={setRounding} />
           </Field>
+
+          <AsideDivider />
+
+          {/* Scale steps management */}
+          <div className="mb-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[12px] font-medium text-fg-dim">Scale steps</span>
+              <button
+                type="button"
+                onClick={() => setShowAddStep((v) => !v)}
+                className="rounded-md p-1 text-fg-mute transition-colors hover:bg-ink-hover hover:text-fg"
+                title="Add scale step"
+              >
+                <Plus size={13} />
+              </button>
+            </div>
+            
+            <div className="space-y-1.5 mb-3">
+              {steps.map((st) => (
+                <div key={st.name} className="flex items-center justify-between rounded-lg border border-line bg-ink-panel/40 px-2.5 py-1.5 text-[11px]">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono font-bold text-fg">{st.name}</span>
+                    <span className="text-fg-mute font-mono text-[10px]">(exp: {st.exp})</span>
+                    <span className="text-fg-dim text-[10px] truncate max-w-[100px]">{st.assignment}</span>
+                  </div>
+                  {st.name !== "base" ? (
+                    <button
+                      type="button"
+                      onClick={() => removeTypeStep(st.name)}
+                      className="text-fg-mute hover:text-red-400 transition-colors"
+                      title={`Delete ${st.name}`}
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            
+            {showAddStep && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (newName.trim() && newAssignment.trim()) {
+                    addTypeStep(newName.trim().toLowerCase(), newAssignment.trim(), newExp);
+                    setNewName("");
+                    setNewAssignment("");
+                    setNewExp(0);
+                    setShowAddStep(false);
+                  }
+                }}
+                className="rounded-lg border border-line bg-ink-panel p-3 space-y-2 mt-2"
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wider text-fg-mute">New Scale Step</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[9.5px] text-fg-mute block mb-0.5">Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 5xl"
+                      value={newName}
+                      required
+                      onChange={(e) => setNewName(e.target.value)}
+                      className="h-7 w-full rounded-md border border-line bg-ink px-2 text-[11px] text-fg focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9.5px] text-fg-mute block mb-0.5">Exponent</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 6"
+                      value={newExp || ""}
+                      required
+                      onChange={(e) => setNewExp(Number(e.target.value))}
+                      className="h-7 w-full rounded-md border border-line bg-ink px-2 font-mono text-[11px] text-fg focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[9.5px] text-fg-mute block mb-0.5">Assignment (label)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. H1 Hero Display"
+                    value={newAssignment}
+                    required
+                    onChange={(e) => setNewAssignment(e.target.value)}
+                    className="h-7 w-full rounded-md border border-line bg-ink px-2 text-[11px] text-fg focus:outline-none"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddStep(false);
+                      setNewName("");
+                      setNewAssignment("");
+                      setNewExp(0);
+                    }}
+                    className="px-2 py-1 text-[10px] text-fg-mute hover:text-fg font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-2.5 py-1 text-[10px] bg-fg text-ink rounded font-semibold transition-opacity hover:opacity-90"
+                  >
+                    Add Step
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
 
           <AsideDivider />
 

@@ -1,12 +1,3 @@
-/**
- * Arkitype → Figma Variables Schema Compiler.
- * Flattens the Zustand system tree into the structural format consumed by the
- * Figma Plugin API (figma.variables.createVariableCollection /
- * figma.variables.createVariable): named collections with explicit modes,
- * slash-namespaced variable paths, resolvedType, and valuesByMode keyed by
- * modeId — semantic tokens carry VARIABLE_ALIAS bindings to primitives plus
- * pre-resolved hex values for plugin-side fallbacks.
- */
 import {
   ArkitypeState,
   RADII_NAMES,
@@ -16,6 +7,13 @@ import {
 import { hexToFigmaRgba, isValidHex, rampStepLabels } from "@/lib/color";
 import { resolveToken } from "@/lib/tokens";
 import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
+import {
+  COMPONENT_SPECS,
+  ComponentSpec,
+  defBinding,
+  optionValue,
+  WIRED_COMPONENTS,
+} from "@/lib/componentSchema";
 
 export interface FigmaRgba {
   r: number;
@@ -46,6 +44,27 @@ export interface FigmaCollection {
   variables: FigmaVariable[];
 }
 
+export interface FigmaStyleBinding {
+  type: "ALIAS" | "LITERAL";
+  collection?: "Primitives" | "Semantics";
+  path?: string;
+  value?: string | number;
+}
+
+export interface FigmaComponentVariant {
+  properties: Record<string, string>;
+  styles: Record<string, FigmaStyleBinding>;
+  options: Record<string, any>;
+}
+
+export interface FigmaComponent {
+  id: string;
+  name: string;
+  tier: number;
+  description: string;
+  variants: FigmaComponentVariant[];
+}
+
 export interface FigmaBundle {
   meta: {
     generator: string;
@@ -54,14 +73,200 @@ export interface FigmaBundle {
     tokenCount: number;
   };
   collections: FigmaCollection[];
+  components: FigmaComponent[];
 }
 
 const VALUE_MODE = "mode:value";
 const LIGHT_MODE = "mode:light";
 const DARK_MODE = "mode:dark";
 
+function getVariantDimensions(spec: ComponentSpec): Record<string, string[]> {
+  const dims: Record<string, string[]> = {};
+  
+  if (spec.states && spec.states.length > 0) {
+    dims["state"] = spec.states.map(s => s.toString());
+  } else {
+    dims["state"] = ["default"];
+  }
+  
+  const pAxis = spec.options?.find(o => o.previewAxis && o.type === "enum");
+  if (pAxis && pAxis.options) {
+    dims[pAxis.key] = pAxis.options.map(o => o.value);
+  } else if (spec.id === "checkbox" || spec.id === "radio" || spec.id === "switch") {
+    dims["checked"] = ["true", "false"];
+  } else if (spec.id === "badge") {
+    const toneOpt = spec.options?.find(o => o.key === "tone");
+    const styleOpt = spec.options?.find(o => o.key === "style");
+    if (toneOpt?.options) dims["tone"] = toneOpt.options.map(o => o.value);
+    if (styleOpt?.options) dims["style"] = styleOpt.options.map(o => o.value);
+  } else if (spec.id === "tag") {
+    dims["removable"] = ["true", "false"];
+  } else if (spec.id === "avatar") {
+    const sizeOpt = spec.options?.find(o => o.key === "size");
+    const presenceOpt = spec.options?.find(o => o.key === "presence");
+    if (sizeOpt?.options) dims["size"] = sizeOpt.options.map(o => o.value);
+    if (presenceOpt?.options) dims["presence"] = presenceOpt.options.map(o => o.value);
+  } else if (spec.id === "alert" || spec.id === "toast") {
+    const toneOpt = spec.options?.find(o => o.key === "tone");
+    if (toneOpt?.options) dims["tone"] = toneOpt.options.map(o => o.value);
+  } else if (spec.id === "card") {
+    const elevOpt = spec.options?.find(o => o.key === "elevation");
+    if (elevOpt?.options) dims["elevation"] = elevOpt.options.map(o => o.value);
+  }
+  
+  return dims;
+}
+
+function cartesianProduct(dimensions: Record<string, string[]>): Record<string, string>[] {
+  const keys = Object.keys(dimensions);
+  if (keys.length === 0) return [{}];
+  
+  let results: Record<string, string>[] = [{}];
+  for (const key of keys) {
+    const values = dimensions[key];
+    const nextResults: Record<string, string>[] = [];
+    for (const res of results) {
+      for (const val of values) {
+        nextResults.push({ ...res, [key]: val });
+      }
+    }
+    results = nextResults;
+  }
+  return results;
+}
+
+function getBindingForVariant(
+  state: ArkitypeState,
+  componentId: string,
+  propKey: string,
+  combo: Record<string, string>,
+  isStateful?: boolean
+): string | null {
+  const bindings = state.components[componentId]?.bindings;
+  if (!bindings) return null;
+  
+  const componentState = combo["state"];
+  const variantKeys = Object.keys(combo).filter(k => k !== "state");
+  
+  if (variantKeys.length > 0) {
+    for (const vKey of variantKeys) {
+      const vVal = combo[vKey];
+      if (isStateful && componentState) {
+        const keyWithState = `${vVal}.${propKey}@${componentState}`;
+        if (bindings[keyWithState] !== undefined) return bindings[keyWithState];
+      } else {
+        const keyWithoutState = `${vVal}.${propKey}`;
+        if (bindings[keyWithoutState] !== undefined) return bindings[keyWithoutState];
+      }
+    }
+  }
+  
+  if (isStateful && componentState) {
+    const keyWithState = `${propKey}@${componentState}`;
+    if (bindings[keyWithState] !== undefined) return bindings[keyWithState];
+  } else {
+    if (bindings[propKey] !== undefined) return bindings[propKey];
+  }
+  
+  return null;
+}
+
+function resolveBindingToFigma(bindingString: string, radiusNames: readonly string[]): FigmaStyleBinding | null {
+  if (!bindingString) return null;
+  const cut = bindingString.indexOf(":");
+  if (cut === -1) {
+    return { type: "LITERAL", value: bindingString };
+  }
+  const kind = bindingString.slice(0, cut);
+  const value = bindingString.slice(cut + 1);
+  
+  switch (kind) {
+    case "role":
+      return {
+        type: "ALIAS",
+        collection: "Semantics",
+        path: value.replace(/-/g, "/"),
+      };
+    case "prim":
+      const separatorIndex = value.lastIndexOf("-");
+      if (separatorIndex === -1) {
+        return {
+          type: "ALIAS",
+          collection: "Primitives",
+          path: `color/${value}`,
+        };
+      }
+      const famId = value.slice(0, separatorIndex);
+      const step = value.slice(separatorIndex + 1);
+      return {
+        type: "ALIAS",
+        collection: "Primitives",
+        path: `color/${famId}/${step}`,
+      };
+    case "space":
+      return {
+        type: "ALIAS",
+        collection: "Primitives",
+        path: `space/${value}`,
+      };
+    case "radius": {
+      const names = radiusNames ?? RADII_NAMES;
+      const i = Math.min(Math.max(Number(value) || 0, 0), names.length - 1);
+      return {
+        type: "ALIAS",
+        collection: "Primitives",
+        path: `radius/${names[i]}`,
+      };
+    }
+    case "text":
+      return {
+        type: "ALIAS",
+        collection: "Primitives",
+        path: `type/size/${value}`,
+      };
+    case "leading":
+      return {
+        type: "ALIAS",
+        collection: "Primitives",
+        path: `type/leading/${value}`,
+      };
+    case "weight":
+      return {
+        type: "ALIAS",
+        collection: "Primitives",
+        path: `font/weight/${value}`,
+      };
+    case "font":
+      return {
+        type: "ALIAS",
+        collection: "Primitives",
+        path: `font/${value}`,
+      };
+    case "px": {
+      const num = Number(value);
+      return {
+        type: "LITERAL",
+        value: isNaN(num) ? value : num,
+      };
+    }
+    case "hex":
+      return {
+        type: "LITERAL",
+        value,
+      };
+    case "raw":
+    default:
+      const numVal = Number(value);
+      return {
+        type: "LITERAL",
+        value: isNaN(numVal) ? value : numVal,
+      };
+  }
+}
+
 export function compileFigmaBundle(state: ArkitypeState): FigmaBundle {
   const { primitives, semantics } = state;
+  const radiusNames = primitives.radiusNames ?? RADII_NAMES;
 
   /* ── Collection 1: Primitives (single "Value" mode) ── */
   const primitiveVars: FigmaVariable[] = [];
@@ -88,7 +293,6 @@ export function compileFigmaBundle(state: ArkitypeState): FigmaBundle {
     });
   });
 
-  const radiusNames = primitives.radiusNames ?? RADII_NAMES;
   primitives.radii.forEach((px, i) => {
     primitiveVars.push({
       name: `radius/${radiusNames[i]}`,
@@ -185,8 +389,6 @@ export function compileFigmaBundle(state: ArkitypeState): FigmaBundle {
   });
 
   /* ── Collection 2: Semantics (Light + Dark modes) ── */
-  // A value is either a "slot-step" ref (alias-bound to a primitive) or a raw
-  // hex literal (bound directly to its resolved colour, no alias).
   const semanticVars: FigmaVariable[] = Object.keys(semantics.modes.light).map(
     (token) => {
       const lightRef = semantics.modes.light[token];
@@ -210,6 +412,55 @@ export function compileFigmaBundle(state: ArkitypeState): FigmaBundle {
       };
     }
   );
+
+  const componentsList = Array.from(WIRED_COMPONENTS).map((cid) => {
+    const spec = COMPONENT_SPECS[cid];
+    if (!spec) return null;
+    
+    const dims = getVariantDimensions(spec);
+    const combos = cartesianProduct(dims);
+    
+    const variants: FigmaComponentVariant[] = combos.map((combo) => {
+      const styles: Record<string, FigmaStyleBinding> = {};
+      const options: Record<string, any> = {};
+      
+      // Resolve styles for all part properties
+      for (const part of spec.parts) {
+        for (const prop of part.props) {
+          const override = getBindingForVariant(state, cid, prop.key, combo, prop.stateful);
+          const bindingString = override !== null ? override : defBinding(prop, combo["state"] as any);
+          const resolved = resolveBindingToFigma(bindingString, radiusNames);
+          if (resolved) {
+            styles[prop.key] = resolved;
+          }
+        }
+      }
+      
+      // Resolve options
+      for (const opt of spec.options ?? []) {
+        if (combo[opt.key] !== undefined) {
+          options[opt.key] = combo[opt.key];
+        } else {
+          const stored = state.components[cid]?.properties;
+          options[opt.key] = optionValue(stored, opt);
+        }
+      }
+      
+      return {
+        properties: combo,
+        styles,
+        options,
+      };
+    });
+    
+    return {
+      id: spec.id,
+      name: spec.id.charAt(0).toUpperCase() + spec.id.slice(1),
+      tier: spec.tier,
+      description: `Arkitype Component Studio - ${spec.id.charAt(0).toUpperCase() + spec.id.slice(1)} component.`,
+      variants,
+    };
+  }).filter((c) => c !== null) as FigmaComponent[];
 
   return {
     meta: {
@@ -235,5 +486,6 @@ export function compileFigmaBundle(state: ArkitypeState): FigmaBundle {
         variables: semanticVars,
       },
     ],
+    components: componentsList,
   };
 }

@@ -31,3 +31,7 @@ yarn-error.log*
 .idea
 .vscode
 Thumbs.db
+
+# figma plugin
+/figma-plugin/node_modules/
+/figma-plugin/dist/

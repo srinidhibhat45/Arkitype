@@ -38,6 +38,8 @@ const config: Config = {
           dim: "rgb(var(--c-fg-dim) / <alpha-value>)", // secondary text
           mute: "rgb(var(--c-fg-mute) / <alpha-value>)", // tertiary / labels
         },
+        focus: "rgb(var(--c-focus) / <alpha-value>)", // focus rings, drag handles
+
       },
       fontFamily: {
         sans: [

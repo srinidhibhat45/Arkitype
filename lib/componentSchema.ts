@@ -688,6 +688,8 @@ const OTHER_SPECS: ComponentSpec[] = [
     options: [
       enumOpt("tone", "Tone", BADGE_TONES, "neutral", true),
       textOpt("label", "Tag label", "engineering"),
+      enumOpt("style", "Style", [opt("subtle", "Subtle"), opt("outline", "Outline")], "subtle"),
+      enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium")], "md"),
       boolOpt("leadingIcon", "Leading dot", false),
       boolOpt("removable", "Removable", true),
     ],
@@ -727,6 +729,8 @@ const OTHER_SPECS: ComponentSpec[] = [
       enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large")], "lg"),
       enumOpt("shape", "Shape", [opt("circle", "Circle"), opt("rounded", "Rounded"), opt("square", "Square")], "circle"),
       enumOpt("presence", "Presence status", [opt("online", "Online"), opt("away", "Away"), opt("none", "None")], "online"),
+      boolOpt("showRing", "Surface ring", false),
+      numOpt("group", "Stack count", 1, 1, 4),
     ],
   },
   {
@@ -760,6 +764,8 @@ const OTHER_SPECS: ComponentSpec[] = [
       ], "top", true),
       boolOpt("showArrow", "Show arrow", true),
       textOpt("label", "Tooltip text", "Tooltip content"),
+      enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium")], "sm"),
+      boolOpt("multiline", "Multiline wrap", false),
     ],
   },
   {
@@ -785,6 +791,18 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      enumOpt("variant", "Shape", [opt("bar", "Bar"), opt("circle", "Circle")], "bar", true),
+      numOpt("value", "Value %", 64, 0, 100),
+      enumOpt("thickness", "Thickness", [
+        opt("thin", "Thin"),
+        opt("regular", "Regular"),
+        opt("thick", "Thick"),
+      ], "regular"),
+      boolOpt("showLabel", "Show label", true),
+      textOpt("label", "Label text", "Budget used"),
+      boolOpt("indeterminate", "Indeterminate", false),
+    ],
   },
   {
     id: "spinner",
@@ -802,6 +820,7 @@ const OTHER_SPECS: ComponentSpec[] = [
     ],
     options: [
       enumOpt("tone", "Tone", [opt("action", "Accent"), opt("muted", "Muted")], "action", true),
+      enumOpt("variant", "Variant", [opt("ring", "Ring"), opt("dots", "Dots"), opt("bars", "Bars")], "ring"),
       numOpt("size", "Size", 30, 12, 64),
       boolOpt("showLabel", "Show label", false),
       textOpt("label", "Label text", "Loading…"),
@@ -820,6 +839,15 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("container.radius", "Corner radius", "radius", "radius:2"),
         ],
       },
+    ],
+    options: [
+      enumOpt("shape", "Layout", [
+        opt("media", "Media row"),
+        opt("text", "Text block"),
+        opt("card", "Card"),
+      ], "media", true),
+      numOpt("lines", "Text lines", 3, 1, 5),
+      boolOpt("animated", "Pulse animation", false),
     ],
   },
   {
@@ -961,6 +989,16 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      enumOpt("trend", "Trend", [opt("up", "Up"), opt("down", "Down")], "up", true),
+      textOpt("label", "Label text", "Net revenue"),
+      textOpt("value", "Value text", "$128,540"),
+      textOpt("delta", "Delta text", "+12.4%"),
+      boolOpt("showDelta", "Show delta chip", true),
+      enumOpt("size", "Value size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large")], "md"),
+      boolOpt("showCaption", "Show caption", true),
+      textOpt("caption", "Caption text", "vs. previous 30 days"),
+    ],
   },
   {
     id: "divider",
@@ -987,6 +1025,7 @@ const OTHER_SPECS: ComponentSpec[] = [
       numOpt("thickness", "Thickness", 1, 1, 6),
       boolOpt("showLabel", "Show label", true),
       textOpt("label", "Label text", "Yesterday"),
+      boolOpt("inset", "Inset", false),
     ],
   },
   {
@@ -1009,6 +1048,11 @@ const OTHER_SPECS: ComponentSpec[] = [
         label: "Text",
         props: [prop("text.color", "Colour", "color", "role:text-secondary")],
       },
+    ],
+    options: [
+      enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium")], "sm", true),
+      textOpt("keys", "Keys (space-separated)", "⌘ K"),
+      boolOpt("separator", "Show + separator", false),
     ],
   },
   {
@@ -1084,6 +1128,12 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      textOpt("filename", "Filename", "tokens.ts"),
+      boolOpt("showHeader", "Show header bar", true),
+      boolOpt("showDots", "Traffic-light dots", true),
+      boolOpt("showLineNumbers", "Line numbers", false),
+    ],
   },
   /* navigation */
   {
@@ -1117,6 +1167,14 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      enumOpt("density", "Density", [opt("regular", "Regular"), opt("compact", "Compact")], "regular", true),
+      textOpt("brandText", "Brand text", "Ledgerly"),
+      textOpt("links", "Links (comma-separated)", "Overview, Ledgers, Reports"),
+      numOpt("activeLink", "Active link #", 2, 1, 6),
+      boolOpt("showSearch", "Search icon", true),
+      boolOpt("showAvatar", "Avatar", true),
+    ],
   },
   {
     id: "sidebar",
@@ -1143,6 +1201,15 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      enumOpt("layout", "Layout", [opt("expanded", "Expanded"), opt("collapsed", "Collapsed")], "expanded", true),
+      textOpt("header", "Section header", "Workspace"),
+      boolOpt("showHeader", "Show header", true),
+      boolOpt("showIcons", "Show icons", true),
+      boolOpt("showAccent", "Active accent bar", true),
+      numOpt("activeIndex", "Active item #", 2, 1, 4),
+      numOpt("width", "Width (px)", 220, 160, 300),
+    ],
   },
   {
     id: "breadcrumbs",
@@ -1165,6 +1232,9 @@ const OTHER_SPECS: ComponentSpec[] = [
         opt("slash", "Slash"),
         opt("dot", "Dot"),
       ], "chevron", true),
+      textOpt("items", "Trail (comma-separated)", "Finance, Ledgers, Operating"),
+      boolOpt("showHome", "Home icon", false),
+      boolOpt("collapse", "Collapse middle", false),
     ],
   },
   {
@@ -1199,6 +1269,15 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      enumOpt("orientation", "Orientation", [
+        opt("horizontal", "Horizontal"),
+        opt("vertical", "Vertical"),
+      ], "horizontal", true),
+      textOpt("labels", "Step labels (comma-separated)", "Account, Details, Review"),
+      numOpt("current", "Current step #", 2, 1, 6),
+      boolOpt("showLabels", "Show labels", true),
+    ],
   },
   {
     id: "pagination",
@@ -1216,6 +1295,15 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("cell.radius", "Radius", "radius", "radius:2"),
         ],
       },
+    ],
+    options: [
+      enumOpt("variant", "Variant", [
+        opt("numbers", "Numbered"),
+        opt("simple", "Simple"),
+        opt("compact", "Compact"),
+      ], "numbers", true),
+      numOpt("totalPages", "Total pages", 8, 2, 99),
+      boolOpt("showArrows", "Prev / next arrows", true),
     ],
   },
   {
@@ -1242,6 +1330,14 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      boolOpt("showTrigger", "Show trigger button", true),
+      boolOpt("showIcons", "Item icons", true),
+      boolOpt("checkmarks", "Selected checkmark", false),
+      boolOpt("showDivider", "Divider", true),
+      boolOpt("showDanger", "Danger item", true),
+      numOpt("menuWidth", "Menu width (px)", 180, 140, 280),
+    ],
   },
   {
     id: "link",
@@ -1266,6 +1362,9 @@ const OTHER_SPECS: ComponentSpec[] = [
         opt("none", "None"),
       ], "auto", true),
       boolOpt("external", "External icon", false),
+      textOpt("label", "Link text", "link"),
+      enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large")], "md"),
+      enumOpt("weight", "Weight", [opt("medium", "Medium"), opt("semibold", "Semibold"), opt("bold", "Bold")], "semibold"),
     ],
   },
   /* patterns */
@@ -1332,6 +1431,16 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      enumOpt("trailing", "Trailing", [
+        opt("chevron", "Chevron"),
+        opt("none", "None"),
+      ], "chevron", true),
+      numOpt("rows", "Rows", 3, 1, 3),
+      boolOpt("showAvatar", "Avatars", true),
+      boolOpt("showAmount", "Amounts", true),
+      boolOpt("showBadge", "Status badges", true),
+    ],
   },
   {
     id: "feedItem",
@@ -1357,6 +1466,14 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("text.link", "Reply link", "color", "role:text-link"),
         ],
       },
+    ],
+    options: [
+      textOpt("author", "Author", "Maria Reyes"),
+      textOpt("timestamp", "Timestamp", "2h ago"),
+      textOpt("body", "Body text", "Flagged TXN-0459 for review — the vendor total doesn’t match the PO. Can finance confirm before close?"),
+      boolOpt("showAvatar", "Avatar", true),
+      boolOpt("showActions", "Reaction counts", true),
+      boolOpt("showReply", "Reply link", true),
     ],
   },
   {
@@ -1391,6 +1508,9 @@ const OTHER_SPECS: ComponentSpec[] = [
       ], "contained", true),
       enumOpt("iconSide", "Chevron side", [opt("left", "Left"), opt("right", "Right")], "right"),
       numOpt("radius", "Corner radius", 12, 0, 32),
+      numOpt("itemCount", "Items", 3, 2, 3),
+      numOpt("defaultOpen", "Open item # (0 = closed)", 1, 0, 3),
+      boolOpt("allowMultiple", "Allow multiple open", false),
     ],
   },
   {
@@ -1472,6 +1592,14 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      enumOpt("state", "State", [opt("default", "Default"), opt("error", "Error")], "default", true),
+      textOpt("label", "Label text", "Account email"),
+      boolOpt("required", "Required mark", true),
+      textOpt("help", "Help text", "We’ll send receipts and statements here."),
+      textOpt("errorText", "Error text", "Enter a valid work email address."),
+      boolOpt("showHelp", "Show help line", true),
+    ],
   },
   {
     id: "statGrid",
@@ -1487,6 +1615,16 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("cell.radius", "Corner radius", "radius", "radius:4"),
         ],
       },
+    ],
+    options: [
+      enumOpt("columns", "Columns", [
+        opt("auto", "Auto fit"),
+        opt("2", "Two"),
+        opt("3", "Three"),
+        opt("4", "Four"),
+      ], "auto", true),
+      numOpt("cells", "Cells", 3, 2, 6),
+      boolOpt("showDelta", "Delta chips", true),
     ],
   },
   {

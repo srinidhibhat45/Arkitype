@@ -27,6 +27,7 @@ import {
 import { StepScaffold } from "@/components/shell/StepScaffold";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
 import { TokenButton } from "@/components/factory/CoreComponents";
+import { ZoomBox } from "@/components/factory/ZoomBox";
 import { useComponentBindings } from "@/lib/componentSchema";
 import { MODAL_SKELETONS, ModalScene } from "@/components/factory/ModalSkeletons";
 import { TABS_SKELETONS, TabsSkeleton } from "@/components/factory/TabsSkeletons";
@@ -199,7 +200,9 @@ const skeletonOptions = (
 ) => meta.map((m) => ({ label: `${m.id} · ${m.name}`, value: m.id }));
 
 export function PreviewStep() {
-  const zoom = useDesignSystem((s) => s.canvasZoom);
+  // canvasZoom is shared with the Component Studio, whose slider goes to 2.5×;
+  // this screen's own range is 0.5–1.25, so clamp at read.
+  const zoom = useDesignSystem((s) => Math.min(Math.max(s.canvasZoom, 0.5), 1.25));
   const setCanvasZoom = useDesignSystem((s) => s.setCanvasZoom);
   const mode = useDesignSystem((s) => s.currentPreviewMode);
   const components = useDesignSystem((s) => s.components);
@@ -261,13 +264,7 @@ export function PreviewStep() {
         </>
       }
     >
-      <div
-        style={{
-          transform: `scale(${zoom})`,
-          transformOrigin: "top left",
-          width: `${100 / zoom}%`,
-        }}
-      >
+      <ZoomBox scale={zoom} fill>
         <ThemeFrame mode={mode}>
           <div className="relative flex" style={{ minHeight: 560 }}>
             <SidebarMenu />
@@ -350,15 +347,23 @@ export function PreviewStep() {
             </main>
 
             {modalOpen ? (
-              <ModalScene
-                skeletonId={modalCfg?.skeletonId ?? "1"}
-                radiusStep={Number(modalCfg?.properties.radiusStep ?? 4)}
-                onClose={() => setModalOpen(false)}
-              />
+              // Absolute overlay over the whole product frame (the parent is
+              // `relative`). Without this, ModalScene — which is `position:
+              // relative; width/height:100%` for its in-card studio previews —
+              // lands here as a THIRD flex sibling beside the sidebar and
+              // <main>, so opening it squished the dashboard and left the
+              // backdrop covering only its own column instead of the product.
+              <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
+                <ModalScene
+                  skeletonId={modalCfg?.skeletonId ?? "1"}
+                  radiusStep={Number(modalCfg?.properties.radiusStep ?? 4)}
+                  onClose={() => setModalOpen(false)}
+                />
+              </div>
             ) : null}
           </div>
         </ThemeFrame>
-      </div>
+      </ZoomBox>
     </StepScaffold>
   );
 }

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Copy,
   Download,
+  Home,
   MoreHorizontal,
   Trash2,
 } from "lucide-react";
@@ -26,10 +27,14 @@ import { TokenButton } from "./CoreComponents";
 export function TokenBreadcrumbs({
   trail = ["Finance", "Ledgers", "Operating"],
   separator = "chevron",
+  showHome = false,
+  collapse = false,
   resolve = NO_BINDINGS,
 }: {
   trail?: string[];
   separator?: "chevron" | "slash" | "dot";
+  showHome?: boolean;
+  collapse?: boolean;
   resolve?: Resolver;
 }) {
   const r = resolve;
@@ -42,6 +47,11 @@ export function TokenBreadcrumbs({
     ) : (
       <ChevronRight size={12} style={{ color: sepColor }} />
     );
+  // Collapse everything between the first and last crumbs into an ellipsis.
+  const items: Array<string | { ellipsis: true }> =
+    collapse && trail.length > 2
+      ? [trail[0], { ellipsis: true }, trail[trail.length - 1]]
+      : [...trail];
   return (
     <nav
       aria-label="Breadcrumb"
@@ -53,8 +63,22 @@ export function TokenBreadcrumbs({
         fontFamily: "var(--ark-font-sans)",
       }}
     >
-      {trail.map((item, i) => {
-        const last = i === trail.length - 1;
+      {showHome ? (
+        <span style={{ display: "flex", alignItems: "center", gap: sv(1) }}>
+          <Home size={13} style={{ color: r("text.item") ?? tv("text-muted"), cursor: "pointer" }} />
+          {sep}
+        </span>
+      ) : null}
+      {items.map((item, i) => {
+        const last = i === items.length - 1;
+        if (typeof item !== "string") {
+          return (
+            <span key="ellipsis" style={{ display: "flex", alignItems: "center", gap: sv(1) }}>
+              <span style={{ color: r("text.item") ?? tv("text-muted"), cursor: "pointer" }}>…</span>
+              {sep}
+            </span>
+          );
+        }
         return (
           <span key={item} style={{ display: "flex", alignItems: "center", gap: sv(1) }}>
             <span
@@ -80,14 +104,18 @@ export function TokenBreadcrumbs({
 export function TokenPagination({
   pages = 8,
   radiusStep = 2,
+  variant = "numbers",
+  showArrows = true,
   resolve = NO_BINDINGS,
 }: {
   pages?: number;
   radiusStep?: number;
+  variant?: "numbers" | "simple" | "compact";
+  showArrows?: boolean;
   resolve?: Resolver;
 }) {
   const [active, setActive] = useState(3);
-  const shown = [1, 2, 3, 4, 5];
+  const shown = [1, 2, 3, 4, 5].filter((p) => p <= pages);
   const r = resolve;
   const cellBorder = r("cell.border") ?? tv("border-muted");
   const cell = (on: boolean): React.CSSProperties => ({
@@ -108,11 +136,59 @@ export function TokenPagination({
     transition: "background var(--ark-duration-fast) var(--ark-ease-out)",
   });
 
+  if (variant === "simple") {
+    return (
+      <nav aria-label="Pagination" style={{ display: "flex", alignItems: "center", gap: sv(2) }}>
+        <span style={{ ...cell(false), borderColor: cellBorder, paddingLeft: sv(2), paddingRight: sv(2) }}>
+          <ChevronLeft size={13} style={{ marginRight: 4 }} /> Previous
+        </span>
+        <span
+          style={{
+            fontSize: "var(--ark-text-xs)",
+            fontFamily: "var(--ark-font-sans)",
+            color: r("cell.text") ?? tv("text-secondary"),
+          }}
+        >
+          Page {active} of {pages}
+        </span>
+        <span style={{ ...cell(false), borderColor: cellBorder, paddingLeft: sv(2), paddingRight: sv(2) }}>
+          Next <ChevronRight size={13} style={{ marginLeft: 4 }} />
+        </span>
+      </nav>
+    );
+  }
+
+  if (variant === "compact") {
+    return (
+      <nav aria-label="Pagination" style={{ display: "flex", alignItems: "center", gap: 3 }}>
+        <span style={{ ...cell(false), color: tv("text-muted") }} aria-label="Previous page">
+          <ChevronLeft size={13} />
+        </span>
+        <span
+          style={{
+            fontSize: "var(--ark-text-xs)",
+            fontFamily: "var(--ark-font-mono)",
+            fontWeight: 600,
+            padding: `0 ${sv(1)}`,
+            color: r("cell.text") ?? tv("text-secondary"),
+          }}
+        >
+          {active} / {pages}
+        </span>
+        <span style={{ ...cell(false), color: tv("text-muted") }} aria-label="Next page">
+          <ChevronRight size={13} />
+        </span>
+      </nav>
+    );
+  }
+
   return (
     <nav aria-label="Pagination" style={{ display: "flex", alignItems: "center", gap: 3 }}>
-      <span style={{ ...cell(false), color: tv("text-muted") }} aria-label="Previous page">
-        <ChevronLeft size={13} />
-      </span>
+      {showArrows ? (
+        <span style={{ ...cell(false), color: tv("text-muted") }} aria-label="Previous page">
+          <ChevronLeft size={13} />
+        </span>
+      ) : null}
       {shown.map((p) => (
         <button
           key={p}
@@ -124,11 +200,17 @@ export function TokenPagination({
           {p}
         </button>
       ))}
-      <span style={{ ...cell(false), color: tv("text-muted") }}>…</span>
-      <span style={{ ...cell(false), borderColor: cellBorder }}>{pages}</span>
-      <span style={{ ...cell(false), color: tv("text-muted") }} aria-label="Next page">
-        <ChevronRight size={13} />
-      </span>
+      {pages > shown.length ? (
+        <>
+          <span style={{ ...cell(false), color: tv("text-muted") }}>…</span>
+          <span style={{ ...cell(false), borderColor: cellBorder }}>{pages}</span>
+        </>
+      ) : null}
+      {showArrows ? (
+        <span style={{ ...cell(false), color: tv("text-muted") }} aria-label="Next page">
+          <ChevronRight size={13} />
+        </span>
+      ) : null}
     </nav>
   );
 }
@@ -137,9 +219,21 @@ export function TokenPagination({
 
 export function TokenDropdownMenu({
   radiusStep = 3,
+  showTrigger = true,
+  showIcons = true,
+  checkmarks = false,
+  showDivider = true,
+  showDanger = true,
+  menuWidth = 180,
   resolve = NO_BINDINGS,
 }: {
   radiusStep?: number;
+  showTrigger?: boolean;
+  showIcons?: boolean;
+  checkmarks?: boolean;
+  showDivider?: boolean;
+  showDanger?: boolean;
+  menuWidth?: number;
   resolve?: Resolver;
 }) {
   const r = resolve;
@@ -154,27 +248,32 @@ export function TokenDropdownMenu({
     color: danger ? undefined : r("item.text") ?? tv("text-secondary"),
     cursor: "pointer",
   });
+  const trailingCheck = (
+    <Check size={13} style={{ marginLeft: "auto", color: r("item.activeText") ?? tv("text-primary") }} />
+  );
   return (
     <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end" }}>
-      <span
-        style={{
-          display: "inline-flex",
-          padding: sv(1),
-          borderRadius: rv(2),
-          border: `1px solid ${tv("border-default")}`,
-          color: tv("text-secondary"),
-          background: tv("surface-elevated"),
-          marginBottom: sv(1),
-        }}
-        aria-haspopup="menu"
-        aria-expanded
-      >
-        <MoreHorizontal size={14} />
-      </span>
+      {showTrigger ? (
+        <span
+          style={{
+            display: "inline-flex",
+            padding: sv(1),
+            borderRadius: rv(2),
+            border: `1px solid ${tv("border-default")}`,
+            color: tv("text-secondary"),
+            background: tv("surface-elevated"),
+            marginBottom: sv(1),
+          }}
+          aria-haspopup="menu"
+          aria-expanded
+        >
+          <MoreHorizontal size={14} />
+        </span>
+      ) : null}
       <div
         role="menu"
         style={{
-          minWidth: 180,
+          minWidth: menuWidth,
           padding: sv(1),
           borderRadius: r("container.radius") ?? rv(radiusStep),
           background: r("container.bg") ?? tv("surface-elevated"),
@@ -183,24 +282,29 @@ export function TokenDropdownMenu({
         }}
       >
         <div role="menuitem" style={{ ...item(), background: r("item.activeBg") ?? tv("surface-subtle"), color: r("item.activeText") ?? tv("text-primary") }}>
-          <Copy size={13} style={{ color: tv("text-muted") }} /> Duplicate
+          {showIcons ? <Copy size={13} style={{ color: tv("text-muted") }} /> : null} Duplicate
+          {checkmarks ? trailingCheck : null}
         </div>
         <div role="menuitem" style={item()}>
-          <Download size={13} style={{ color: tv("text-muted") }} /> Export as CSV
+          {showIcons ? <Download size={13} style={{ color: tv("text-muted") }} /> : null} Export as CSV
         </div>
         <div role="menuitem" style={item()}>
-          <Check size={13} style={{ color: tv("text-muted") }} /> Mark reconciled
+          {showIcons ? <Check size={13} style={{ color: tv("text-muted") }} /> : null} Mark reconciled
         </div>
-        <div
-          style={{
-            height: 1,
-            background: tv("border-muted"),
-            margin: `${sv(1)} 0`,
-          }}
-        />
-        <div role="menuitem" style={{ ...item(true), color: "#e5484d" }}>
-          <Trash2 size={13} /> Delete row
-        </div>
+        {showDivider && showDanger ? (
+          <div
+            style={{
+              height: 1,
+              background: tv("border-muted"),
+              margin: `${sv(1)} 0`,
+            }}
+          />
+        ) : null}
+        {showDanger ? (
+          <div role="menuitem" style={{ ...item(true), color: "#e5484d" }}>
+            {showIcons ? <Trash2 size={13} /> : null} Delete row
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -352,14 +456,34 @@ export function TokenAccordion({
   radiusStep = 3,
   variant = "contained",
   iconSide = "right",
+  itemCount = 3,
+  defaultOpen = 1,
+  allowMultiple = false,
   resolve = NO_BINDINGS,
 }: {
   radiusStep?: number;
   variant?: "contained" | "separated" | "flush";
   iconSide?: "left" | "right";
+  /** 1-based index of the initially-open item; 0 = all closed. */
+  defaultOpen?: number;
+  itemCount?: number;
+  allowMultiple?: boolean;
   resolve?: Resolver;
 }) {
-  const [open, setOpen] = useState(0);
+  // Open state as a set so "allow multiple" is a superset of the single mode.
+  const [openSet, setOpenSet] = useState<ReadonlySet<number>>(
+    () => new Set(defaultOpen > 0 ? [defaultOpen - 1] : [])
+  );
+  const toggle = (i: number) =>
+    setOpenSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else {
+        if (!allowMultiple) next.clear();
+        next.add(i);
+      }
+      return next;
+    });
   const r = resolve;
   const cfg = useDesignSystem((s) => s.components.accordion);
   const opts = resolveOptions("accordion", cfg?.properties);
@@ -371,6 +495,7 @@ export function TokenAccordion({
   const separated = variant === "separated";
   const flush = variant === "flush";
   const iconLeft = iconSide === "left";
+  const items = ACCORDION_ITEMS.slice(0, Math.min(Math.max(Math.round(itemCount), 2), ACCORDION_ITEMS.length));
 
   const chevron = (on: boolean) => (
     <ChevronDown
@@ -397,8 +522,8 @@ export function TokenAccordion({
         maxWidth: 480,
       }}
     >
-      {ACCORDION_ITEMS.map((item, i) => {
-        const on = open === i;
+      {items.map((item, i) => {
+        const on = openSet.has(i);
         const wrapperStyle: React.CSSProperties = separated
           ? { border: `1px solid ${border}`, borderRadius: rad, overflow: "hidden" }
           : flush
@@ -408,7 +533,7 @@ export function TokenAccordion({
           <div key={item.q} style={wrapperStyle}>
             <button
               type="button"
-              onClick={() => setOpen(on ? -1 : i)}
+              onClick={() => toggle(i)}
               aria-expanded={on}
               style={{
                 display: "flex",

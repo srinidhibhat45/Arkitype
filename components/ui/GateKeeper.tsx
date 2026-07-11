@@ -52,7 +52,7 @@ export function GateKeeper({ children }: GateKeeperProps) {
 
   if (!unlocked) {
     return (
-      <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[#070709] font-sans text-white canvas-dotted">
+      <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[#070709] font-sans text-white canvas-dotted-dark">
         {/* Glow meshes */}
         <div className="absolute top-1/4 left-1/4 h-96 w-96 rounded-full bg-blue-600/10 blur-[120px]" />
         <div className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-emerald-600/10 blur-[120px]" />
@@ -139,7 +139,7 @@ export function GateKeeper({ children }: GateKeeperProps) {
 
   if (!warned) {
     return (
-      <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[#070709] font-sans text-white canvas-dotted">
+      <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[#070709] font-sans text-white canvas-dotted-dark">
         <div className="absolute top-1/4 left-1/4 h-96 w-96 rounded-full bg-blue-600/10 blur-[120px]" />
         <div className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-emerald-600/10 blur-[120px]" />
 

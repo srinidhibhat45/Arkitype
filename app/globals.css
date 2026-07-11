@@ -19,6 +19,7 @@
   --c-fg: 18 18 20; /* pure solid black text */
   --c-fg-dim: 60 60 65; /* highly legible secondary text */
   --c-fg-mute: 85 85 90; /* highly legible tertiary text */
+  --c-focus: 13 110 216; /* focus/drag accent, #0d6ed8 */
   color-scheme: light;
 }
 
@@ -32,6 +33,7 @@
   --c-fg: 255 255 255; /* pure white text */
   --c-fg-dim: 190 190 198; /* higher contrast secondary, #bebec6 */
   --c-fg-mute: 145 145 152; /* higher contrast tertiary, #919198 */
+  --c-focus: 13 153 255; /* focus/drag accent, #0d99ff */
   color-scheme: dark;
 }
 
@@ -97,9 +99,41 @@ body {
     transform: rotate(360deg);
   }
 }
+/* inspector hover-highlight ring/chip entrance */
+@keyframes ark-ring-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ark-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+@keyframes ark-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
 @media (prefers-reduced-motion: no-preference) {
   .ark-spin {
     animation: ark-spin 0.8s linear infinite;
+  }
+  .ark-slide {
+    animation: ark-slide 1.4s var(--ark-ease-in-out, ease-in-out) infinite;
+  }
+  .ark-pulse {
+    animation: ark-pulse 1.6s ease-in-out infinite;
   }
 }
 
@@ -119,6 +153,13 @@ body {
 .dark .canvas-dotted {
   background-color: #0d0d0f;
   background-image: radial-gradient(#222226 1.25px, transparent 1.25px);
+}
+/* Pinned-dark variant for designed-dark surfaces (gate, landing) that must
+   NOT follow the chrome theme — .canvas-dotted would override their bg. */
+.canvas-dotted-dark {
+  background-color: #070709;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1.25px, transparent 1.25px);
+  background-size: 16px 16px;
 }
 
 @keyframes generative-border {

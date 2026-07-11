@@ -19,7 +19,7 @@
  * Options persist to `ComponentConfig.properties` (exported in the docs bundle);
  * colour/scale bindings persist to `ComponentConfig.bindings`.
  */
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Moon,
@@ -61,7 +61,8 @@ import {
   useComponentBindings,
 } from "@/lib/componentSchema";
 import { useInspectorData } from "@/components/factory/studioShared";
-import { usePartBox } from "@/components/factory/useHighlight";
+import { PartHighlight, usePartBox } from "@/components/factory/useHighlight";
+import { ZoomBox } from "@/components/factory/ZoomBox";
 import { HexInput } from "@/components/ui/controls";
 import {
   OptionRow,
@@ -275,6 +276,8 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
         <TokenTag
           mode={mode}
           tone={os("tone") as ToneVariant}
+          style={(os("style") as "subtle" | "outline") || "subtle"}
+          size={(os("size") as "sm" | "md") || "md"}
           radiusStep={radiusStep}
           resolve={resolve}
           removable={ob("removable") !== false}
@@ -291,6 +294,8 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
           presence={os("presence") === "none" ? undefined : os("presence") as any || "online"}
           initials={os("initials") || "JD"}
           shape={os("shape") as any}
+          showRing={ob("showRing")}
+          group={on("group") ?? 1}
           resolve={resolve}
         />
       );
@@ -301,13 +306,24 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
           label={os("label") || "Tooltip content"}
           placement={os("placement") as any}
           showArrow={ob("showArrow")}
+          size={(os("size") as "sm" | "md") || "sm"}
+          multiline={ob("multiline")}
           resolve={resolve}
         />
       );
     case "progress":
       return (
-        <div className="w-64">
-          <TokenProgress value={64} radiusStep={radiusStep} resolve={resolve} />
+        <div className={os("variant") === "circle" ? "" : "w-64"}>
+          <TokenProgress
+            value={on("value") ?? 64}
+            variant={(os("variant") as "bar" | "circle") || "bar"}
+            thickness={(os("thickness") as "thin" | "regular" | "thick") || "regular"}
+            showLabel={ob("showLabel")}
+            label={os("label") || "Budget used"}
+            indeterminate={ob("indeterminate")}
+            radiusStep={radiusStep}
+            resolve={resolve}
+          />
         </div>
       );
     case "spinner":
@@ -315,6 +331,7 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
         <TokenSpinner
           size={on("size") || 30}
           tone={os("tone") as any}
+          variant={(os("variant") as "ring" | "dots" | "bars") || "ring"}
           label={ob("showLabel") ? os("label") || "Loading…" : undefined}
           resolve={resolve}
         />
@@ -322,7 +339,13 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "skeleton":
       return (
         <div className="w-72">
-          <TokenSkeletonLoader radiusStep={radiusStep} resolve={resolve} />
+          <TokenSkeletonLoader
+            shape={(os("shape") as "media" | "text" | "card") || "media"}
+            lines={on("lines") ?? 3}
+            animated={ob("animated")}
+            radiusStep={radiusStep}
+            resolve={resolve}
+          />
         </div>
       );
     case "alert":
@@ -355,7 +378,20 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
         />
       );
     case "stat":
-      return <TokenStat mode={mode} resolve={resolve} />;
+      return (
+        <TokenStat
+          mode={mode}
+          trend={(os("trend") as "up" | "down") || "up"}
+          label={os("label") || "Net revenue"}
+          value={os("value") || "$128,540"}
+          delta={os("delta") || "+12.4%"}
+          showDelta={ob("showDelta")}
+          size={(os("size") as "sm" | "md" | "lg") || "md"}
+          showCaption={ob("showCaption")}
+          caption={os("caption") || "vs. previous 30 days"}
+          resolve={resolve}
+        />
+      );
     case "divider":
       return os("orientation") === "vertical" ? (
         <div className="flex h-24 items-center">
@@ -363,6 +399,7 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
             orientation="vertical"
             variant={os("variant") as any}
             thickness={on("thickness")}
+            inset={ob("inset")}
             resolve={resolve}
           />
         </div>
@@ -374,23 +411,42 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
             thickness={on("thickness")}
             labelPosition={os("labelPosition") as any}
             label={ob("showLabel") ? os("label") || "Yesterday" : undefined}
+            inset={ob("inset")}
             resolve={resolve}
           />
         </div>
       );
-    case "kbd":
+    case "kbd": {
+      const keys = (os("keys") || "⌘ K").split(/\s+/).filter(Boolean);
+      const kbdSize = (os("size") as "sm" | "md") || "sm";
       return (
         <div className="flex items-center gap-1.5">
-          <TokenKbd resolve={resolve}>⌘</TokenKbd>
-          <TokenKbd resolve={resolve}>K</TokenKbd>
+          {keys.map((k, i) => (
+            <Fragment key={`${k}-${i}`}>
+              {i > 0 && ob("separator") ? (
+                <span className="text-fg-mute text-[10px] font-semibold select-none">+</span>
+              ) : null}
+              <TokenKbd size={kbdSize} resolve={resolve}>
+                {k}
+              </TokenKbd>
+            </Fragment>
+          ))}
         </div>
       );
+    }
     case "emptyState":
       return <TokenEmptyState radiusStep={radiusStep} resolve={resolve} />;
     case "codeBlock":
       return (
         <div className="w-80">
-          <TokenCodeBlock radiusStep={radiusStep} resolve={resolve} />
+          <TokenCodeBlock
+            filename={os("filename") || "tokens.ts"}
+            showHeader={ob("showHeader")}
+            showDots={ob("showDots")}
+            showLineNumbers={ob("showLineNumbers")}
+            radiusStep={radiusStep}
+            resolve={resolve}
+          />
         </div>
       );
 
@@ -398,21 +454,91 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "navbar":
       return (
         <div className="w-full">
-          <TokenNavbar radiusStep={radiusStep} resolve={resolve} />
+          <TokenNavbar
+            brandText={os("brandText") || "Ledgerly"}
+            links={(os("links") || "Overview, Ledgers, Reports").split(",").map((s) => s.trim()).filter(Boolean)}
+            activeIndex={(on("activeLink") ?? 2) - 1}
+            showSearch={ob("showSearch")}
+            showAvatar={ob("showAvatar")}
+            density={(os("density") as "regular" | "compact") || "regular"}
+            radiusStep={radiusStep}
+            resolve={resolve}
+          />
         </div>
       );
     case "sidebar":
-      return <TokenSidebar radiusStep={radiusStep} resolve={resolve} />;
+      return (
+        <TokenSidebar
+          collapsed={os("layout") === "collapsed"}
+          header={os("header") || "Workspace"}
+          showHeader={ob("showHeader")}
+          showIcons={ob("showIcons")}
+          showAccent={ob("showAccent")}
+          activeIndex={(on("activeIndex") ?? 2) - 1}
+          width={on("width") ?? 220}
+          radiusStep={radiusStep}
+          resolve={resolve}
+        />
+      );
     case "breadcrumbs":
-      return <TokenBreadcrumbs separator={os("separator") as any} resolve={resolve} />;
-    case "steps":
-      return <TokenSteps resolve={resolve} />;
+      return (
+        <TokenBreadcrumbs
+          separator={os("separator") as any}
+          trail={(os("items") || "Finance, Ledgers, Operating").split(",").map((s) => s.trim()).filter(Boolean)}
+          showHome={ob("showHome")}
+          collapse={ob("collapse")}
+          resolve={resolve}
+        />
+      );
+    case "steps": {
+      const stepLabels = (os("labels") || "Account, Details, Review")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return (
+        <TokenSteps
+          steps={stepLabels}
+          current={Math.min(Math.max((on("current") ?? 2) - 1, 0), stepLabels.length)}
+          orientation={(os("orientation") as "horizontal" | "vertical") || "horizontal"}
+          showLabels={ob("showLabels")}
+          resolve={resolve}
+        />
+      );
+    }
     case "pagination":
-      return <TokenPagination radiusStep={radiusStep} resolve={resolve} />;
+      return (
+        <TokenPagination
+          variant={(os("variant") as "numbers" | "simple" | "compact") || "numbers"}
+          pages={on("totalPages") ?? 8}
+          showArrows={ob("showArrows")}
+          radiusStep={radiusStep}
+          resolve={resolve}
+        />
+      );
     case "dropdown":
-      return <TokenDropdownMenu radiusStep={radiusStep} resolve={resolve} />;
+      return (
+        <TokenDropdownMenu
+          showTrigger={ob("showTrigger")}
+          showIcons={ob("showIcons")}
+          checkmarks={ob("checkmarks")}
+          showDivider={ob("showDivider")}
+          showDanger={ob("showDanger")}
+          menuWidth={on("menuWidth") ?? 180}
+          radiusStep={radiusStep}
+          resolve={resolve}
+        />
+      );
     case "link":
-      return <TokenLink underline={os("underline") as any} external={ob("external")} resolve={resolve} />;
+      return (
+        <TokenLink
+          underline={os("underline") as any}
+          external={ob("external")}
+          label={os("label") || "link"}
+          size={(os("size") as "sm" | "md" | "lg") || "md"}
+          weight={(os("weight") as "medium" | "semibold" | "bold") || "semibold"}
+          resolve={resolve}
+        />
+      );
 
     /* patterns */
     case "card":
@@ -424,22 +550,45 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "listItem":
       return (
         <div className="w-80">
-          <TokenListItem mode={mode} radiusStep={radiusStep} resolve={resolve} />
+          <TokenListItem
+            mode={mode}
+            rows={on("rows") ?? 3}
+            showAvatar={ob("showAvatar")}
+            showAmount={ob("showAmount")}
+            showBadge={ob("showBadge")}
+            trailing={(os("trailing") as "chevron" | "none") || "chevron"}
+            radiusStep={radiusStep}
+            resolve={resolve}
+          />
         </div>
       );
     case "feedItem":
       return (
         <div className="w-80">
-          <TokenFeedItem radiusStep={radiusStep} resolve={resolve} />
+          <TokenFeedItem
+            author={os("author") || "Maria Reyes"}
+            timestamp={os("timestamp") || "2h ago"}
+            body={os("body") || "Flagged TXN-0459 for review — the vendor total doesn’t match the PO. Can finance confirm before close?"}
+            showAvatar={ob("showAvatar")}
+            showActions={ob("showActions")}
+            showReply={ob("showReply")}
+            radiusStep={radiusStep}
+            resolve={resolve}
+          />
         </div>
       );
     case "accordion":
       return (
         <div className="w-80">
           <TokenAccordion
+            /* remount when initial-open config changes so the option is live */
+            key={`${on("defaultOpen") ?? 1}-${ob("allowMultiple")}-${on("itemCount") ?? 3}`}
             radiusStep={radiusStep}
             variant={os("variant") as any}
             iconSide={os("iconSide") as any}
+            itemCount={on("itemCount") ?? 3}
+            defaultOpen={on("defaultOpen") ?? 1}
+            allowMultiple={ob("allowMultiple")}
             resolve={resolve}
           />
         </div>
@@ -459,11 +608,30 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
         </div>
       );
     case "field":
-      return <TokenField mode={mode} radiusStep={radiusStep} resolve={resolve} />;
+      return (
+        <TokenField
+          mode={mode}
+          invalid={os("state") === "error"}
+          label={os("label") || "Account email"}
+          required={ob("required")}
+          help={os("help") || "We’ll send receipts and statements here."}
+          errorText={os("errorText") || "Enter a valid work email address."}
+          showHelp={ob("showHelp")}
+          radiusStep={radiusStep}
+          resolve={resolve}
+        />
+      );
     case "statGrid":
       return (
         <div className="w-full">
-          <TokenStatGrid mode={mode} radiusStep={radiusStep} resolve={resolve} />
+          <TokenStatGrid
+            mode={mode}
+            columns={(os("columns") as "auto" | "2" | "3" | "4") || "auto"}
+            cells={on("cells") ?? 3}
+            showDelta={ob("showDelta")}
+            radiusStep={radiusStep}
+            resolve={resolve}
+          />
         </div>
       );
     case "modal":
@@ -685,7 +853,10 @@ export function ComponentStudioPreview({
 
   const [activeState, setActiveState] = useState<CState>(spec?.states[0] ?? "default");
   const previewRef = useRef<HTMLDivElement>(null);
-  const box = usePartBox(previewRef, hoveredPart);
+  // The overlay's coordinate frame: the section wrapper around the preview
+  // canvas. It carries no transform, so measured boxes map 1:1 onto pixels.
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const box = usePartBox(sectionRef, previewRef, hoveredPart);
 
   if (!spec) return null;
 
@@ -717,8 +888,6 @@ export function ComponentStudioPreview({
             onClick: () => setProperty(id, axis.key, c.value),
           }))
         : [];
-
-  const RING = "#0d99ff";
 
   const dotted = {
     backgroundImage: "radial-gradient(circle, rgb(var(--c-fg) / 0.07) 1px, transparent 1px)",
@@ -798,7 +967,7 @@ export function ComponentStudioPreview({
             {axis ? (axis.options?.find((o) => o.value === axisValue)?.label ?? axisValue) : spec.id}
           </span>
         </div>
-        <div className="relative overflow-hidden w-full">
+        <div className="relative overflow-hidden w-full" ref={sectionRef}>
           <ThemeFrame mode={mode} className="w-full">
             <div className="flex flex-row flex-wrap items-center justify-center gap-x-12 gap-y-10 p-10 min-h-[180px] w-full overflow-x-auto" style={dotted}>
               {axis ? (
@@ -816,46 +985,14 @@ export function ComponentStudioPreview({
                           : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
                       }`}
                     >
-                      <div
-                        className="flex items-center justify-center p-2"
-                        style={{
-                          transform: `scale(${canvasZoom})`,
-                          transformOrigin: "center",
-                          transition: "transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-                        }}
-                      >
-                        {hero(activeState, { ...opts, [axis.key]: opt.value })}
+                      <div className="p-2">
+                        <ZoomBox scale={canvasZoom}>
+                          {hero(activeState, { ...opts, [axis.key]: opt.value })}
+                        </ZoomBox>
                       </div>
                       <span className={`text-[10px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
                         {opt.label}
                       </span>
-
-                      {isActive && (
-                        /* hover-highlight overlay: rings the part named by the hovered cluster */
-                        <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-xl">
-                          <div
-                            className="absolute rounded-md"
-                            style={{
-                              top: (box?.top ?? 0) - 5,
-                              left: (box?.left ?? 0) - 5,
-                              width: (box?.width ?? 0) + 10,
-                              height: (box?.height ?? 0) + 10,
-                              boxShadow: `0 0 0 2px ${RING}`,
-                              background: `${RING}14`,
-                              opacity: box ? 1 : 0,
-                              transition: "opacity 120ms ease-out",
-                            }}
-                          />
-                          {box ? (
-                            <span
-                              className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
-                              style={{ top: box.top - 7, left: box.left - 5, background: RING }}
-                            >
-                              {hoveredLabel}
-                            </span>
-                          ) : null}
-                        </div>
-                      )}
                     </div>
                   );
                 })
@@ -864,45 +1001,17 @@ export function ComponentStudioPreview({
                   ref={previewRef}
                   className="relative flex flex-col items-center gap-2 p-4 rounded-xl border border-transparent"
                 >
-                  <div
-                    className="flex items-center justify-center p-2"
-                    style={{
-                      transform: `scale(${canvasZoom})`,
-                      transformOrigin: "center",
-                      transition: "transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-                    }}
-                  >
-                    {hero(activeState)}
-                  </div>
-
-                  {/* hover-highlight overlay */}
-                  <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-xl">
-                    <div
-                      className="absolute rounded-md"
-                      style={{
-                        top: (box?.top ?? 0) - 5,
-                        left: (box?.left ?? 0) - 5,
-                        width: (box?.width ?? 0) + 10,
-                        height: (box?.height ?? 0) + 10,
-                        boxShadow: `0 0 0 2px ${RING}`,
-                        background: `${RING}14`,
-                        opacity: box ? 1 : 0,
-                        transition: "opacity 120ms ease-out",
-                      }}
-                    />
-                    {box ? (
-                      <span
-                        className="absolute -translate-y-full whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold text-white"
-                        style={{ top: box.top - 7, left: box.left - 5, background: RING }}
-                      >
-                        {hoveredLabel}
-                      </span>
-                    ) : null}
+                  <div className="p-2">
+                    <ZoomBox scale={canvasZoom}>{hero(activeState)}</ZoomBox>
                   </div>
                 </div>
               )}
             </div>
           </ThemeFrame>
+          {/* hover-highlight overlay: rings the part named by the hovered
+              inspector cluster. Lives on the untransformed section frame so
+              its coordinates need no compensation for card transforms. */}
+          <PartHighlight box={box} label={hoveredLabel} />
         </div>
       </div>
 
@@ -931,14 +1040,8 @@ export function ComponentStudioPreview({
                             : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
                         }`}
                       >
-                        <div
-                          className="flex items-center justify-center p-1.5"
-                          style={{
-                            transform: `scale(${canvasZoom * 0.85})`,
-                            transformOrigin: "center",
-                          }}
-                        >
-                          {hero(st)}
+                        <div className="p-1.5">
+                          <ZoomBox scale={canvasZoom * 0.85}>{hero(st)}</ZoomBox>
                         </div>
                         <span className={`text-[9.5px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
                           {STATE_LABEL[st]}
@@ -975,14 +1078,10 @@ export function ComponentStudioPreview({
                             : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
                         }`}
                       >
-                        <div
-                          className="flex items-center justify-center p-1.5"
-                          style={{
-                            transform: `scale(${canvasZoom * 0.85})`,
-                            transformOrigin: "center",
-                          }}
-                        >
-                          {renderHero(id, { state: activeState, size: sz.value as any, radiusStep, resolve, mode, opts })}
+                        <div className="p-1.5">
+                          <ZoomBox scale={canvasZoom * 0.85}>
+                            {renderHero(id, { state: activeState, size: sz.value as any, radiusStep, resolve, mode, opts })}
+                          </ZoomBox>
                         </div>
                         <span className={`text-[9.5px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
                           {friendlySizes[sz.value] ?? sz.label}

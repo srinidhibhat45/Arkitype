@@ -87,20 +87,20 @@ export function ProjectDashboard() {
       <div className="absolute inset-0 canvas-dotted pointer-events-none opacity-20" />
 
       {/* Left Sidebar Menu */}
-      <aside className="w-56 border-r border-line bg-ink-dark/60 backdrop-blur-md flex flex-col justify-between p-4 relative z-10 shrink-0 select-none">
+      <aside className="w-56 border-r border-line bg-ink-panel/60 backdrop-blur-md flex flex-col justify-between p-4 relative z-10 shrink-0 select-none">
         <div className="flex flex-col gap-6">
           {/* Brand header */}
           <div className="flex items-center gap-2 px-2 py-1">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 text-white shadow-md">
               <Layers size={13} />
             </div>
-            <span className="font-display font-bold tracking-tight text-[15.5px] text-white">Arkitype Hub</span>
+            <span className="font-display font-bold tracking-tight text-[15.5px] text-fg">Arkitype Hub</span>
           </div>
 
           {/* Navigation Links */}
           <nav className="flex flex-col gap-1 text-xs">
-            <button className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/5 font-semibold text-fg transition-all text-left">
-              <Folder size={14} className="text-indigo-400" />
+            <button className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-ink-hover font-semibold text-fg transition-all text-left">
+              <Folder size={14} className="text-indigo-500 dark:text-indigo-400" />
               <span>All Design Files</span>
               <span className="ml-auto font-mono text-[10px] text-fg-mute bg-ink px-1.5 py-0.5 rounded border border-line/30">
                 {projectList.length}
@@ -109,18 +109,18 @@ export function ProjectDashboard() {
 
             <button 
               onClick={() => setShowUpgradeModal(true)}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium text-fg-dim hover:bg-white/5 hover:text-fg transition-all text-left group"
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium text-fg-dim hover:bg-ink-hover hover:text-fg transition-all text-left group"
             >
-              <Flame size={14} className="text-pink-400 group-hover:animate-pulse" />
+              <Flame size={14} className="text-pink-600 dark:text-pink-400 group-hover:animate-pulse" />
               <span>Upgrade Pro</span>
               {isUpgraded && (
-                <span className="ml-auto text-[9px] uppercase bg-pink-500/10 text-pink-400 px-1.5 py-0.5 rounded font-extrabold tracking-wider">
+                <span className="ml-auto text-[9px] uppercase bg-pink-500/10 text-pink-600 dark:text-pink-400 px-1.5 py-0.5 rounded font-extrabold tracking-wider">
                   Pro
                 </span>
               )}
             </button>
 
-            <button className="flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium text-fg-dim hover:bg-white/5 hover:text-fg transition-all text-left">
+            <button className="flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium text-fg-dim hover:bg-ink-hover hover:text-fg transition-all text-left">
               <Settings size={14} className="text-fg-mute" />
               <span>Workspace Settings</span>
             </button>
@@ -132,10 +132,10 @@ export function ProjectDashboard() {
           {isUpgraded ? (
             <div className="rounded-lg bg-gradient-to-r from-pink-500/10 to-indigo-500/10 border border-indigo-500/30 p-2.5 flex items-center justify-between">
               <div className="flex flex-col">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-pink-400">Pro Active</span>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-pink-600 dark:text-pink-400">Pro Active</span>
                 <span className="text-[9px] text-fg-mute leading-none mt-0.5">Unlimited Files Unlocked</span>
               </div>
-              <Check size={14} className="text-pink-400 shrink-0" />
+              <Check size={14} className="text-pink-600 dark:text-pink-400 shrink-0" />
             </div>
           ) : (
             <button 
@@ -167,7 +167,7 @@ export function ProjectDashboard() {
         {/* Header Controls */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line/60 pb-5">
           <div>
-            <h1 className="text-2xl font-display font-black tracking-tight text-white">Design Files</h1>
+            <h1 className="text-2xl font-display font-black tracking-tight text-fg">Design Files</h1>
             <p className="text-[11px] text-fg-mute mt-1 font-medium">Manage, clone, or create independent design systems libraries.</p>
           </div>
 
@@ -180,14 +180,14 @@ export function ProjectDashboard() {
                 placeholder="Search systems..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-48 rounded-lg border border-line bg-ink-light px-8 py-1.5 text-xs text-fg placeholder:text-fg-mute focus:border-indigo-500 focus:outline-none transition-all"
+                className="w-48 rounded-lg border border-line bg-ink-panel px-8 py-1.5 text-xs text-fg placeholder:text-fg-mute focus:border-indigo-500 focus:outline-none transition-all"
               />
             </div>
 
             {/* Create Button */}
             <button
               onClick={handleCreate}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-fg hover:bg-white text-ink px-3 py-1.5 text-xs font-bold transition-all shadow-md active:scale-95"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-fg hover:opacity-90 text-ink px-3 py-1.5 text-xs font-bold transition-all shadow-md active:scale-95"
             >
               <Plus size={13} />
               <span>New File</span>
@@ -197,7 +197,7 @@ export function ProjectDashboard() {
 
         {/* Project List */}
         {filteredProjects.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center border border-dashed border-line/80 rounded-2xl bg-ink-light/20">
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center border border-dashed border-line/80 rounded-2xl bg-ink-panel/30">
             <Folder size={32} className="text-fg-mute mb-3 animate-pulse" />
             <h3 className="text-sm font-bold text-fg">No files found</h3>
             <p className="text-xs text-fg-mute mt-1 max-w-xs leading-normal">
@@ -247,7 +247,7 @@ export function ProjectDashboard() {
                 <div
                   key={p.id}
                   onClick={() => selectProject(p.id)}
-                  className="group rounded-xl border border-line/40 bg-zinc-950/40 hover:bg-zinc-900/60 hover:border-indigo-500/40 shadow-sm transition-all duration-300 cursor-pointer overflow-hidden relative flex flex-col justify-between min-h-[180px]"
+                  className="group rounded-xl border border-line/40 bg-ink-panel/40 hover:bg-ink-hover/60 hover:border-indigo-500/40 shadow-sm transition-all duration-300 cursor-pointer overflow-hidden relative flex flex-col justify-between min-h-[180px]"
                 >
                   {/* File preview thumbnail header */}
                   <div className="h-32 bg-[#1C1C1E] border-b border-line/30 flex items-center justify-center relative overflow-hidden select-none">
@@ -281,7 +281,7 @@ export function ProjectDashboard() {
                     </div>
 
                     {/* Floating Hover Tools */}
-                    <div className="absolute inset-0 bg-ink-dark/85 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2.5 transition-all z-20">
+                    <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2.5 transition-all z-20">
                       <button
                         title="Duplicate File"
                         onClick={(e) => handleDuplicate(p.id, e)}
@@ -316,7 +316,7 @@ export function ProjectDashboard() {
                   </div>
 
                   {/* Info panel */}
-                  <div className="p-3.5 flex items-center justify-between border-t border-line/20 bg-zinc-950/20">
+                  <div className="p-3.5 flex items-center justify-between border-t border-line/20 bg-ink-panel/30">
                     {isRenaming ? (
                       <form 
                         onSubmit={(e) => handleRenameSubmit(p.id, e)}
@@ -339,7 +339,7 @@ export function ProjectDashboard() {
                       </form>
                     ) : (
                       <div className="min-w-0 flex-1 pr-2">
-                        <h3 className="text-xs font-semibold text-fg-dim truncate leading-tight group-hover:text-indigo-400 transition-colors">
+                        <h3 className="text-xs font-semibold text-fg-dim truncate leading-tight group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors">
                           {p.name}
                         </h3>
                         <span className="block text-[10px] text-fg-mute font-medium mt-0.5">
@@ -349,7 +349,7 @@ export function ProjectDashboard() {
                     )}
 
                     {/* Clean color swatches in Figma-style container */}
-                    <div className="flex items-center gap-1 bg-zinc-900 border border-line/30 rounded-full px-2 py-1 shrink-0 shadow-sm">
+                    <div className="flex items-center gap-1 bg-ink-panel border border-line/50 rounded-full px-2 py-1 shrink-0 shadow-sm">
                       {visibleColors.slice(0, 3).map((color, idx) => (
                         <span
                           key={idx}
@@ -368,18 +368,18 @@ export function ProjectDashboard() {
 
       {/* Limit Modal */}
       {limitModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-ink-dark/80 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-xl border border-line bg-ink-light p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl border border-line bg-ink-raised p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-pink-500/10 text-pink-400">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-pink-500/10 text-pink-600 dark:text-pink-400">
                 <AlertTriangle size={16} />
               </div>
               <div className="flex-1">
-                <h3 className="text-[13.5px] font-bold text-white">Project Limit Reached</h3>
+                <h3 className="text-[13.5px] font-bold text-fg">Project Limit Reached</h3>
                 <p className="text-xs text-fg-mute leading-normal mt-1.5">
                   Free tier accounts are restricted to 3 active design files. Upgrade your workspace to build unlimited projects.
                 </p>
-                <div className="rounded border border-indigo-500/20 bg-indigo-500/5 px-2.5 py-1.5 text-[10px] text-indigo-400 font-semibold leading-tight mt-3">
+                <div className="rounded border border-indigo-500/20 bg-indigo-500/5 px-2.5 py-1.5 text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold leading-tight mt-3">
                   Promo Notice: Claim upgrading options below for free launch access today.
                 </div>
                 <div className="flex items-center gap-3 mt-5">
@@ -407,8 +407,8 @@ export function ProjectDashboard() {
 
       {/* Upgrade Showcase Modal */}
       {showUpgradeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-ink-dark/80 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-indigo-500/40 bg-ink-light p-6 shadow-2xl relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-indigo-500/40 bg-ink-raised p-6 shadow-2xl relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Glow */}
             <div className="absolute top-[-10%] right-[-10%] h-32 w-32 rounded-full bg-pink-500/10 blur-xl pointer-events-none" />
             
@@ -416,7 +416,7 @@ export function ProjectDashboard() {
               <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500 text-white shadow-lg">
                 <Flame size={20} className="animate-pulse" />
               </div>
-              <h3 className="text-base font-extrabold text-white">Upgrade to Arkitype Pro</h3>
+              <h3 className="text-base font-extrabold text-fg">Upgrade to Arkitype Pro</h3>
               <p className="text-xs text-fg-mute leading-relaxed max-w-sm mx-auto">
                 Get unlimited design files, continuous tokens API delivery webhooks, team coordination settings, and export parameters.
               </p>
@@ -424,19 +424,19 @@ export function ProjectDashboard() {
               <div className="rounded-xl border border-line bg-ink p-4 text-left flex flex-col gap-2">
                 <div className="flex items-center justify-between text-xs border-b border-line pb-2 mb-1">
                   <span className="font-bold text-fg">Pro Plan</span>
-                  <span className="font-mono text-[10.5px] text-pink-400 font-bold">$0/mo (Usually $19)</span>
+                  <span className="font-mono text-[10.5px] text-pink-600 dark:text-pink-400 font-bold">$0/mo (Usually $19)</span>
                 </div>
                 <ul className="flex flex-col gap-2 text-[11px] text-fg-dim">
                   <li className="flex items-center gap-2">
-                    <Check size={12} className="text-pink-400" />
+                    <Check size={12} className="text-pink-600 dark:text-pink-400" />
                     <span>Create unlimited design files</span>
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check size={12} className="text-pink-400" />
+                    <Check size={12} className="text-pink-600 dark:text-pink-400" />
                     <span>Deploy directly to tokens variables webhooks</span>
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check size={12} className="text-pink-400" />
+                    <Check size={12} className="text-pink-600 dark:text-pink-400" />
                     <span>Advanced layout custom metrics</span>
                   </li>
                 </ul>

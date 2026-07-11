@@ -108,6 +108,8 @@ export function TokenTag({
   radiusStep = 2,
   removable = true,
   leadingIcon = false,
+  style = "subtle",
+  size = "md",
   children = "Q3 budget",
   resolve = NO_BINDINGS,
 }: {
@@ -116,25 +118,35 @@ export function TokenTag({
   radiusStep?: number;
   removable?: boolean;
   leadingIcon?: boolean;
+  style?: "subtle" | "outline";
+  size?: "sm" | "md";
   children?: React.ReactNode;
   resolve?: Resolver;
 }) {
   const r = resolve;
   const t = useTone(tone, mode);
   const toned = tone !== "neutral";
-  const bg = r("container.bg") ?? (toned ? t.bg : tv("surface-subtle"));
+  const outline = style === "outline";
+  const bg = outline ? "transparent" : r("container.bg") ?? (toned ? t.bg : tv("surface-subtle"));
   const text = r("text.color") ?? (toned ? t.text : tv("text-secondary"));
   const dot = toned ? t.accent : tv("text-muted");
+  const borderColor = outline
+    ? toned
+      ? t.accent
+      : tv("border-strong")
+    : toned
+      ? t.border
+      : "transparent";
   return (
     <span
       style={{
         display: "inline-flex",
         alignItems: "center",
         gap: sv(1),
-        padding: `${sv(1)} ${sv(2)}`,
+        padding: size === "sm" ? `2px ${sv(1)}` : `${sv(1)} ${sv(2)}`,
         borderRadius: r("container.radius") ?? rv(radiusStep),
-        background: bg,
-        border: toned ? `1px solid ${t.border}` : "1px solid transparent",
+        background: outline ? "transparent" : bg,
+        border: `1px solid ${borderColor}`,
         color: text,
         fontSize: "var(--ark-text-xs)",
         fontWeight: 500,
@@ -164,6 +176,8 @@ export function TokenAvatar({
   initials = "AK",
   presence,
   shape = "circle",
+  showRing = false,
+  group = 1,
   resolve = NO_BINDINGS,
 }: {
   size?: "sm" | "md" | "lg";
@@ -171,13 +185,16 @@ export function TokenAvatar({
   initials?: string;
   presence?: "online" | "away";
   shape?: "circle" | "rounded" | "square";
+  showRing?: boolean;
+  group?: number;
   resolve?: Resolver;
 }) {
   const px = size === "sm" ? 26 : size === "md" ? 36 : 48;
   const r = resolve;
   const shapeRadius = shape === "circle" ? rv(7) : shape === "square" ? rv(1) : rv(3);
-  return (
-    <span style={{ position: "relative", display: "inline-flex" }}>
+
+  const single = (label: string, withPresence: boolean, stacked: boolean) => (
+    <span key={label} style={{ position: "relative", display: "inline-flex", marginLeft: stacked ? -px * 0.28 : 0 }}>
       <span
         style={{
           width: px,
@@ -191,11 +208,12 @@ export function TokenAvatar({
           fontWeight: 700,
           fontSize: px * 0.36,
           fontFamily: r("text.font") ?? "var(--ark-font-sans)",
+          boxShadow: showRing || stacked ? `0 0 0 2px ${tv("surface-base")}` : undefined,
         }}
       >
-        {initials}
+        {label}
       </span>
-      {presence ? (
+      {withPresence && presence ? (
         <span
           style={{
             position: "absolute",
@@ -214,6 +232,18 @@ export function TokenAvatar({
       ) : null}
     </span>
   );
+
+  const count = Math.min(Math.max(Math.round(group), 1), 4);
+  if (count === 1) return single(initials, true, false);
+
+  // Stacked avatar group: the bound initials lead, generic teammates follow.
+  const others = ["LM", "TS", "+5"];
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center" }}>
+      {single(initials, false, false)}
+      {others.slice(0, count - 1).map((o) => single(o, false, true))}
+    </span>
+  );
 }
 
 /* ── Tooltip (static, opened) ── */
@@ -223,12 +253,16 @@ export function TokenTooltip({
   label = "Cleared 2 days ago",
   placement = "top",
   showArrow = true,
+  size = "sm",
+  multiline = false,
   resolve = NO_BINDINGS,
 }: {
   radiusStep?: number;
   label?: string;
   placement?: "top" | "bottom" | "left" | "right";
   showArrow?: boolean;
+  size?: "sm" | "md";
+  multiline?: boolean;
   resolve?: Resolver;
 }) {
   const r = resolve;
@@ -239,13 +273,16 @@ export function TokenTooltip({
       style={{
         background: bg,
         color: r("text.color") ?? tv("surface-base"),
-        padding: `${sv(1)} ${sv(2)}`,
+        padding: size === "md" ? `${sv(2)} ${sv(3)}` : `${sv(1)} ${sv(2)}`,
         borderRadius: r("container.radius") ?? rv(radiusStep),
-        fontSize: "var(--ark-text-xs)",
+        fontSize: size === "md" ? "var(--ark-text-sm)" : "var(--ark-text-xs)",
         fontFamily: r("text.font") ?? "var(--ark-font-sans)",
         fontWeight: 500,
         boxShadow: "var(--ark-shadow-medium)",
-        whiteSpace: "nowrap",
+        whiteSpace: multiline ? "normal" : "nowrap",
+        maxWidth: multiline ? 200 : undefined,
+        lineHeight: multiline ? 1.5 : undefined,
+        textAlign: multiline ? "left" : undefined,
       }}
       role="tooltip"
     >
@@ -290,15 +327,102 @@ export function TokenProgress({
   value = 64,
   radiusStep = 7,
   showLabel = true,
+  label = "Budget used",
+  variant = "bar",
+  thickness = "regular",
+  indeterminate = false,
   resolve = NO_BINDINGS,
 }: {
   value?: number;
   radiusStep?: number;
   showLabel?: boolean;
+  label?: string;
+  variant?: "bar" | "circle";
+  thickness?: "thin" | "regular" | "thick";
+  indeterminate?: boolean;
   resolve?: Resolver;
 }) {
   const r = resolve;
   const trackRadius = r("track.radius") ?? rv(radiusStep);
+  const clamped = Math.min(Math.max(value, 0), 100);
+  const barHeight = thickness === "thin" ? 4 : thickness === "thick" ? 12 : 8;
+
+  if (variant === "circle") {
+    const size = 56;
+    const stroke = thickness === "thin" ? 3 : thickness === "thick" ? 7 : 5;
+    const radius = (size - stroke) / 2;
+    const circumference = 2 * Math.PI * radius;
+    return (
+      <div
+        style={{
+          display: "inline-flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: sv(1),
+          fontFamily: "var(--ark-font-sans)",
+        }}
+      >
+        <div
+          role="progressbar"
+          aria-valuenow={indeterminate ? undefined : clamped}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className={indeterminate ? "ark-spin" : undefined}
+          style={{ width: size, height: size, position: "relative" }}
+        >
+          <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke={r("track.bg") ?? tv("surface-subtle")}
+              strokeWidth={stroke}
+            />
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke={r("fill.bg") ?? tv("action-primary-default")}
+              strokeWidth={stroke}
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={
+                indeterminate ? circumference * 0.72 : circumference * (1 - clamped / 100)
+              }
+              style={{
+                transition: "stroke-dashoffset var(--ark-duration-slow) var(--ark-ease-out)",
+              }}
+            />
+          </svg>
+          {!indeterminate && showLabel ? (
+            <span
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "var(--ark-text-xs)",
+                fontFamily: "var(--ark-font-mono)",
+                fontWeight: 600,
+                color: r("label.value") ?? tv("text-muted"),
+              }}
+            >
+              {clamped}%
+            </span>
+          ) : null}
+        </div>
+        {showLabel ? (
+          <span style={{ fontSize: "var(--ark-text-xs)", color: r("label.title") ?? tv("text-secondary") }}>
+            {label}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div style={{ width: "100%" }}>
       {showLabel ? (
@@ -311,34 +435,39 @@ export function TokenProgress({
             fontFamily: "var(--ark-font-sans)",
           }}
         >
-          <span style={{ color: r("label.title") ?? tv("text-secondary") }}>Budget used</span>
-          <span
-            style={{ color: r("label.value") ?? tv("text-muted"), fontFamily: "var(--ark-font-mono)" }}
-          >
-            {value}%
-          </span>
+          <span style={{ color: r("label.title") ?? tv("text-secondary") }}>{label}</span>
+          {!indeterminate ? (
+            <span
+              style={{ color: r("label.value") ?? tv("text-muted"), fontFamily: "var(--ark-font-mono)" }}
+            >
+              {clamped}%
+            </span>
+          ) : null}
         </div>
       ) : null}
       <div
         role="progressbar"
-        aria-valuenow={value}
+        aria-valuenow={indeterminate ? undefined : clamped}
         aria-valuemin={0}
         aria-valuemax={100}
         style={{
-          height: 8,
+          height: barHeight,
           borderRadius: trackRadius,
           background: r("track.bg") ?? tv("surface-subtle"),
           overflow: "hidden",
+          position: "relative",
         }}
       >
         <div
+          className={indeterminate ? "ark-slide" : undefined}
           style={{
-            width: `${Math.min(Math.max(value, 0), 100)}%`,
+            width: indeterminate ? "25%" : `${clamped}%`,
             height: "100%",
             borderRadius: trackRadius,
             background: r("fill.bg") ?? tv("action-primary-default"),
-            transition:
-              "width var(--ark-duration-slow) var(--ark-ease-out)",
+            transition: indeterminate
+              ? undefined
+              : "width var(--ark-duration-slow) var(--ark-ease-out)",
           }}
         />
       </div>
@@ -350,9 +479,15 @@ export function TokenProgress({
 
 export function TokenSkeletonLoader({
   radiusStep = 2,
+  shape = "media",
+  lines = 3,
+  animated = false,
   resolve = NO_BINDINGS,
 }: {
   radiusStep?: number;
+  shape?: "media" | "text" | "card";
+  lines?: number;
+  animated?: boolean;
   resolve?: Resolver;
 }) {
   const r = resolve;
@@ -362,18 +497,32 @@ export function TokenSkeletonLoader({
     borderRadius: r("container.radius") ?? rv(radiusStep),
     background: r("container.bg") ?? tv("surface-subtle"),
   });
+  const lineCount = Math.min(Math.max(Math.round(lines), 1), 5);
+  // Vary widths so multi-line blocks read as text, first line short like a title.
+  const lineWidths = ["45%", "90%", "70%", "85%", "60%"].slice(0, lineCount);
+  const textColumn = (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: sv(1) }}>
+      {lineWidths.map((w, i) => (
+        <div key={i} style={bar(w)} />
+      ))}
+    </div>
+  );
   return (
     <div
       aria-busy="true"
       aria-label="Loading"
-      style={{ display: "flex", gap: sv(2), alignItems: "flex-start", width: "100%" }}
+      className={animated ? "ark-pulse" : undefined}
+      style={
+        shape === "card"
+          ? { display: "flex", flexDirection: "column", gap: sv(2), width: "100%" }
+          : { display: "flex", gap: sv(2), alignItems: "flex-start", width: "100%" }
+      }
     >
-      <div style={{ ...bar("36px", 36), borderRadius: rv(7), flexShrink: 0 }} />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: sv(1) }}>
-        <div style={bar("45%")} />
-        <div style={bar("90%")} />
-        <div style={bar("70%")} />
-      </div>
+      {shape === "media" ? (
+        <div style={{ ...bar("36px", 36), borderRadius: rv(7), flexShrink: 0 }} />
+      ) : null}
+      {shape === "card" ? <div style={bar("100%", 96)} /> : null}
+      {textColumn}
     </div>
   );
 }

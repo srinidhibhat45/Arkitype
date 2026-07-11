@@ -124,20 +124,20 @@ function TokenCell({ mode, token }: { mode: PreviewMode; token: string }) {
         </div>
       </div>
       {pendingWarning && (
-        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2 text-[11px] text-red-400">
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2 text-[11px] text-red-600 dark:text-red-400">
           <div className="mb-1 font-medium">
             ⚠️ Drops contrast to {pendingWarning.ratio}:1 (Fail) for: {pendingWarning.label}
           </div>
           <div className="flex gap-2">
             <button
               onClick={confirmPending}
-              className="rounded bg-red-500/20 px-2 py-0.5 font-semibold text-red-300 hover:bg-red-500/30 transition-colors"
+              className="rounded bg-red-500/20 px-2 py-0.5 font-semibold text-red-700 dark:text-red-300 hover:bg-red-500/30 transition-colors"
             >
               Use anyway
             </button>
             <button
               onClick={cancelPending}
-              className="rounded bg-zinc-800 px-2 py-0.5 font-semibold text-zinc-300 hover:bg-zinc-700 transition-colors"
+              className="rounded bg-fg/10 px-2 py-0.5 font-semibold text-fg-dim hover:bg-fg/20 transition-colors"
             >
               Cancel
             </button>

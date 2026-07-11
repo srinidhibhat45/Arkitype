@@ -27,10 +27,20 @@ const LIST_ROWS = [
 export function TokenListItem({
   mode,
   radiusStep = 4,
+  rows = 3,
+  showAvatar = true,
+  showAmount = true,
+  showBadge = true,
+  trailing = "chevron",
   resolve = NO_BINDINGS,
 }: {
   mode: PreviewMode;
   radiusStep?: number;
+  rows?: number;
+  showAvatar?: boolean;
+  showAmount?: boolean;
+  showBadge?: boolean;
+  trailing?: "chevron" | "none";
   resolve?: Resolver;
 }) {
   const r = resolve;
@@ -40,6 +50,8 @@ export function TokenListItem({
   const badgeResolve = useComponentBindings("badge");
   const childAvatarResolve = createChildResolver("avatar", resolve, avatarResolve);
   const childBadgeResolve = createChildResolver("badge", resolve, badgeResolve);
+
+  const shownRows = LIST_ROWS.slice(0, Math.min(Math.max(Math.round(rows), 1), LIST_ROWS.length));
 
   return (
     <div
@@ -52,7 +64,7 @@ export function TokenListItem({
         fontFamily: "var(--ark-font-sans)",
       }}
     >
-      {LIST_ROWS.map((row, i) => (
+      {shownRows.map((row, i) => (
         <div
           key={row.name}
           style={{
@@ -63,7 +75,9 @@ export function TokenListItem({
             borderTop: i > 0 ? `1px solid ${border}` : "none",
           }}
         >
-          <TokenAvatar size="sm" radiusStep={7} initials={row.name.slice(0, 2).toUpperCase()} resolve={childAvatarResolve} />
+          {showAvatar ? (
+            <TokenAvatar size="sm" radiusStep={7} initials={row.name.slice(0, 2).toUpperCase()} resolve={childAvatarResolve} />
+          ) : null}
           <span style={{ minWidth: 0, flex: 1 }}>
             <span style={{ display: "block", fontSize: "var(--ark-text-sm)", fontWeight: 600, color: r("text.name") ?? tv("text-primary"), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {row.name}
@@ -72,13 +86,19 @@ export function TokenListItem({
               {row.meta}
             </span>
           </span>
-          <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: 700, color: r("text.amount") ?? tv("text-primary"), fontVariantNumeric: "tabular-nums" }}>
-            {row.amount}
-          </span>
-          <TokenBadge variant={row.tone} mode={mode} resolve={childBadgeResolve}>
-            {row.badge}
-          </TokenBadge>
-          <ChevronRight size={15} style={{ color: tv("text-muted"), flexShrink: 0 }} />
+          {showAmount ? (
+            <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: 700, color: r("text.amount") ?? tv("text-primary"), fontVariantNumeric: "tabular-nums" }}>
+              {row.amount}
+            </span>
+          ) : null}
+          {showBadge ? (
+            <TokenBadge variant={row.tone} mode={mode} resolve={childBadgeResolve}>
+              {row.badge}
+            </TokenBadge>
+          ) : null}
+          {trailing === "chevron" ? (
+            <ChevronRight size={15} style={{ color: tv("text-muted"), flexShrink: 0 }} />
+          ) : null}
         </div>
       ))}
     </div>
@@ -189,11 +209,21 @@ export function TokenField({
   mode,
   radiusStep = 2,
   invalid = false,
+  label = "Account email",
+  required = true,
+  help = "We’ll send receipts and statements here.",
+  errorText = "Enter a valid work email address.",
+  showHelp = true,
   resolve = NO_BINDINGS,
 }: {
   mode: PreviewMode;
   radiusStep?: number;
   invalid?: boolean;
+  label?: string;
+  required?: boolean;
+  help?: string;
+  errorText?: string;
+  showHelp?: boolean;
   resolve?: Resolver;
 }) {
   const tone = useTone("error", mode);
@@ -211,8 +241,8 @@ export function TokenField({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: sv(1), width: "100%", maxWidth: 340, fontFamily: "var(--ark-font-sans)" }}>
       <label style={{ fontSize: "var(--ark-text-sm)", fontWeight: 600, color: r("text.label") ?? tv("text-primary"), display: "inline-flex", gap: 3 }}>
-        Account email
-        <span style={{ color: r("text.required") ?? tone.accent }}>*</span>
+        {label}
+        {required ? <span style={{ color: r("text.required") ?? tone.accent }}>*</span> : null}
       </label>
       <div
         style={
@@ -232,17 +262,17 @@ export function TokenField({
           resolve={childInputResolve}
         />
       </div>
-      <span
-        style={{
-          fontSize: "var(--ark-text-xs)",
-          color: invalid ? tone.accent : r("text.help") ?? tv("text-muted"),
-          fontWeight: invalid ? 600 : 400,
-        }}
-      >
-        {invalid
-          ? "Enter a valid work email address."
-          : "We’ll send receipts and statements here."}
-      </span>
+      {showHelp || invalid ? (
+        <span
+          style={{
+            fontSize: "var(--ark-text-xs)",
+            color: invalid ? tone.accent : r("text.help") ?? tv("text-muted"),
+            fontWeight: invalid ? 600 : 400,
+          }}
+        >
+          {invalid ? errorText : help}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -258,10 +288,16 @@ const GRID_STATS = [
 export function TokenStatGrid({
   mode,
   radiusStep = 4,
+  columns = "auto",
+  cells = 3,
+  showDelta = true,
   resolve = NO_BINDINGS,
 }: {
   mode: PreviewMode;
   radiusStep?: number;
+  columns?: "auto" | "2" | "3" | "4";
+  cells?: number;
+  showDelta?: boolean;
   resolve?: Resolver;
 }) {
   const r = resolve;
@@ -273,18 +309,21 @@ export function TokenStatGrid({
     border: `1px solid ${r("cell.border") ?? tv("border-muted")}`,
     boxShadow: "var(--ark-shadow-low)",
   };
+  const count = Math.min(Math.max(Math.round(cells), 2), 6);
+  const shown = Array.from({ length: count }, (_, i) => GRID_STATS[i % GRID_STATS.length]);
   return (
     <div
       style={{
         display: "grid",
         gap: sv(3),
-        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+        gridTemplateColumns:
+          columns === "auto" ? "repeat(auto-fit, minmax(180px, 1fr))" : `repeat(${columns}, 1fr)`,
         width: "100%",
       }}
     >
-      {GRID_STATS.map((s) => (
-        <div key={s.label} style={cell}>
-          <TokenStat mode={mode} label={s.label} value={s.value} delta={s.delta} trend={s.trend} resolve={statResolve} />
+      {shown.map((s, i) => (
+        <div key={`${s.label}-${i}`} style={cell}>
+          <TokenStat mode={mode} label={s.label} value={s.value} delta={s.delta} trend={s.trend} showDelta={showDelta} resolve={statResolve} />
         </div>
       ))}
     </div>
@@ -295,15 +334,33 @@ export function TokenStatGrid({
 
 export function TokenFeedItem({
   radiusStep = 4,
+  author = "Maria Reyes",
+  timestamp = "2h ago",
+  body = "Flagged TXN-0459 for review — the vendor total doesn’t match the PO. Can finance confirm before close?",
+  showAvatar = true,
+  showActions = true,
+  showReply = true,
   resolve = NO_BINDINGS,
 }: {
   radiusStep?: number;
+  author?: string;
+  timestamp?: string;
+  body?: string;
+  showAvatar?: boolean;
+  showActions?: boolean;
+  showReply?: boolean;
   resolve?: Resolver;
 }) {
   const r = resolve;
   const meta = r("text.meta") ?? tv("text-muted");
   const avatarResolve = useComponentBindings("avatar");
   const childAvatarResolve = createChildResolver("avatar", resolve, avatarResolve);
+  const initials = author
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "MR";
   return (
     <div
       style={{
@@ -317,28 +374,36 @@ export function TokenFeedItem({
         fontFamily: "var(--ark-font-sans)",
       }}
     >
-      <TokenAvatar size="sm" radiusStep={7} initials="MR" resolve={childAvatarResolve} />
+      {showAvatar ? <TokenAvatar size="sm" radiusStep={7} initials={initials} resolve={childAvatarResolve} /> : null}
       <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: sv(1) }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: sv(1) }}>
           <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: 700, color: r("text.name") ?? tv("text-primary") }}>
-            Maria Reyes
+            {author}
           </span>
-          <span style={{ fontSize: "var(--ark-text-xs)", color: meta }}>· 2h ago</span>
+          <span style={{ fontSize: "var(--ark-text-xs)", color: meta }}>· {timestamp}</span>
         </div>
         <p style={{ margin: 0, fontSize: "var(--ark-text-sm)", color: r("text.body") ?? tv("text-secondary"), lineHeight: 1.55 }}>
-          Flagged TXN-0459 for review — the vendor total doesn’t match the PO. Can finance confirm before close?
+          {body}
         </p>
-        <div style={{ display: "flex", alignItems: "center", gap: sv(3), marginTop: sv(1) }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: sv(1), fontSize: "var(--ark-text-xs)", color: meta, cursor: "pointer" }}>
-            <Heart size={13} /> 12
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: sv(1), fontSize: "var(--ark-text-xs)", color: meta, cursor: "pointer" }}>
-            <MessageCircle size={13} /> 3
-          </span>
-          <span style={{ fontSize: "var(--ark-text-xs)", fontWeight: 600, color: r("text.link") ?? tv("text-link"), cursor: "pointer", marginLeft: "auto" }}>
-            Reply
-          </span>
-        </div>
+        {showActions || showReply ? (
+          <div style={{ display: "flex", alignItems: "center", gap: sv(3), marginTop: sv(1) }}>
+            {showActions ? (
+              <>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: sv(1), fontSize: "var(--ark-text-xs)", color: meta, cursor: "pointer" }}>
+                  <Heart size={13} /> 12
+                </span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: sv(1), fontSize: "var(--ark-text-xs)", color: meta, cursor: "pointer" }}>
+                  <MessageCircle size={13} /> 3
+                </span>
+              </>
+            ) : null}
+            {showReply ? (
+              <span style={{ fontSize: "var(--ark-text-xs)", fontWeight: 600, color: r("text.link") ?? tv("text-link"), cursor: "pointer", marginLeft: "auto" }}>
+                Reply
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

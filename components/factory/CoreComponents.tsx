@@ -175,6 +175,9 @@ export function TokenButton({
     alignItems: "center",
     justifyContent: "center",
     gap: sv(1.5),
+    // A button label must never wrap to a second line — under a tight parent or
+    // heavy horizontal padding the icon+label would otherwise stack vertically.
+    whiteSpace: "nowrap",
     cursor: disabled ? "not-allowed" : "pointer",
     width: fullWidth ? "100%" : undefined,
     boxShadow: defShadow,

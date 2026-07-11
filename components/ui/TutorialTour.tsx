@@ -161,11 +161,11 @@ export function TutorialTour() {
       {/* Popover Card */}
       <div 
         style={popoverStyle}
-        className="w-[310px] rounded-2xl border border-indigo-500/40 bg-ink-light p-5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200"
+        className="w-[310px] rounded-2xl border border-indigo-500/40 bg-ink-raised p-5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Floating sparkles title header */}
         <div className="flex items-center justify-between mb-3 border-b border-line/40 pb-2">
-          <div className="flex items-center gap-1.5 text-indigo-400">
+          <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
             <Layers size={13} />
             <span className="text-[10px] font-bold uppercase tracking-wider">Guided Tour ({activeStepIdx + 1}/4)</span>
           </div>
@@ -178,7 +178,7 @@ export function TutorialTour() {
         </div>
 
         {/* Title & Body */}
-        <h4 className="text-[13px] font-extrabold text-white mb-1.5">{activeStep.title}</h4>
+        <h4 className="text-[13px] font-extrabold text-fg mb-1.5">{activeStep.title}</h4>
         <p className="text-[11.5px] text-fg-dim leading-relaxed mb-4">{activeStep.content}</p>
 
         {/* Buttons Controls */}

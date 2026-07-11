@@ -2,6 +2,75 @@
 
 > Compressed memory checkpoint. Update after every compiled module.
 
+## Status: ✅ v11 FULL MODIFIER PARITY (22 components) + CHROME A11Y/ZOOM FIXES — implemented
+Every zero-option component (14) gained a full `options[]` set and the thin tier (8) was
+deepened, all through the existing schema→factory→renderHero recipe with pixel-identical
+defaults and no persist bump. Chrome accessibility pass: hover/selected-state legibility in
+light mode fixed at the root (token-mixing bugs, no-op `ink-light`/`ink-dark` classes, missing
+`focus` color), pinned-dark gate/landing kept self-consistent, and three canvas-zoom defects
+fixed. `npx tsc --noEmit` clean; verified live on :3111 (light + dark chrome, focus ring
+computed `#0d6ed8`, zoom→ring re-sync at 175%, PreviewStep clamps stored 1.75 → 1.25).
+
+### v11 change (modifier depth · chrome a11y · zoom)
+- **Modifier expansion — zero-option tier** (`lib/componentSchema.ts` + factory files +
+  `ComponentStudio.tsx` renderHero threading):
+  - *Display*: `progress` (bar/circle previewAxis, value, thickness, showLabel, label,
+    indeterminate — new SVG circle + `ark-slide` bar animation), `skeleton` (media/text/card
+    previewAxis, lines 1–5, `ark-pulse` animation), `stat` (trend previewAxis, label/value/
+    delta text, showDelta, size sm/md/lg, caption + toggle), `kbd` (size previewAxis,
+    space-separated keys → keycap row, optional + separator), `codeBlock` (filename, header
+    toggle, traffic-light dots, line numbers).
+  - *Navigation*: `navbar` (density previewAxis, brand text, comma-separated links, active #,
+    search/avatar toggles), `sidebar` (expanded/collapsed previewAxis, header text + toggle,
+    icons/accent toggles, active #, width), `steps` (orientation previewAxis with new vertical
+    layout, comma-separated labels, current #, showLabels), `pagination` (numbers/simple/
+    compact previewAxis with two new layouts, totalPages, arrows toggle), `dropdown` (trigger/
+    icons/checkmark/divider/danger toggles, menu width).
+  - *Patterns*: `listItem` (trailing previewAxis, rows 1–3, avatar/amount/badge toggles),
+    `feedItem` (author/timestamp/body text — initials derived from author, avatar/actions/
+    reply toggles), `field` (default/error previewAxis wired to the existing `invalid` render,
+    label/help/error text, required + help toggles), `statGrid` (auto/2/3/4-column previewAxis,
+    cells 2–6 cycling seed data, delta cascade into composed `TokenStat`).
+- **Modifier deepening — thin tier**: `breadcrumbs` (+trail text, home icon, collapse-middle
+  ellipsis), `link` (+label, size, weight), `divider` (+inset), `tooltip` (+size, multiline),
+  `avatar` (+surface ring, stack count 1–4 avatar-group), `tag` (+subtle/outline style, size),
+  `spinner` (+ring/dots/bars variants, staggered `ark-pulse`), `accordion` (+itemCount,
+  defaultOpen — 0 = closed, allowMultiple via Set state; studio remounts on config change).
+- **Chrome a11y — legibility** — the reported "text disappears on hover/selected in light
+  mode" had four root causes, all fixed:
+  - Token-mixing: `bg-fg hover:bg-white text-ink` → `hover:opacity-90` (v9 precedent) in
+    `ProjectDashboard.tsx` + `AuthAndSurvey.tsx`.
+  - **No-op Tailwind classes**: `bg-ink-light`/`bg-ink-dark` were never registered tokens —
+    11 uses meant modals/cards/backdrops had NO background (TutorialTour popover,
+    ProjectDashboard sidebar/search/modals/backdrops, AuthAndSurvey cards). Mapped to real
+    tokens (`ink-raised`/`ink-panel`/`black` scrims).
+  - **Missing `focus` color**: `focus:border-focus`/`active:bg-focus` at 9 call sites
+    (ComponentStudio ×6, studioShared, StepScaffold + StageRail resize handles) generated no
+    CSS. Registered `focus` in `tailwind.config.ts` backed by new `--c-focus` channel var
+    (`#0d6ed8` light / `#0d99ff` dark) — all 9 sites lit up without edits.
+  - **Gate background override**: `.canvas-dotted` (sets `background-color: rgb(var(--c-ink))`,
+    unlayered so it beats Tailwind utilities) was on GateKeeper's pinned-dark roots — in light
+    chrome the gate went light behind white text. New `.canvas-dotted-dark` (fixed #070709 +
+    white dots) for designed-dark surfaces; landing page verified token-leak-free and stays
+    pinned dark by design (user decision).
+  - Light-mode contrast raises: `text-white` → `text-fg` on themed surfaces (dashboard h1 +
+    modal titles, survey questions, tour title), `indigo-400`/`pink-400`/`red-400` accents →
+    `-600 dark:-400` splits, selected nav `bg-white/5` → `bg-ink-hover`, dashboard cards/
+    swatch containers off `zinc-*` onto `ink-panel`/`ink-hover`. StudioControls' opaque
+    `bg-red-950/95` warning banner intentionally kept (self-consistent in both themes).
+- **Zoom defects** —
+  - `useHighlight.tsx`: `usePartBox` gained a `remeasureKey` param (+200ms settle re-measure
+    for the transform transition); ComponentStudio passes `` `${canvasZoom}:${axisValue}` ``
+    so the hover ring re-measures on zoom change AND when `previewRef` moves to another
+    variant card (ref identity never re-fired the effect before — two staleness paths).
+  - Axis-strip ring: active card carries Tailwind `scale-105` with the ring nested inside —
+    measured (post-transform) boxes now divide by `ACTIVE_CARD_SCALE` to land exactly.
+  - `PreviewStep.tsx`: shared persisted `canvasZoom` (Studio slider 0.5–2.5) now clamps at
+    read to its own 0.5–1.25 range — no persist-shape change.
+- **Deferred (flagged, not done)**: 393 arbitrary-px text classes (`text-[11px]` etc.) across
+  24 chrome files bypass rem-based browser text-zoom; full-page zoom unaffected. Large
+  mechanical migration — left out of scope deliberately.
+
 ## Status: ✅ v10 VISUAL POLISH, RESIZABLE PANELS, FIGMA-STYLE GROUPING, FIELD SCRUBBING & DESIGN SYSTEM UPGRADES — implemented
 Fluent 2 shadows & double focus rings, Atlassian Rovo UI generative loading gradients, GitHub Primer ActionList checkmarks in custom dropdowns,
 horizontal drag-scrubbing directly on input elements, prepended industry icons, resolved color picker clipping, updated the property

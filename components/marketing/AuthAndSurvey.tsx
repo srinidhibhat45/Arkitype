@@ -83,7 +83,7 @@ export function AuthAndSurvey() {
           </div>
 
           {/* Form Card */}
-          <div className="rounded-2xl border border-line bg-ink-light/80 p-7 shadow-2xl backdrop-blur-md">
+          <div className="rounded-2xl border border-line bg-ink-raised/80 p-7 shadow-2xl backdrop-blur-md">
             <form onSubmit={handleAuthSubmit} className="flex flex-col gap-4">
               {isRegister && (
                 <div className="flex flex-col gap-1.5">
@@ -120,7 +120,7 @@ export function AuthAndSurvey() {
               </div>
 
               {authError && (
-                <span id="auth-error-msg" role="alert" className="text-[11px] text-red-400 font-medium">{authError}</span>
+                <span id="auth-error-msg" role="alert" className="text-[11px] text-red-600 dark:text-red-400 font-medium">{authError}</span>
               )}
 
               <button
@@ -139,7 +139,7 @@ export function AuthAndSurvey() {
                   Already have an account?{" "}
                   <button 
                     onClick={() => { setIsRegister(false); setAuthError(""); }}
-                    className="text-indigo-400 hover:underline font-semibold"
+                    className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
                   >
                     Sign In
                   </button>
@@ -149,7 +149,7 @@ export function AuthAndSurvey() {
                   Don't have an account yet?{" "}
                   <button 
                     onClick={() => { setIsRegister(true); setAuthError(""); }}
-                    className="text-indigo-400 hover:underline font-semibold"
+                    className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
                   >
                     Register
                   </button>
@@ -190,7 +190,7 @@ export function AuthAndSurvey() {
           </div>
 
           {/* Survey Card Wizard */}
-          <div className="rounded-2xl border border-line bg-ink-light/80 p-7 shadow-2xl backdrop-blur-md">
+          <div className="rounded-2xl border border-line bg-ink-raised/80 p-7 shadow-2xl backdrop-blur-md">
             {/* Step Indicators */}
             <div className="flex justify-between items-center gap-1.5 mb-8">
               {[0, 1, 2, 3].map((s) => (
@@ -206,11 +206,11 @@ export function AuthAndSurvey() {
             {/* Question 0: Role */}
             {surveyStep === 0 && (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-indigo-400">
+                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
                   <Briefcase size={15} />
                   <span className="text-[10px] font-bold uppercase tracking-wider">Question 1 of 4</span>
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">What is your primary professional role?</h3>
+                <h3 className="text-base font-bold text-fg mb-2">What is your primary professional role?</h3>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     "Product Designer",
@@ -225,7 +225,7 @@ export function AuthAndSurvey() {
                       onClick={() => setRole(r)}
                       className={`py-3 px-4 rounded-xl border text-xs font-semibold text-left transition-all ${
                         role === r 
-                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-400" 
+                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" 
                           : "border-line bg-ink hover:border-line-strong text-fg-dim"
                       }`}
                     >
@@ -239,11 +239,11 @@ export function AuthAndSurvey() {
             {/* Question 1: Use Case */}
             {surveyStep === 1 && (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-indigo-400">
+                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
                   <HelpCircle size={15} />
                   <span className="text-[10px] font-bold uppercase tracking-wider">Question 2 of 4</span>
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">Why are you using Arkitype today?</h3>
+                <h3 className="text-base font-bold text-fg mb-2">Why are you using Arkitype today?</h3>
                 <div className="flex flex-col gap-2">
                   {[
                     { label: "Build a new design system from scratch", val: "build-new" },
@@ -256,7 +256,7 @@ export function AuthAndSurvey() {
                       onClick={() => setUseCase(item.val)}
                       className={`py-3.5 px-4 rounded-xl border text-xs font-semibold text-left transition-all ${
                         useCase === item.val
-                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-400"
+                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
                           : "border-line bg-ink hover:border-line-strong text-fg-dim"
                       }`}
                     >
@@ -270,11 +270,11 @@ export function AuthAndSurvey() {
             {/* Question 2: Experience */}
             {surveyStep === 2 && (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-indigo-400">
+                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
                   <Zap size={15} />
                   <span className="text-[10px] font-bold uppercase tracking-wider">Question 3 of 4</span>
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">How experienced are you with design tokens?</h3>
+                <h3 className="text-base font-bold text-fg mb-2">How experienced are you with design tokens?</h3>
                 <div className="flex flex-col gap-2.5">
                   {[
                     { title: "Beginner", desc: "Understand styles, new to variables and token structures", val: "beginner" },
@@ -290,7 +290,7 @@ export function AuthAndSurvey() {
                           : "border-line bg-ink hover:border-line-strong"
                       }`}
                     >
-                      <span className={`text-xs font-bold ${experience === exp.val ? "text-indigo-400" : "text-fg"}`}>
+                      <span className={`text-xs font-bold ${experience === exp.val ? "text-indigo-600 dark:text-indigo-400" : "text-fg"}`}>
                         {exp.title}
                       </span>
                       <span className="text-[11px] text-fg-mute leading-tight">{exp.desc}</span>
@@ -303,11 +303,11 @@ export function AuthAndSurvey() {
             {/* Question 3: Team Size */}
             {surveyStep === 3 && (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-indigo-400">
+                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
                   <Users size={15} />
                   <span className="text-[10px] font-bold uppercase tracking-wider">Question 4 of 4</span>
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">What is your team or company size?</h3>
+                <h3 className="text-base font-bold text-fg mb-2">What is your team or company size?</h3>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { label: "Just Me (Solo)", val: "solo" },
@@ -320,7 +320,7 @@ export function AuthAndSurvey() {
                       onClick={() => setTeamSize(team.val)}
                       className={`py-3.5 px-4 rounded-xl border text-xs font-semibold text-left transition-all ${
                         teamSize === team.val
-                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-400"
+                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
                           : "border-line bg-ink hover:border-line-strong text-fg-dim"
                       }`}
                     >
@@ -349,7 +349,7 @@ export function AuthAndSurvey() {
                     (surveyStep === 2 && !experience)
                   }
                   onClick={() => setSurveyStep((s) => s + 1)}
-                  className="rounded-lg bg-fg hover:bg-white text-ink font-bold text-xs px-4 py-2 transition-all disabled:opacity-40"
+                  className="rounded-lg bg-fg hover:opacity-90 text-ink font-bold text-xs px-4 py-2 transition-all disabled:opacity-40"
                 >
                   Continue
                 </button>

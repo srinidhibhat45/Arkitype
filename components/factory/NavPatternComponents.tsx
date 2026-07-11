@@ -25,12 +25,23 @@ import { TokenButton } from "./CoreComponents";
 
 export function TokenBreadcrumbs({
   trail = ["Finance", "Ledgers", "Operating"],
+  separator = "chevron",
   resolve = NO_BINDINGS,
 }: {
   trail?: string[];
+  separator?: "chevron" | "slash" | "dot";
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const sepColor = r("text.sep") ?? tv("text-muted");
+  const sep =
+    separator === "slash" ? (
+      <span style={{ color: sepColor, fontSize: "var(--ark-text-xs)" }}>/</span>
+    ) : separator === "dot" ? (
+      <span style={{ color: sepColor, fontSize: "var(--ark-text-xs)" }}>•</span>
+    ) : (
+      <ChevronRight size={12} style={{ color: sepColor }} />
+    );
   return (
     <nav
       aria-label="Breadcrumb"
@@ -56,9 +67,7 @@ export function TokenBreadcrumbs({
             >
               {item}
             </span>
-            {!last ? (
-              <ChevronRight size={12} style={{ color: r("text.sep") ?? tv("text-muted") }} />
-            ) : null}
+            {!last ? sep : null}
           </span>
         );
       })}
@@ -341,9 +350,13 @@ const ACCORDION_ITEMS = [
 
 export function TokenAccordion({
   radiusStep = 3,
+  variant = "contained",
+  iconSide = "right",
   resolve = NO_BINDINGS,
 }: {
   radiusStep?: number;
+  variant?: "contained" | "separated" | "flush";
+  iconSide?: "left" | "right";
   resolve?: Resolver;
 }) {
   const [open, setOpen] = useState(0);
@@ -354,20 +367,45 @@ export function TokenAccordion({
 
   const border = r("container.border") ?? tv("border-muted");
   const openBg = r("container.openBg") ?? tv("surface-elevated");
+  const rad = r("container.radius") ?? `${radius}px`;
+  const separated = variant === "separated";
+  const flush = variant === "flush";
+  const iconLeft = iconSide === "left";
+
+  const chevron = (on: boolean) => (
+    <ChevronDown
+      size={14}
+      style={{
+        color: r("chevron.color") ?? tv("text-muted"),
+        flexShrink: 0,
+        transform: on ? "rotate(180deg)" : "none",
+        transition: "transform var(--ark-duration-base) var(--ark-ease-out)",
+      }}
+    />
+  );
+
   return (
     <div
       style={{
-        borderRadius: r("container.radius") ?? `${radius}px`,
-        border: `1px solid ${border}`,
-        overflow: "hidden",
+        borderRadius: flush ? 0 : rad,
+        border: separated || flush ? "none" : `1px solid ${border}`,
+        overflow: separated ? "visible" : "hidden",
+        display: "flex",
+        flexDirection: "column",
+        gap: separated ? sv(2) : 0,
         fontFamily: "var(--ark-font-sans)",
         maxWidth: 480,
       }}
     >
       {ACCORDION_ITEMS.map((item, i) => {
         const on = open === i;
+        const wrapperStyle: React.CSSProperties = separated
+          ? { border: `1px solid ${border}`, borderRadius: rad, overflow: "hidden" }
+          : flush
+            ? { borderBottom: `1px solid ${border}` }
+            : { borderTop: i > 0 ? `1px solid ${border}` : "none" };
         return (
-          <div key={item.q} style={{ borderTop: i > 0 ? `1px solid ${border}` : "none" }}>
+          <div key={item.q} style={wrapperStyle}>
             <button
               type="button"
               onClick={() => setOpen(on ? -1 : i)}
@@ -375,7 +413,7 @@ export function TokenAccordion({
               style={{
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "space-between",
+                justifyContent: iconLeft ? "flex-start" : "space-between",
                 gap: sv(2),
                 width: "100%",
                 padding: `${sv(2)} ${sv(3)}`,
@@ -390,21 +428,14 @@ export function TokenAccordion({
                 transition: "background var(--ark-duration-fast) var(--ark-ease-out)",
               }}
             >
-              {item.q}
-              <ChevronDown
-                size={14}
-                style={{
-                  color: r("chevron.color") ?? tv("text-muted"),
-                  flexShrink: 0,
-                  transform: on ? "rotate(180deg)" : "none",
-                  transition: "transform var(--ark-duration-base) var(--ark-ease-out)",
-                }}
-              />
+              {iconLeft ? chevron(on) : null}
+              <span style={{ flex: iconLeft ? "0 1 auto" : 1 }}>{item.q}</span>
+              {iconLeft ? null : chevron(on)}
             </button>
             {on ? (
               <div
                 style={{
-                  padding: `0 ${sv(3)} ${sv(2)}`,
+                  padding: iconLeft ? `0 ${sv(3)} ${sv(2)} ${sv(6)}` : `0 ${sv(3)} ${sv(2)}`,
                   background: openBg,
                   color: r("text.body") ?? tv("text-secondary"),
                   fontSize: "var(--ark-text-xs)",

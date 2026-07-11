@@ -47,6 +47,7 @@ export function TokenBadge({
   mode,
   radiusStep = 7,
   style = "subtle",
+  size = "sm",
   dot = true,
   children,
   resolve = NO_BINDINGS,
@@ -55,6 +56,7 @@ export function TokenBadge({
   mode: PreviewMode;
   radiusStep?: number;
   style?: "subtle" | "solid" | "outline";
+  size?: "sm" | "md";
   dot?: boolean;
   children?: React.ReactNode;
   resolve?: Resolver;
@@ -65,18 +67,19 @@ export function TokenBadge({
     style === "solid" ? tone.accent : style === "outline" ? "transparent" : tone.bg;
   const text = style === "solid" ? "#fff" : tone.text;
   const dotColor = style === "solid" ? "rgba(255,255,255,0.85)" : tone.accent;
+  const fs = size === "md" ? "sm" : "xs";
   return (
     <span
       style={{
         display: "inline-flex",
         alignItems: "center",
         gap: 4,
-        padding: `2px ${r("container.padX") ?? sv(2)}`,
+        padding: `${size === "md" ? 3 : 2}px ${r("container.padX") ?? sv(2)}`,
         borderRadius: r("container.radius") ?? rv(radiusStep),
         background: bg,
         border: `1px solid ${tone.border}`,
         color: text,
-        fontSize: "var(--ark-text-xs)",
+        fontSize: `var(--ark-text-${fs})`,
         fontWeight: 600,
         fontFamily: r("text.font") ?? "var(--ark-font-sans)",
         lineHeight: 1.4,
@@ -101,18 +104,27 @@ export function TokenBadge({
 
 export function TokenTag({
   mode,
+  tone = "neutral",
   radiusStep = 2,
   removable = true,
+  leadingIcon = false,
   children = "Q3 budget",
   resolve = NO_BINDINGS,
 }: {
   mode: PreviewMode;
+  tone?: ToneVariant;
   radiusStep?: number;
   removable?: boolean;
+  leadingIcon?: boolean;
   children?: React.ReactNode;
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const t = useTone(tone, mode);
+  const toned = tone !== "neutral";
+  const bg = r("container.bg") ?? (toned ? t.bg : tv("surface-subtle"));
+  const text = r("text.color") ?? (toned ? t.text : tv("text-secondary"));
+  const dot = toned ? t.accent : tv("text-muted");
   return (
     <span
       style={{
@@ -121,18 +133,22 @@ export function TokenTag({
         gap: sv(1),
         padding: `${sv(1)} ${sv(2)}`,
         borderRadius: r("container.radius") ?? rv(radiusStep),
-        background: r("container.bg") ?? tv("surface-subtle"),
-        color: r("text.color") ?? tv("text-secondary"),
+        background: bg,
+        border: toned ? `1px solid ${t.border}` : "1px solid transparent",
+        color: text,
         fontSize: "var(--ark-text-xs)",
         fontWeight: 500,
         fontFamily: r("text.font") ?? "var(--ark-font-sans)",
       }}
     >
+      {leadingIcon ? (
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+      ) : null}
       {children}
       {removable ? (
         <X
           size={pxNum(r("removeIcon.size"), 11)}
-          style={{ color: r("removeIcon.color") ?? tv("text-muted"), cursor: "pointer" }}
+          style={{ color: r("removeIcon.color") ?? (toned ? t.text : tv("text-muted")), cursor: "pointer" }}
           aria-label="Remove tag"
         />
       ) : null}
@@ -147,23 +163,26 @@ export function TokenAvatar({
   radiusStep = 7,
   initials = "AK",
   presence,
+  shape = "circle",
   resolve = NO_BINDINGS,
 }: {
   size?: "sm" | "md" | "lg";
   radiusStep?: number;
   initials?: string;
   presence?: "online" | "away";
+  shape?: "circle" | "rounded" | "square";
   resolve?: Resolver;
 }) {
   const px = size === "sm" ? 26 : size === "md" ? 36 : 48;
   const r = resolve;
+  const shapeRadius = shape === "circle" ? rv(7) : shape === "square" ? rv(1) : rv(3);
   return (
     <span style={{ position: "relative", display: "inline-flex" }}>
       <span
         style={{
           width: px,
           height: px,
-          borderRadius: r("container.radius") ?? rv(radiusStep),
+          borderRadius: r("container.radius") ?? shapeRadius,
           background: r("container.bg") ?? tv("action-primary-default"),
           color: r("text.color") ?? tv("text-on-action"),
           display: "flex",
@@ -202,47 +221,65 @@ export function TokenAvatar({
 export function TokenTooltip({
   radiusStep = 2,
   label = "Cleared 2 days ago",
+  placement = "top",
+  showArrow = true,
   resolve = NO_BINDINGS,
 }: {
   radiusStep?: number;
   label?: string;
+  placement?: "top" | "bottom" | "left" | "right";
+  showArrow?: boolean;
   resolve?: Resolver;
 }) {
   const r = resolve;
   const bg = r("container.bg") ?? tv("text-primary");
+
+  const bubble = (
+    <span
+      style={{
+        background: bg,
+        color: r("text.color") ?? tv("surface-base"),
+        padding: `${sv(1)} ${sv(2)}`,
+        borderRadius: r("container.radius") ?? rv(radiusStep),
+        fontSize: "var(--ark-text-xs)",
+        fontFamily: r("text.font") ?? "var(--ark-font-sans)",
+        fontWeight: 500,
+        boxShadow: "var(--ark-shadow-medium)",
+        whiteSpace: "nowrap",
+      }}
+      role="tooltip"
+    >
+      {label}
+    </span>
+  );
+
+  // The arrow points from the bubble toward the (implied) trigger — i.e. the
+  // opposite side of the bubble's placement.
+  const arrowBase = { width: 0, height: 0 } as const;
+  const arrow: CSSProperties =
+    placement === "top"
+      ? { ...arrowBase, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: `5px solid ${bg}` }
+      : placement === "bottom"
+        ? { ...arrowBase, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderBottom: `5px solid ${bg}` }
+        : placement === "left"
+          ? { ...arrowBase, borderTop: "5px solid transparent", borderBottom: "5px solid transparent", borderLeft: `5px solid ${bg}` }
+          : { ...arrowBase, borderTop: "5px solid transparent", borderBottom: "5px solid transparent", borderRight: `5px solid ${bg}` };
+
+  const vertical = placement === "top" || placement === "bottom";
+  const arrowFirst = placement === "bottom" || placement === "right";
+
   return (
     <span
       style={{
         display: "inline-flex",
-        flexDirection: "column",
+        flexDirection: vertical ? "column" : "row",
         alignItems: "center",
+        gap: 0,
       }}
     >
-      <span
-        style={{
-          background: bg,
-          color: r("text.color") ?? tv("surface-base"),
-          padding: `${sv(1)} ${sv(2)}`,
-          borderRadius: r("container.radius") ?? rv(radiusStep),
-          fontSize: "var(--ark-text-xs)",
-          fontFamily: r("text.font") ?? "var(--ark-font-sans)",
-          fontWeight: 500,
-          boxShadow: "var(--ark-shadow-medium)",
-          whiteSpace: "nowrap",
-        }}
-        role="tooltip"
-      >
-        {label}
-      </span>
-      <span
-        style={{
-          width: 0,
-          height: 0,
-          borderLeft: "5px solid transparent",
-          borderRight: "5px solid transparent",
-          borderTop: `5px solid ${bg}`,
-        }}
-      />
+      {showArrow && arrowFirst ? <span style={arrow} /> : null}
+      {bubble}
+      {showArrow && !arrowFirst ? <span style={arrow} /> : null}
     </span>
   );
 }

@@ -748,6 +748,15 @@ const DEFAULT_COMPONENTS: Record<string, ComponentConfig> = {
   banner: { skeletonId: "1", properties: { radiusStep: 3 } },
   field: { skeletonId: "1", properties: { radiusStep: 2 } },
   statGrid: { skeletonId: "1", properties: { radiusStep: 4 } },
+
+  /* extended library (industry-parity additions) */
+  chip: { skeletonId: "1", properties: { radiusStep: 7 } },
+  rating: { skeletonId: "1", properties: {} },
+  popover: { skeletonId: "1", properties: { radiusStep: 3 } },
+  fileUpload: { skeletonId: "1", properties: { radiusStep: 4 } },
+  timeline: { skeletonId: "1", properties: {} },
+  tree: { skeletonId: "1", properties: { radiusStep: 2 } },
+  datePicker: { skeletonId: "1", properties: { radiusStep: 3 } },
 };
 
 /* ── helpers for dynamic ids / uniqueness ── */
@@ -1858,7 +1867,7 @@ export const useDesignSystem = create<ArkitypeState>()(
   },
   {
       name: "arkitype-system",
-      version: 10,
+      version: 11,
       // v2 → v3: dynamic colour families, per-mode elevation, typography
       // weights/roles/rounding/overrides, editable spacing/radii + overrides,
       // stored semantic groups + expanded roles.
@@ -2148,6 +2157,34 @@ export const useDesignSystem = create<ArkitypeState>()(
               if (proj.components) {
                 migrateLegacyInstances(proj.components);
               }
+            }
+          }
+        }
+
+        if (version < 11) {
+          // Backfill the extended-library components (chip, rating, popover,
+          // fileUpload, timeline, tree, datePicker) into existing systems.
+          const NEW_IDS = [
+            "chip",
+            "rating",
+            "popover",
+            "fileUpload",
+            "timeline",
+            "tree",
+            "datePicker",
+          ];
+          const backfill = (comps?: Record<string, ComponentConfig>) => {
+            if (!comps) return;
+            for (const id of NEW_IDS) {
+              if (!comps[id] && DEFAULT_COMPONENTS[id]) {
+                comps[id] = JSON.parse(JSON.stringify(DEFAULT_COMPONENTS[id])) as ComponentConfig;
+              }
+            }
+          };
+          backfill(state.components);
+          if (state.projects) {
+            for (const pid of Object.keys(state.projects)) {
+              backfill(state.projects[pid]?.components);
             }
           }
         }

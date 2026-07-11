@@ -19,26 +19,30 @@ import { TokenButton } from "./CoreComponents";
 export function TokenSpinner({
   size = 24,
   tone = "action",
+  label,
   resolve = NO_BINDINGS,
 }: {
   size?: number;
   tone?: "action" | "muted";
+  label?: string;
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const color =
+    tone === "action"
+      ? r("spinner.color") ?? tv("action-primary-default")
+      : r("spinner.muted") ?? tv("text-muted");
+  const glyph = (
+    <Loader2 className="ark-spin" size={size} style={{ color }} aria-label={label ?? "Loading"} role="status" />
+  );
+  if (!label) return glyph;
   return (
-    <Loader2
-      className="ark-spin"
-      size={size}
-      style={{
-        color:
-          tone === "action"
-            ? r("spinner.color") ?? tv("action-primary-default")
-            : r("spinner.muted") ?? tv("text-muted"),
-      }}
-      aria-label="Loading"
-      role="status"
-    />
+    <span style={{ display: "inline-flex", alignItems: "center", gap: sv(2), fontFamily: "var(--ark-font-sans)" }}>
+      {glyph}
+      <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: 500, color: r("spinner.muted") ?? tv("text-muted") }}>
+        {label}
+      </span>
+    </span>
   );
 }
 
@@ -46,16 +50,43 @@ export function TokenSpinner({
 
 export function TokenDivider({
   label,
+  orientation = "horizontal",
+  variant = "solid",
+  thickness = 1,
+  labelPosition = "center",
   resolve = NO_BINDINGS,
 }: {
   label?: string;
+  orientation?: "horizontal" | "vertical";
+  variant?: "solid" | "dashed" | "dotted";
+  thickness?: number;
+  labelPosition?: "start" | "center" | "end";
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const color = r("divider.line") ?? tv("border-muted");
+
+  if (orientation === "vertical") {
+    return (
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        style={{
+          alignSelf: "stretch",
+          minHeight: 44,
+          borderLeftWidth: thickness,
+          borderLeftStyle: variant,
+          borderLeftColor: color,
+        }}
+      />
+    );
+  }
+
   const line: CSSProperties = {
     flex: 1,
-    height: 1,
-    background: r("divider.line") ?? tv("border-muted"),
+    borderTopWidth: thickness,
+    borderTopStyle: variant,
+    borderTopColor: color,
   };
   if (!label) {
     return <div style={{ ...line, width: "100%" }} role="separator" />;
@@ -66,7 +97,7 @@ export function TokenDivider({
       aria-label={label}
       style={{ display: "flex", alignItems: "center", gap: sv(2), width: "100%" }}
     >
-      <span style={line} />
+      {labelPosition !== "start" ? <span style={line} /> : null}
       <span
         style={{
           fontSize: "var(--ark-text-xs)",
@@ -80,7 +111,7 @@ export function TokenDivider({
       >
         {label}
       </span>
-      <span style={line} />
+      {labelPosition !== "end" ? <span style={line} /> : null}
     </div>
   );
 }

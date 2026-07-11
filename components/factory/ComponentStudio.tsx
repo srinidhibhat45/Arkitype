@@ -140,6 +140,15 @@ import {
 import { ModalScene } from "@/components/factory/ModalSkeletons";
 import { TabsSkeleton } from "@/components/factory/TabsSkeletons";
 import { TableSkeleton } from "@/components/factory/TableSkeletons";
+import {
+  TokenChip,
+  TokenFileUpload,
+  TokenPopover,
+  TokenRating,
+  TokenTimeline,
+  TokenTree,
+} from "@/components/factory/ExtendedComponents";
+import { TokenDatePicker } from "@/components/factory/CalendarComponents";
 
 /* ── which controls expose a Size card ── */
 
@@ -175,19 +184,23 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
   const { state, size, radiusStep, resolve, mode, opts } = ctx;
   const os = (k: string) => opts[k] as string;
   const ob = (k: string) => opts[k] as boolean;
+  const on = (k: string) => opts[k] as number;
   switch (id) {
     /* controls */
     case "button":
       return (
         <TokenButton
-          state={state}
+          state={(ob("loading") ? "loading" : state) as any}
           size={size}
           variant={os("variant") as any}
           radiusStep={radiusStep}
+          fullWidth={ob("fullWidth")}
           resolve={resolve}
           prefixIcon={os("prefixIcon")}
           suffixIcon={os("suffixIcon")}
-        />
+        >
+          {os("label") || "Commit Action"}
+        </TokenButton>
       );
     case "input":
       return <TokenInput state={state} size={size} radiusStep={radiusStep} resolve={resolve} />;
@@ -196,11 +209,34 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "select":
       return <TokenSelect state={state} size={size} radiusStep={radiusStep} resolve={resolve} />;
     case "checkbox":
-      return <TokenCheckbox checked state={state} radiusStep={radiusStep} resolve={resolve} />;
+      return (
+        <TokenCheckbox
+          checked={ob("checked")}
+          indeterminate={ob("indeterminate")}
+          state={state}
+          radiusStep={radiusStep}
+          label={ob("showLabel") ? os("label") || "Email receipts" : ""}
+          resolve={resolve}
+        />
+      );
     case "radio":
-      return <TokenRadio checked state={state} resolve={resolve} />;
+      return (
+        <TokenRadio
+          checked={ob("checked")}
+          state={state}
+          label={ob("showLabel") ? os("label") || "Monthly billing" : ""}
+          resolve={resolve}
+        />
+      );
     case "switch":
-      return <TokenSwitch checked state={state} resolve={resolve} />;
+      return (
+        <TokenSwitch
+          checked={ob("checked")}
+          state={state}
+          label={ob("showLabel") ? os("label") || "Auto-approve under $100" : ""}
+          resolve={resolve}
+        />
+      );
     case "iconButton":
       return <TokenIconButton variant={os("variant") as IconButtonVariant} state={state} size={size} radiusStep={radiusStep} resolve={resolve} />;
     case "buttonGroup":
@@ -238,9 +274,11 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
       return (
         <TokenTag
           mode={mode}
+          tone={os("tone") as ToneVariant}
           radiusStep={radiusStep}
           resolve={resolve}
           removable={ob("removable") !== false}
+          leadingIcon={ob("leadingIcon")}
         >
           {os("label") || "engineering"}
         </TokenTag>
@@ -252,6 +290,7 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
           radiusStep={radiusStep}
           presence={os("presence") === "none" ? undefined : os("presence") as any || "online"}
           initials={os("initials") || "JD"}
+          shape={os("shape") as any}
           resolve={resolve}
         />
       );
@@ -260,6 +299,8 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
         <TokenTooltip
           radiusStep={radiusStep}
           label={os("label") || "Tooltip content"}
+          placement={os("placement") as any}
+          showArrow={ob("showArrow")}
           resolve={resolve}
         />
       );
@@ -270,7 +311,14 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
         </div>
       );
     case "spinner":
-      return <TokenSpinner size={30} resolve={resolve} />;
+      return (
+        <TokenSpinner
+          size={on("size") || 30}
+          tone={os("tone") as any}
+          label={ob("showLabel") ? os("label") || "Loading…" : undefined}
+          resolve={resolve}
+        />
+      );
     case "skeleton":
       return (
         <div className="w-72">
@@ -309,9 +357,25 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "stat":
       return <TokenStat mode={mode} resolve={resolve} />;
     case "divider":
-      return (
+      return os("orientation") === "vertical" ? (
+        <div className="flex h-24 items-center">
+          <TokenDivider
+            orientation="vertical"
+            variant={os("variant") as any}
+            thickness={on("thickness")}
+            resolve={resolve}
+          />
+        </div>
+      ) : (
         <div className="w-72">
-          <TokenDivider label="Yesterday" resolve={resolve} />
+          <TokenDivider
+            orientation="horizontal"
+            variant={os("variant") as any}
+            thickness={on("thickness")}
+            labelPosition={os("labelPosition") as any}
+            label={ob("showLabel") ? os("label") || "Yesterday" : undefined}
+            resolve={resolve}
+          />
         </div>
       );
     case "kbd":
@@ -340,7 +404,7 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "sidebar":
       return <TokenSidebar radiusStep={radiusStep} resolve={resolve} />;
     case "breadcrumbs":
-      return <TokenBreadcrumbs resolve={resolve} />;
+      return <TokenBreadcrumbs separator={os("separator") as any} resolve={resolve} />;
     case "steps":
       return <TokenSteps resolve={resolve} />;
     case "pagination":
@@ -348,7 +412,7 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "dropdown":
       return <TokenDropdownMenu radiusStep={radiusStep} resolve={resolve} />;
     case "link":
-      return <TokenLink resolve={resolve} />;
+      return <TokenLink underline={os("underline") as any} external={ob("external")} resolve={resolve} />;
 
     /* patterns */
     case "card":
@@ -372,7 +436,12 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "accordion":
       return (
         <div className="w-80">
-          <TokenAccordion radiusStep={radiusStep} resolve={resolve} />
+          <TokenAccordion
+            radiusStep={radiusStep}
+            variant={os("variant") as any}
+            iconSide={os("iconSide") as any}
+            resolve={resolve}
+          />
         </div>
       );
     case "banner":
@@ -403,6 +472,92 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
       return <TabsSkeleton skeletonId={os("skeletonId") || "1"} />;
     case "table":
       return <TableSkeleton skeletonId={os("skeletonId") || "1"} />;
+
+    /* extended library (industry-parity additions) */
+    case "chip":
+      return (
+        <TokenChip
+          variant={os("variant") as any}
+          state={state}
+          size={os("size") as any}
+          selected={ob("selected")}
+          leadingIcon={ob("leadingIcon")}
+          removable={ob("removable")}
+          radiusStep={radiusStep}
+          resolve={resolve}
+        >
+          {os("label") || "Marketing"}
+        </TokenChip>
+      );
+    case "rating":
+      return (
+        <TokenRating
+          value={on("value")}
+          max={on("max")}
+          size={on("size")}
+          allowHalf={ob("allowHalf")}
+          resolve={resolve}
+        />
+      );
+    case "popover":
+      return (
+        <TokenPopover
+          placement={os("placement") as any}
+          radiusStep={radiusStep}
+          title={os("title")}
+          body={os("body")}
+          showArrow={ob("showArrow")}
+          showClose={ob("showClose")}
+          showAction={ob("showAction")}
+          elevation={os("elevation")}
+          resolve={resolve}
+        />
+      );
+    case "fileUpload":
+      return (
+        <div className="w-80">
+          <TokenFileUpload
+            variant={os("variant") as any}
+            radiusStep={radiusStep}
+            title={os("title")}
+            hint={os("hint")}
+            showButton={ob("showButton")}
+            resolve={resolve}
+          />
+        </div>
+      );
+    case "timeline":
+      return (
+        <div className="w-80">
+          <TokenTimeline
+            entries={on("entries")}
+            markerShape={os("markerShape") as any}
+            connector={os("connector") as any}
+            resolve={resolve}
+          />
+        </div>
+      );
+    case "tree":
+      return (
+        <div className="w-72">
+          <TokenTree
+            showIcons={ob("showIcons")}
+            showGuides={ob("showGuides")}
+            radiusStep={radiusStep}
+            resolve={resolve}
+          />
+        </div>
+      );
+    case "datePicker":
+      return (
+        <TokenDatePicker
+          mode={os("mode") as any}
+          radiusStep={radiusStep}
+          firstDay={os("firstDay") as any}
+          showAdjacent={ob("showAdjacent")}
+          resolve={resolve}
+        />
+      );
 
     default:
       return <span className="text-[12px] text-fg-mute">No preview</span>;

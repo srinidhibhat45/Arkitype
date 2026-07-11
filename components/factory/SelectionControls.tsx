@@ -99,7 +99,7 @@ export function TokenCheckbox({
           <Check data-ark-part="check" size={checkSize} strokeWidth={3} />
         ) : null}
       </span>
-      <span style={labelStyle(disabled)}>{label}</span>
+      {label ? <span style={labelStyle(disabled)}>{label}</span> : null}
     </label>
   );
 }
@@ -162,7 +162,7 @@ export function TokenRadio({
       <span data-ark-part="dot" style={outer} role="radio" aria-checked={checked} aria-disabled={disabled} tabIndex={disabled ? -1 : 0}>
         <span style={dot} />
       </span>
-      <span style={labelStyle(disabled)}>{label}</span>
+      {label ? <span style={labelStyle(disabled)}>{label}</span> : null}
     </label>
   );
 }
@@ -224,7 +224,7 @@ export function TokenSwitch({
       <span data-ark-part="switchTrack" style={track} role="switch" aria-checked={checked} aria-disabled={disabled} tabIndex={disabled ? -1 : 0}>
         <span data-ark-part="switchThumb" style={{ display: "block", ...thumb }} />
       </span>
-      <span style={labelStyle(disabled)}>{label}</span>
+      {label ? <span style={labelStyle(disabled)}>{label}</span> : null}
     </label>
   );
 }

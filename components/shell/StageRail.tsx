@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Check, Plus, Trash2, Copy, Layers, Database } from "lucide-react";
 import { rampStepLabels } from "@/lib/color";
+import { COMPONENT_LANES } from "@/lib/componentLanes";
 import {
   STEP_META,
   STEP_ORDER,
@@ -209,71 +210,7 @@ export function StageRail() {
                     {/* Hierarchical sub-tree list of component layers grouped by Lane */}
                     {isComponentsStep && (activeStep === "components" || activeStep === "ship" || activeStep === "preview") && (
                       <div className="mt-1.5 border-l border-line ml-[21px] pl-3.5 space-y-3 py-1">
-                        {[
-                          {
-                            label: "Controls",
-                            items: [
-                              { id: "button", label: "Button" },
-                              { id: "iconButton", label: "Icon button" },
-                              { id: "buttonGroup", label: "Button group" },
-                              { id: "input", label: "Input" },
-                              { id: "textarea", label: "Textarea" },
-                              { id: "select", label: "Select" },
-                              { id: "searchField", label: "Search" },
-                              { id: "checkbox", label: "Checkbox" },
-                              { id: "radio", label: "Radio" },
-                              { id: "switch", label: "Switch" },
-                              { id: "slider", label: "Slider" },
-                              { id: "stepper", label: "Stepper" },
-                            ],
-                          },
-                          {
-                            label: "Display",
-                            items: [
-                              { id: "badge", label: "Badge" },
-                              { id: "tag", label: "Tag" },
-                              { id: "avatar", label: "Avatar" },
-                              { id: "tooltip", label: "Tooltip" },
-                              { id: "progress", label: "Progress" },
-                              { id: "spinner", label: "Spinner" },
-                              { id: "skeleton", label: "Skeleton" },
-                              { id: "alert", label: "Alert" },
-                              { id: "toast", label: "Toast" },
-                              { id: "stat", label: "Stat" },
-                              { id: "divider", label: "Divider" },
-                              { id: "kbd", label: "Keyboard" },
-                              { id: "emptyState", label: "Empty state" },
-                              { id: "codeBlock", label: "Code block" },
-                            ],
-                          },
-                          {
-                            label: "Navigation",
-                            items: [
-                              { id: "tabs", label: "Tabs" },
-                              { id: "navbar", label: "Navbar" },
-                              { id: "sidebar", label: "Sidebar" },
-                              { id: "breadcrumbs", label: "Breadcrumbs" },
-                              { id: "steps", label: "Steps" },
-                              { id: "pagination", label: "Pagination" },
-                              { id: "dropdown", label: "Dropdown" },
-                              { id: "link", label: "Link" },
-                            ],
-                          },
-                          {
-                            label: "Patterns",
-                            items: [
-                              { id: "modal", label: "Modal" },
-                              { id: "table", label: "Table" },
-                              { id: "card", label: "Card" },
-                              { id: "listItem", label: "List item" },
-                              { id: "feedItem", label: "Feed item" },
-                              { id: "accordion", label: "Accordion" },
-                              { id: "banner", label: "Banner" },
-                              { id: "field", label: "Field" },
-                              { id: "statGrid", label: "Stat grid" },
-                            ],
-                          },
-                        ].map((lane) => (
+                        {COMPONENT_LANES.map((lane) => (
                           <div key={lane.label} className="space-y-1">
                             <span className="block px-2 text-[9px] font-bold uppercase tracking-[0.08em] text-fg-mute">
                               {lane.label}

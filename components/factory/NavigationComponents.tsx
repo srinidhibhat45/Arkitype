@@ -7,7 +7,7 @@
  * from the spacing/radius scales and type/motion vars.
  */
 import type { CSSProperties } from "react";
-import { BarChart3, Check, CreditCard, Home, Search, Settings } from "lucide-react";
+import { BarChart3, Check, CreditCard, ExternalLink, Home, Search, Settings } from "lucide-react";
 import { rv, sv, tv } from "@/lib/tokens";
 import { NO_BINDINGS, Resolver, useComponentBindings } from "@/lib/componentSchema";
 import { TokenAvatar } from "./DisplayComponents";
@@ -259,28 +259,44 @@ export function TokenSteps({
 
 /* ── Link (text link states) ── */
 
-export function TokenLink({ resolve = NO_BINDINGS }: { resolve?: Resolver }) {
+export function TokenLink({
+  underline = "auto",
+  external = false,
+  resolve = NO_BINDINGS,
+}: {
+  underline?: "auto" | "always" | "none";
+  external?: boolean;
+  resolve?: Resolver;
+}) {
   const r = resolve;
   const base: CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
     fontSize: "var(--ark-text-sm)",
     fontFamily: r("link.font") ?? "var(--ark-font-sans)",
     fontWeight: 600,
     cursor: "pointer",
   };
   const linkDefault = r("link.default") ?? tv("text-link");
+  const restDecoration = underline === "always" ? "underline" : "none";
+  const hoverDecoration = underline === "none" ? "none" : "underline";
+  const ext = external ? <ExternalLink size={12} style={{ flexShrink: 0 }} /> : null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: sv(2) }}>
-      <span style={{ ...base, color: linkDefault }}>Default link</span>
-      <span style={{ ...base, color: r("link.hover") ?? tv("text-link-hover"), textDecoration: "underline", textUnderlineOffset: 3 }}>
-        Hover link
+      <span style={{ ...base, color: linkDefault, textDecoration: restDecoration, textUnderlineOffset: 3 }}>
+        Default link{ext}
+      </span>
+      <span style={{ ...base, color: r("link.hover") ?? tv("text-link-hover"), textDecoration: hoverDecoration, textUnderlineOffset: 3 }}>
+        Hover link{ext}
       </span>
       <span
-        style={{ ...base, color: linkDefault, outline: `2px solid ${tv("border-focus")}`, outlineOffset: 2, borderRadius: rv(1) }}
+        style={{ ...base, color: linkDefault, textDecoration: restDecoration, outline: `2px solid ${tv("border-focus")}`, outlineOffset: 2, borderRadius: rv(1) }}
       >
-        Focused link
+        Focused link{ext}
       </span>
       <span style={{ ...base, color: r("link.disabled") ?? tv("text-muted"), cursor: "not-allowed", textDecoration: "line-through" }}>
-        Disabled link
+        Disabled link{ext}
       </span>
     </div>
   );

@@ -293,8 +293,11 @@ const buttonSpec: ComponentSpec = {
       opt("warning", "Warning Tone"),
       opt("success", "Success Tone"),
     ], "filled", true),
+    textOpt("label", "Label text", "Commit Action"),
     textOpt("prefixIcon", "Prefix Icon (Material name)", ""),
     textOpt("suffixIcon", "Suffix Icon (Material name)", ""),
+    boolOpt("fullWidth", "Full width", false),
+    boolOpt("loading", "Loading", false),
   ],
 };
 
@@ -576,6 +579,12 @@ const checkboxSpec: ComponentSpec = {
     },
     iconPart("check", "Checkmark", { color: "role:text-on-action", size: "px:12" }),
   ],
+  options: [
+    boolOpt("checked", "Checked", true),
+    boolOpt("indeterminate", "Indeterminate", false),
+    boolOpt("showLabel", "Show label", true),
+    textOpt("label", "Label text", "Email receipts"),
+  ],
 };
 
 const radioSpec: ComponentSpec = {
@@ -592,6 +601,11 @@ const radioSpec: ComponentSpec = {
         prop("dot.fill", "Selected dot", "color", "role:action-primary-default"),
       ],
     },
+  ],
+  options: [
+    boolOpt("checked", "Selected", true),
+    boolOpt("showLabel", "Show label", true),
+    textOpt("label", "Label text", "Monthly billing"),
   ],
 };
 
@@ -613,6 +627,11 @@ const switchSpec: ComponentSpec = {
       label: "Thumb",
       props: [prop("switchThumb.bg", "Fill", "color", "role:surface-base")],
     },
+  ],
+  options: [
+    boolOpt("checked", "On", true),
+    boolOpt("showLabel", "Show label", true),
+    textOpt("label", "Label text", "Auto-approve under $100"),
   ],
 };
 
@@ -639,6 +658,7 @@ const OTHER_SPECS: ComponentSpec[] = [
       textOpt("label", "Label text", "Success"),
       enumOpt("tone", "Tone", BADGE_TONES, "brand", true),
       enumOpt("style", "Style", STYLE_OPTS, "subtle"),
+      enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium")], "sm"),
       boolOpt("dot", "Status dot", true),
     ],
   },
@@ -666,7 +686,9 @@ const OTHER_SPECS: ComponentSpec[] = [
       iconPart("removeIcon", "Remove icon", { color: "role:text-muted", size: "px:11" }),
     ],
     options: [
+      enumOpt("tone", "Tone", BADGE_TONES, "neutral", true),
       textOpt("label", "Tag label", "engineering"),
+      boolOpt("leadingIcon", "Leading dot", false),
       boolOpt("removable", "Removable", true),
     ],
   },
@@ -703,6 +725,7 @@ const OTHER_SPECS: ComponentSpec[] = [
     options: [
       textOpt("initials", "Initials", "JD"),
       enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large")], "lg"),
+      enumOpt("shape", "Shape", [opt("circle", "Circle"), opt("rounded", "Rounded"), opt("square", "Square")], "circle"),
       enumOpt("presence", "Presence status", [opt("online", "Online"), opt("away", "Away"), opt("none", "None")], "online"),
     ],
   },
@@ -729,6 +752,13 @@ const OTHER_SPECS: ComponentSpec[] = [
       },
     ],
     options: [
+      enumOpt("placement", "Placement", [
+        opt("top", "Top"),
+        opt("bottom", "Bottom"),
+        opt("left", "Left"),
+        opt("right", "Right"),
+      ], "top", true),
+      boolOpt("showArrow", "Show arrow", true),
       textOpt("label", "Tooltip text", "Tooltip content"),
     ],
   },
@@ -769,6 +799,12 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("spinner.muted", "Muted colour", "color", "role:text-muted"),
         ],
       },
+    ],
+    options: [
+      enumOpt("tone", "Tone", [opt("action", "Accent"), opt("muted", "Muted")], "action", true),
+      numOpt("size", "Size", 30, 12, 64),
+      boolOpt("showLabel", "Show label", false),
+      textOpt("label", "Label text", "Loading…"),
     ],
   },
   {
@@ -939,6 +975,18 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("divider.label", "Label", "color", "role:text-muted"),
         ],
       },
+    ],
+    options: [
+      enumOpt("variant", "Line style", [
+        opt("solid", "Solid"),
+        opt("dashed", "Dashed"),
+        opt("dotted", "Dotted"),
+      ], "solid", true),
+      enumOpt("orientation", "Orientation", [opt("horizontal", "Horizontal"), opt("vertical", "Vertical")], "horizontal"),
+      enumOpt("labelPosition", "Label position", [opt("start", "Start"), opt("center", "Center"), opt("end", "End")], "center"),
+      numOpt("thickness", "Thickness", 1, 1, 6),
+      boolOpt("showLabel", "Show label", true),
+      textOpt("label", "Label text", "Yesterday"),
     ],
   },
   {
@@ -1111,6 +1159,13 @@ const OTHER_SPECS: ComponentSpec[] = [
         ],
       },
     ],
+    options: [
+      enumOpt("separator", "Separator", [
+        opt("chevron", "Chevron"),
+        opt("slash", "Slash"),
+        opt("dot", "Dot"),
+      ], "chevron", true),
+    ],
   },
   {
     id: "steps",
@@ -1203,6 +1258,14 @@ const OTHER_SPECS: ComponentSpec[] = [
           prop("link.font", "Font role", "fontRole", "font:body"),
         ],
       },
+    ],
+    options: [
+      enumOpt("underline", "Underline", [
+        opt("auto", "On hover"),
+        opt("always", "Always"),
+        opt("none", "None"),
+      ], "auto", true),
+      boolOpt("external", "External icon", false),
     ],
   },
   /* patterns */
@@ -1321,6 +1384,12 @@ const OTHER_SPECS: ComponentSpec[] = [
       },
     ],
     options: [
+      enumOpt("variant", "Style", [
+        opt("contained", "Contained"),
+        opt("separated", "Separated"),
+        opt("flush", "Flush"),
+      ], "contained", true),
+      enumOpt("iconSide", "Chevron side", [opt("left", "Left"), opt("right", "Right")], "right"),
       numOpt("radius", "Corner radius", 12, 0, 32),
     ],
   },
@@ -1608,6 +1677,335 @@ const OTHER_SPECS: ComponentSpec[] = [
       numOpt("rowHeight", "Row height limit", 44, 24, 80),
     ],
   },
+
+  /* ───────────────── extended library (industry-parity additions) ───────────────
+   * Distilled from Material 3, Carbon, Lightning (SLDS), Polaris, Atlassian and
+   * Apple HIG so the generator lacks nothing the leaders ship. */
+
+  /* Chip — M3 assist/filter/input/suggestion; SLDS pills. */
+  {
+    id: "chip",
+    tier: 1,
+    states: ["default", "hover", "disabled"],
+    parts: [
+      containerPart({
+        bg: { default: "raw:transparent", hover: "role:surface-subtle", disabled: "raw:transparent" },
+        border: {
+          default: "role:border-default",
+          hover: "role:border-strong",
+          disabled: "role:border-muted",
+        },
+        borderWidth: "px:1",
+        radius: "radius:7",
+        padX: "space:3",
+        padY: "space:1",
+        states: ["default", "hover", "disabled"],
+      }),
+      labelPart("label", "Label", {
+        color: { default: "role:text-secondary", disabled: "role:text-muted" },
+        font: "font:body",
+        states: ["default", "hover", "disabled"],
+      }),
+      iconPart("leadingIcon", "Leading icon", { color: "role:text-muted", size: "px:14", states: ["default", "hover", "disabled"] }),
+      iconPart("removeIcon", "Remove icon", { color: "role:text-muted", size: "px:13", states: ["default", "hover", "disabled"] }),
+    ],
+    options: [
+      enumOpt("variant", "Variant", [
+        opt("assist", "Assist"),
+        opt("filter", "Filter"),
+        opt("input", "Input"),
+        opt("suggestion", "Suggestion"),
+      ], "filter", true),
+      enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium")], "md"),
+      boolOpt("selected", "Selected", true),
+      boolOpt("leadingIcon", "Leading icon", true),
+      boolOpt("removable", "Removable", false),
+      textOpt("label", "Label text", "Marketing"),
+    ],
+  },
+
+  /* Rating — Apple rating indicators / star inputs. */
+  {
+    id: "rating",
+    tier: 1,
+    states: ["default"],
+    parts: [
+      {
+        id: "star",
+        label: "Stars",
+        props: [
+          prop("star.on", "Filled", "color", "role:action-primary-default"),
+          prop("star.off", "Empty", "color", "role:border-strong"),
+        ],
+      },
+    ],
+    options: [
+      numOpt("value", "Value", 3, 0, 10),
+      numOpt("max", "Max stars", 5, 3, 10),
+      numOpt("size", "Star size", 22, 12, 40),
+      boolOpt("allowHalf", "Allow half stars", false),
+    ],
+  },
+
+  /* Popover — Carbon/Polaris popover, Atlassian popup, Apple popovers. */
+  {
+    id: "popover",
+    tier: 2,
+    slots: [
+      {
+        id: "action",
+        componentId: "button",
+        label: "Action button",
+        content: [
+          textOpt("label", "Label", "Apply"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+          ], "filled"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+    ],
+    states: ["default"],
+    parts: [
+      {
+        id: "container",
+        label: "Container",
+        props: [
+          prop("container.bg", "Background", "color", "role:surface-elevated"),
+          prop("container.border", "Border colour", "color", "role:border-default"),
+          prop("container.borderWidth", "Border width", "dimension", "px:1", { min: 0, max: 8 }),
+          prop("container.radius", "Corner radius", "radius", "radius:3"),
+        ],
+      },
+      {
+        id: "text",
+        label: "Text",
+        props: [
+          prop("text.title", "Title", "color", "role:text-primary"),
+          prop("text.body", "Body", "color", "role:text-secondary"),
+        ],
+      },
+      iconPart("closeIcon", "Close icon", { color: "role:text-muted", size: "px:14" }),
+    ],
+    options: [
+      enumOpt("placement", "Placement", [
+        opt("top", "Top"),
+        opt("right", "Right"),
+        opt("bottom", "Bottom"),
+        opt("left", "Left"),
+      ], "bottom", true),
+      enumOpt("elevation", "Elevation", ELEVATION_OPTS, "high"),
+      boolOpt("showArrow", "Show arrow", true),
+      boolOpt("showClose", "Show close icon", true),
+      boolOpt("showAction", "Action button", true),
+      textOpt("title", "Title text", "Filter results"),
+      textOpt("body", "Body text", "Narrow the ledger to a date range, status or owner. Selections apply instantly."),
+    ],
+  },
+
+  /* File upload / drop zone — Carbon file uploader, Polaris drop zone, SLDS file selector. */
+  {
+    id: "fileUpload",
+    tier: 2,
+    slots: [
+      {
+        id: "browse",
+        componentId: "button",
+        label: "Browse button",
+        content: [
+          textOpt("label", "Label", "Browse files"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+          ], "outlined"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "sm"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+    ],
+    states: ["default"],
+    parts: [
+      {
+        id: "container",
+        label: "Drop zone",
+        props: [
+          prop("container.bg", "Background", "color", "role:surface-subtle"),
+          prop("container.border", "Border colour", "color", "role:border-default"),
+          prop("container.borderWidth", "Border width", "dimension", "px:2", { min: 0, max: 8 }),
+          prop("container.radius", "Corner radius", "radius", "radius:4"),
+          prop("container.padX", "Padding · X", "space", "space:4"),
+          prop("container.padY", "Padding · Y", "space", "space:5"),
+        ],
+      },
+      {
+        id: "icon",
+        label: "Icon badge",
+        props: [
+          prop("icon.bg", "Background", "color", "role:surface-elevated"),
+          prop("icon.border", "Border", "color", "role:border-muted"),
+          prop("icon.color", "Glyph", "color", "role:text-muted"),
+          prop("icon.size", "Glyph size", "dimension", "px:20", { min: 12, max: 40 }),
+        ],
+      },
+      {
+        id: "text",
+        label: "Text",
+        props: [
+          prop("text.title", "Title", "color", "role:text-primary"),
+          prop("text.hint", "Hint", "color", "role:text-muted"),
+        ],
+      },
+    ],
+    options: [
+      enumOpt("variant", "State", [
+        opt("idle", "Idle"),
+        opt("dragActive", "Drag active"),
+        opt("error", "Error"),
+      ], "idle", true),
+      boolOpt("showButton", "Browse button", true),
+      boolOpt("multiple", "Allow multiple", true),
+      textOpt("title", "Title text", "Drag files here or browse"),
+      textOpt("hint", "Hint text", "PNG, PDF or CSV up to 10 MB"),
+    ],
+  },
+
+  /* Timeline — activity trail (Carbon / Atlassian patterns). */
+  {
+    id: "timeline",
+    tier: 2,
+    states: ["default"],
+    parts: [
+      {
+        id: "marker",
+        label: "Marker",
+        props: [
+          prop("marker.bg", "Fill", "color", "role:action-primary-default"),
+          prop("marker.ring", "Ring / halo", "color", "role:surface-base"),
+        ],
+      },
+      {
+        id: "line",
+        label: "Connector",
+        props: [prop("line.color", "Line", "color", "role:border-default")],
+      },
+      {
+        id: "text",
+        label: "Text",
+        props: [
+          prop("text.title", "Title", "color", "role:text-primary"),
+          prop("text.meta", "Meta", "color", "role:text-muted"),
+          prop("text.body", "Body", "color", "role:text-secondary"),
+        ],
+      },
+    ],
+    options: [
+      enumOpt("markerShape", "Marker", [
+        opt("dot", "Dot"),
+        opt("ring", "Ring"),
+        opt("icon", "Icon"),
+      ], "dot", true),
+      enumOpt("connector", "Connector", [opt("solid", "Solid"), opt("dashed", "Dashed")], "solid"),
+      numOpt("entries", "Entries", 3, 2, 5),
+    ],
+  },
+
+  /* Tree view — Carbon tree view, SLDS tree grid. */
+  {
+    id: "tree",
+    tier: 2,
+    states: ["default"],
+    parts: [
+      {
+        id: "row",
+        label: "Rows",
+        props: [
+          prop("row.text", "Text", "color", "role:text-secondary"),
+          prop("row.selectedText", "Selected text", "color", "role:text-primary"),
+          prop("row.selectedBg", "Selected background", "color", "role:surface-subtle"),
+          prop("row.radius", "Row radius", "radius", "radius:2"),
+        ],
+      },
+      {
+        id: "chevron",
+        label: "Chevron",
+        props: [prop("chevron.color", "Colour", "color", "role:text-muted")],
+      },
+      {
+        id: "icon",
+        label: "Folder icon",
+        props: [prop("icon.color", "Colour", "color", "role:action-primary-default")],
+      },
+      {
+        id: "guide",
+        label: "Indent guide",
+        props: [prop("guide.color", "Line", "color", "role:border-muted")],
+      },
+    ],
+    options: [
+      boolOpt("showIcons", "Show icons", true),
+      boolOpt("showGuides", "Show indent guides", true),
+    ],
+  },
+
+  /* Date picker / calendar — M3, Carbon, SLDS, Atlassian, Apple. */
+  {
+    id: "datePicker",
+    tier: 2,
+    states: ["default"],
+    parts: [
+      {
+        id: "container",
+        label: "Container",
+        props: [
+          prop("container.bg", "Background", "color", "role:surface-elevated"),
+          prop("container.border", "Border colour", "color", "role:border-default"),
+          prop("container.borderWidth", "Border width", "dimension", "px:1", { min: 0, max: 8 }),
+          prop("container.radius", "Corner radius", "radius", "radius:3"),
+        ],
+      },
+      {
+        id: "header",
+        label: "Header",
+        props: [
+          prop("header.monthColor", "Month label", "color", "role:text-primary"),
+          prop("header.navColor", "Nav arrows", "color", "role:text-secondary"),
+        ],
+      },
+      {
+        id: "weekday",
+        label: "Weekday row",
+        props: [prop("weekday.color", "Colour", "color", "role:text-muted")],
+      },
+      {
+        id: "day",
+        label: "Day cells",
+        props: [
+          prop("day.text", "Text", "color", "role:text-primary"),
+          prop("day.mutedText", "Adjacent month", "color", "role:text-muted"),
+          prop("day.selectedBg", "Selected background", "color", "role:action-primary-default"),
+          prop("day.selectedText", "Selected text", "color", "role:text-on-action"),
+          prop("day.rangeBg", "In-range background", "color", "role:surface-subtle"),
+          prop("day.todayRing", "Today ring", "color", "role:border-focus"),
+          prop("day.radius", "Cell radius", "radius", "radius:7"),
+        ],
+      },
+    ],
+    options: [
+      enumOpt("mode", "Selection mode", [opt("single", "Single date"), opt("range", "Date range")], "single", true),
+      enumOpt("firstDay", "Week starts", [opt("sun", "Sunday"), opt("mon", "Monday")], "sun"),
+      boolOpt("showAdjacent", "Show adjacent days", true),
+    ],
+  },
 ];
 
 /* ────────────────────────────── registry ────────────────────────────── */
@@ -1684,6 +2082,14 @@ export const WIRED_COMPONENTS = new Set<string>([
   "banner",
   "field",
   "statGrid",
+  // Extended library (industry-parity additions)
+  "chip",
+  "rating",
+  "popover",
+  "fileUpload",
+  "timeline",
+  "tree",
+  "datePicker",
 ]);
 
 /* ────────────────────────────── options ────────────────────────────── */

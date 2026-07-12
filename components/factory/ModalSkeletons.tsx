@@ -513,7 +513,7 @@ export function ModalSkeleton({
                     position: "relative",
                   }}
                 >
-                  <item.icon size={20} style={{ color: tv("action-primary-default") }} />
+                  <item.icon size={20} style={{ color: tv("text-link") }} />
                   <span style={{ color: tv("text-primary"), fontSize: "10px", fontWeight: 500, textAlign: "center", width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {item.name}
                   </span>

@@ -2,6 +2,68 @@
 
 > Compressed memory checkpoint. Update after every compiled module.
 
+## Status: ✅ INIT WIZARD (scrape + framework twins + targets) — implemented
+Phase 2 of `MAJOR_OVERHAUL_PLAN.md`. **No persist bump** — only optional `meta`
+fields added. `npx tsc --noEmit` clean; verified live on :3111 (temporary store hook,
+removed after) incl. a real scrape of stripe.com.
+
+### change (project initialization wizard)
+- **2-step wizard** — `NewFileModal`→`NewFileWizard` in `ProjectDashboard.tsx`.
+  Step 1 "how do you start?": Blank / From-a-live-site / Material-twin / Tailwind-twin
+  cards. Step 2: name, client, brand colour (HexInput, pre-filled from a scrape),
+  density (hidden when a twin dictates it), target platform, engineering destination.
+  Also absorbs the name+brand creative moment (Welcome.tsx is dead code for dashboard
+  files). `PillGroup<T>` generic + `StartCard` helpers.
+- **`applyInitConfig(config)`** (store) — one atomic `set` applied to the just-created
+  project: brand + optional secondary/font (scrape only) + density + framework-twin
+  structural tokens + `meta.targetPlatform`/`engineeringDestination`. `FRAMEWORK_TWINS`
+  (material: spacious/0.5 radius/1.2 ratio; tailwind: standard/1.0/1.25) seed structure
+  ONLY — never colour, so brand stays the user's. Twins force their own density over
+  the config's; blank/scrape honour the picker.
+- **`app/api/scrape/route.ts`** (new) — POST `{url}`, server-side fetch (avoids CORS),
+  ranks colours from inline+linked CSS (freq × saturation, drops near-white/black/grey)
+  + dominant non-generic font-family. SSRF-guarded (http/https only; localhost/private/
+  bare-host refused), 8s timeout, 2MB/4-sheet caps. stripe.com → #533afd + sohne-var.
+- **`meta.targetPlatform`/`engineeringDestination`** (optional, no migrate). `ShipStep`
+  opens on the matching export tab via `DESTINATION_TO_ARTIFACT` (swiftui→docs until a
+  Swift adapter exists — Phase 3).
+
+## Status: ✅ v12 CLIENT WORKSPACES + DENSITY SWITCH + FRAMEWORK EXPORTS — implemented
+Phase 1 of `MAJOR_OVERHAUL_PLAN.md` (full plan + source feedback there — read that
+file first if resuming this line of work). Three self-contained pieces, persist
+**v11 → v12**. `npx tsc --noEmit` clean; verified live on :3111 via a temporary
+store debug hook (magic-link auth needs real email access this session lacked —
+see the plan doc's Verified note for exactly what was and wasn't exercised).
+
+### v12 change (client folders · density preset · Tailwind/MUI/CSS export)
+- **Client/folder dashboard hierarchy** — `ProjectState.folder?: string` lives in
+  the existing jsonb blob (no SQL migration). `store/useDesignSystem.ts` gained
+  `moveProjectToFolder`/`renameFolderEverywhere`/`deleteFolder`; no "manage empty
+  folders" concept — a client exists the moment a project carries its name, via a
+  datalist-backed combobox, and disappears when the last project leaves it.
+  `ProjectDashboard.tsx` groups into collapsible sections (named clients
+  alphabetical, "Unfiled" trailing; flat grid unchanged when nobody has clients
+  yet), with a "Move to client" hover action per card and rename/ungroup on
+  section headers.
+- **Density switch** — `primitives.density: "compact"|"standard"|"spacious"`,
+  `DENSITY_PRESETS` sets `spacingBase`/`radiusScale` absolutely (3/4/5px,
+  0.75/1/1.25×) so repeated switching never compounds rounding error.
+  `setDensity` recomputes `spacing`/`radii` through the existing
+  `buildSpacing`/`buildRadii`. **Not on Welcome.tsx** — discovered mid-build that
+  dashboard-created files skip Welcome entirely (`createDefaultProjectState`
+  sets `started: true`), so density+client now live in a new `NewFileModal` on
+  the dashboard (the actual start of the flow), plus `SpaceStep.tsx` for later
+  editing. Persist v11→v12 migrate backfills `density: "standard"`.
+- **Framework adapter exports** (`lib/adapters.ts`, new) — the Ship step only
+  exported Figma JSON + a markdown doc before; now also: `compileCssVariables`
+  (real `:root`+`.dark` custom-properties file), `compileTailwindConfig`
+  (semantic roles + primitive ramps + spacing/radius/type/shadow/motion, all
+  referencing the `--ark-*` vars — the same pairing pattern shadcn/ui-style
+  pipelines use, not a hex snapshot that goes stale), `compileMuiTheme` (fully
+  resolved `createTheme()` sources, light+dark; `shadows` intentionally left at
+  MUI's default rather than risk a wrong-length override). `ShipStep.tsx`
+  extends the artifact segmented control 2→5 tabs via an `ARTIFACT_META` map.
+
 ## Status: ✅ v11 FULL MODIFIER PARITY (22 components) + CHROME A11Y/ZOOM FIXES — implemented
 Every zero-option component (14) gained a full `options[]` set and the thin tier (8) was
 deepened, all through the existing schema→factory→renderHero recipe with pixel-identical

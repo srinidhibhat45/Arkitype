@@ -9,6 +9,7 @@
 import {
   BREAKPOINT_NAMES,
   BreakpointName,
+  Density,
   useDesignSystem,
 } from "@/store/useDesignSystem";
 import {
@@ -16,6 +17,7 @@ import {
   AsideNote,
   CanvasSection,
   Field,
+  Segmented,
   SliderControl,
 } from "@/components/ui/controls";
 import { StepScaffold } from "@/components/shell/StepScaffold";
@@ -107,11 +109,19 @@ function SpacingRow({ index }: { index: number }) {
   );
 }
 
+const DENSITY_OPTIONS: Array<{ label: string; value: Density }> = [
+  { label: "Compact", value: "compact" },
+  { label: "Standard", value: "standard" },
+  { label: "Spacious", value: "spacious" },
+];
+
 export function SpaceStep() {
   const spacing = useDesignSystem((s) => s.primitives.spacing);
   const spacingBase = useDesignSystem((s) => s.primitives.spacingBase);
+  const density = useDesignSystem((s) => s.primitives.density ?? "standard");
   const breakpoints = useDesignSystem((s) => s.primitives.layout.breakpoints);
   const setSpacingBase = useDesignSystem((s) => s.setSpacingBase);
+  const setDensity = useDesignSystem((s) => s.setDensity);
   const setBreakpoint = useDesignSystem((s) => s.setBreakpoint);
   const addSpacingStep = useDesignSystem((s) => s.addSpacingStep);
 
@@ -124,6 +134,16 @@ export function SpaceStep() {
       lede="Every gap, inset and gutter should be a multiple of one base unit — that's what makes layouts feel deliberate. Tune the base to shift everything at once, edit any rung's multiplier, pin a step to an exact px, or add rungs when a dense UI needs them."
       aside={
         <>
+          <Field label="Density" hint="rescales base unit + corner radius together">
+            <Segmented options={DENSITY_OPTIONS} value={density} onChange={setDensity} />
+          </Field>
+          <AsideNote>
+            A quick preset, not a locked mode — pick one to jump the whole
+            system denser or roomier, then keep tuning any value below by hand.
+          </AsideNote>
+
+          <AsideDivider />
+
           <SliderControl
             label="Base unit"
             value={spacingBase}

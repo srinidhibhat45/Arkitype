@@ -487,7 +487,7 @@ export function TokenTree({
   const selText = r("row.selectedText") ?? tv("text-primary");
   const selBg = r("row.selectedBg") ?? tv("surface-subtle");
   const chevron = r("chevron.color") ?? tv("text-muted");
-  const iconColor = r("icon.color") ?? tv("action-primary-default");
+  const iconColor = r("icon.color") ?? tv("text-link");
   const guide = r("guide.color") ?? tv("border-muted");
 
   const renderNode = (node: TreeNode, depth: number, key: string): ReactNode => {

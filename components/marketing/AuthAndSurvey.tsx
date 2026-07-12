@@ -1,20 +1,31 @@
 "use client";
 
 import { useDesignSystem } from "@/store/useDesignSystem";
+import { supabase } from "@/lib/supabase/client";
 import { useState } from "react";
-import { Layers, ArrowRight, User, Mail, Compass, HelpCircle, Briefcase, Users, Zap } from "lucide-react";
+import { ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 8;
+
+type AuthMode = "signin" | "register" | "forgot";
 
 export function AuthAndSurvey() {
   const view = useDesignSystem((s) => s.view);
   const setView = useDesignSystem((s) => s.setView);
-  const loginAction = useDesignSystem((s) => s.login);
-  const registerAction = useDesignSystem((s) => s.register);
+  const recovery = useDesignSystem((s) => s.recovery);
+  const setRecovery = useDesignSystem((s) => s.setRecovery);
   const submitSurveyAction = useDesignSystem((s) => s.submitSurvey);
 
-  // Auth States
-  const [isRegister, setIsRegister] = useState(true);
+  // Email + password auth states
+  const [mode, setMode] = useState<AuthMode>("signin");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState("");
 
   // Survey States
@@ -24,23 +35,108 @@ export function AuthAndSurvey() {
   const [experience, setExperience] = useState("");
   const [teamSize, setTeamSize] = useState("");
 
-  const handleAuthSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) {
-      setAuthError("Please enter your email");
-      return;
-    }
-    if (isRegister && !name) {
-      setAuthError("Please enter your name");
-      return;
-    }
+  const emailValid = EMAIL_RE.test(email.trim());
 
+  // Switch auth mode without carrying transient state (error, sent-state, password).
+  const switchMode = (m: AuthMode) => {
+    setMode(m);
     setAuthError("");
-    if (isRegister) {
-      registerAction(email, name);
-    } else {
-      loginAction(email, name);
+    setResetSent(false);
+    setPassword("");
+  };
+
+  // Sign in with email + password.
+  const handleSignIn = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!emailValid) { setAuthError("Please enter a valid email"); return; }
+    if (!password) { setAuthError("Please enter your password"); return; }
+    setAuthError("");
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    setLoading(false);
+    if (error) {
+      setAuthError(
+        /invalid login credentials/i.test(error.message)
+          ? "Incorrect email or password."
+          : error.message
+      );
+      return;
     }
+    // AuthProvider's SIGNED_IN handler hydrates the session and routes onward.
+  };
+
+  // Create an account with email + password. With email confirmation disabled in
+  // Supabase the session is live immediately — NO confirmation email is sent —
+  // and AuthProvider routes into the survey. That "no email" is the whole point.
+  const handleRegister = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!emailValid) { setAuthError("Please enter a valid email"); return; }
+    if (password.length < MIN_PASSWORD) {
+      setAuthError(`Password must be at least ${MIN_PASSWORD} characters`);
+      return;
+    }
+    setAuthError("");
+    setLoading(true);
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: name.trim() ? { name: name.trim() } : undefined },
+    });
+    setLoading(false);
+    if (error) {
+      setAuthError(
+        /already registered|already exists|user already/i.test(error.message)
+          ? "That email is already registered — sign in instead."
+          : error.message
+      );
+      return;
+    }
+    // Anti-enumeration: an existing confirmed email returns a user with no identities.
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      setAuthError("That email is already registered — sign in instead.");
+      return;
+    }
+    if (!data.session) {
+      // No session means "Confirm email" is still ON in Supabase — turn it OFF so
+      // sign-up issues a session immediately with no email.
+      setAuthError("Check your email to confirm your account, then sign in.");
+      return;
+    }
+    // Session live → AuthProvider's SIGNED_IN handler routes into the survey.
+  };
+
+  // Email a password-reset link — the ONLY email this app sends. Clicking it
+  // returns to this origin, where AuthProvider flips `recovery` on and we show
+  // the set-a-new-password form.
+  const handleForgot = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!emailValid) { setAuthError("Please enter a valid email"); return; }
+    setAuthError("");
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
+    });
+    setLoading(false);
+    if (error) { setAuthError(error.message); return; }
+    setResetSent(true);
+  };
+
+  // Set a new password after arriving via the reset link (recovery session live).
+  const handleSetNewPassword = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (newPassword.length < MIN_PASSWORD) {
+      setAuthError(`Password must be at least ${MIN_PASSWORD} characters`);
+      return;
+    }
+    setAuthError("");
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setLoading(false);
+    if (error) { setAuthError(error.message); return; }
+    // Session is already signed in; drop the flag and reload to a clean URL so
+    // AuthProvider re-hydrates straight into the dashboard.
+    setRecovery(false);
+    if (typeof window !== "undefined") window.location.replace(window.location.origin);
   };
 
   const handleSurveySubmit = () => {
@@ -48,122 +144,276 @@ export function AuthAndSurvey() {
       alert("Please answer all questions to unlock the dashboard!");
       return;
     }
-    submitSurveyAction({
-      role,
-      useCase,
-      experience,
-      teamSize,
-    });
+    submitSurveyAction({ role, useCase, experience, teamSize });
   };
 
-  if (view === "login") {
-    return (
-      <div className="min-h-screen bg-ink text-fg flex items-center justify-center px-6 relative overflow-hidden">
-        {/* Dotted Grid Background */}
-        <div className="absolute inset-0 canvas-dotted pointer-events-none opacity-20" />
-        
-        {/* Ambient Gradient Glows */}
-        <div className="absolute top-[-10%] right-[-10%] h-[500px] w-[500px] rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-10%] left-[-10%] h-[500px] w-[500px] rounded-full bg-pink-500/5 blur-[120px] pointer-events-none" />
+  // Shared option-button styling: monochrome, selected = solid fg outline.
+  const optionClass = (selected: boolean) =>
+    `rounded-lg border px-4 py-3.5 text-left text-sm transition-colors ${
+      selected
+        ? "border-fg bg-ink-hover text-fg font-medium"
+        : "border-line-strong bg-ink-panel text-fg-dim hover:border-fg/40 hover:text-fg"
+    }`;
 
-        <div className="w-full max-w-md relative z-10">
-          {/* Logo Brand Header */}
-          <div className="flex flex-col items-center mb-8">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 text-white shadow-lg mb-3">
-              <Layers size={20} className="animate-pulse" />
-            </div>
-            <h2 className="text-2xl font-bold tracking-tight">
-              {isRegister ? "Create your Arkitype account" : "Welcome back to Arkitype"}
-            </h2>
-            <p className="text-xs text-fg-mute mt-1.5 text-center">
-              {isRegister 
-                ? "Join thousands of designers building code-first tokens" 
-                : "Enter your details to open your files dashboard"}
-            </p>
+  // ── Set a new password (arrived via the reset link) ──────────────────────
+  if (recovery) {
+    return (
+      <div className="min-h-screen bg-ink text-fg flex flex-col items-center justify-center px-6">
+        <div className="w-full max-w-md">
+          <div className="mb-10 text-center">
+            <span className="font-serif text-3xl tracking-tight text-fg">Arkitype</span>
           </div>
 
-          {/* Form Card */}
-          <div className="rounded-2xl border border-line bg-ink-raised/80 p-7 shadow-2xl backdrop-blur-md">
-            <form onSubmit={handleAuthSubmit} className="flex flex-col gap-4">
-              {isRegister && (
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="name-input" className="text-[11.5px] font-semibold text-fg-dim">Full Name</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute" size={14} />
-                    <input
-                      id="name-input"
-                      type="text"
-                      placeholder="Jane Doe"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full rounded-lg border border-line bg-ink px-9 py-2.5 text-xs text-fg placeholder:text-fg-mute focus:border-indigo-500 focus:outline-none transition-all"
-                    />
-                  </div>
-                </div>
-              )}
+          <div className="rounded-2xl border border-line bg-ink-raised p-8 sm:p-9">
+            <h1 className="font-serif text-3xl tracking-tight text-fg">Set a new password</h1>
+            <p className="mt-3 text-sm leading-relaxed text-fg-dim">
+              Choose a new password for your account — you&apos;ll be signed in right after.
+            </p>
 
+            <form onSubmit={handleSetNewPassword} className="mt-7 flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="email-input" className="text-[11.5px] font-semibold text-fg-dim">Email Address</label>
+                <label htmlFor="new-password-input" className="text-sm font-medium text-fg-dim">
+                  New password
+                </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute" size={14} />
                   <input
-                    id="email-input"
-                    type="email"
-                    placeholder="jane.doe@company.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    aria-invalid={!!authError}
-                    aria-describedby={authError ? "auth-error-msg" : undefined}
-                    className="w-full rounded-lg border border-line bg-ink px-9 py-2.5 text-xs text-fg placeholder:text-fg-mute focus:border-indigo-500 focus:outline-none transition-all"
+                    id="new-password-input"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="At least 8 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    autoFocus
+                    className="w-full rounded-lg border border-line-strong bg-ink-panel px-4 py-3 pr-11 text-[15px] text-fg placeholder:text-fg-mute transition-colors focus:border-fg focus:outline-none"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-mute transition-colors hover:text-fg"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
               </div>
 
               {authError && (
-                <span id="auth-error-msg" role="alert" className="text-[11px] text-red-600 dark:text-red-400 font-medium">{authError}</span>
+                <span role="alert" className="text-sm font-medium text-red-600 dark:text-red-400">
+                  {authError}
+                </span>
               )}
 
               <button
                 type="submit"
-                className="w-full py-2.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:brightness-110 text-white font-bold text-xs shadow-md transition-all active:scale-[0.98] mt-2 flex items-center justify-center gap-2"
+                disabled={loading}
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-fg px-6 py-3.5 text-base font-medium text-ink transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {isRegister ? "Create Free Account" : "Access Workspace"}
-                <ArrowRight size={13} />
+                {loading ? "Saving…" : "Set password & sign in"}
               </button>
             </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-            {/* Split Switch Link */}
-            <div className="border-t border-line/40 pt-4 mt-6 text-center text-xs text-fg-mute">
-              {isRegister ? (
-                <span>
-                  Already have an account?{" "}
-                  <button 
-                    onClick={() => { setIsRegister(false); setAuthError(""); }}
-                    className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
-                  >
-                    Sign In
-                  </button>
-                </span>
-              ) : (
-                <span>
-                  Don't have an account yet?{" "}
-                  <button 
-                    onClick={() => { setIsRegister(true); setAuthError(""); }}
-                    className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
-                  >
-                    Register
-                  </button>
-                </span>
-              )}
-            </div>
+  if (view === "login") {
+    const isForgot = mode === "forgot";
+    const isRegister = mode === "register";
+    return (
+      <div className="min-h-screen bg-ink text-fg flex flex-col items-center justify-center px-6">
+        <div className="w-full max-w-md">
+          {/* Wordmark */}
+          <div className="mb-10 text-center">
+            <span className="font-serif text-3xl tracking-tight text-fg">Arkitype</span>
           </div>
 
-          <div className="text-center mt-6">
+          <div className="rounded-2xl border border-line bg-ink-raised p-8 sm:p-9">
+            {isForgot && resetSent ? (
+              /* ── Reset link sent ── */
+              <>
+                <h1 className="font-serif text-3xl tracking-tight text-fg">Check your email</h1>
+                <p className="mt-3 text-sm leading-relaxed text-fg-dim">
+                  We sent a password-reset link to{" "}
+                  <span className="font-medium text-fg">{email}</span>. Click it to set a new
+                  password.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => switchMode("signin")}
+                  className="mt-7 inline-flex items-center justify-center gap-1.5 text-sm text-fg-mute transition-colors hover:text-fg"
+                >
+                  <ArrowLeft size={14} /> Back to sign in
+                </button>
+              </>
+            ) : isForgot ? (
+              /* ── Forgot password ── */
+              <>
+                <h1 className="font-serif text-3xl tracking-tight text-fg">Reset password</h1>
+                <p className="mt-3 text-sm leading-relaxed text-fg-dim">
+                  Enter your account email and we&apos;ll send you a link to set a new password.
+                </p>
+                <form onSubmit={handleForgot} className="mt-7 flex flex-col gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="email-input" className="text-sm font-medium text-fg-dim">
+                      Email address
+                    </label>
+                    <input
+                      id="email-input"
+                      type="email"
+                      placeholder="jane.doe@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoFocus
+                      className="w-full rounded-lg border border-line-strong bg-ink-panel px-4 py-3 text-[15px] text-fg placeholder:text-fg-mute transition-colors focus:border-fg focus:outline-none"
+                    />
+                  </div>
+                  {authError && (
+                    <span role="alert" className="text-sm font-medium text-red-600 dark:text-red-400">
+                      {authError}
+                    </span>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-fg px-6 py-3.5 text-base font-medium text-ink transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {loading ? "Sending…" : "Email me a reset link"}
+                    {!loading && <ArrowRight size={18} />}
+                  </button>
+                </form>
+                <button
+                  type="button"
+                  onClick={() => switchMode("signin")}
+                  className="mt-6 inline-flex items-center justify-center gap-1.5 text-sm text-fg-mute transition-colors hover:text-fg"
+                >
+                  <ArrowLeft size={14} /> Back to sign in
+                </button>
+              </>
+            ) : (
+              /* ── Sign in / Create account ── */
+              <>
+                <h1 className="font-serif text-3xl tracking-tight text-fg">
+                  {isRegister ? "Create your account" : "Sign in"}
+                </h1>
+                <p className="mt-3 text-sm leading-relaxed text-fg-dim">
+                  {isRegister
+                    ? "Just an email and a password to get started."
+                    : "Welcome back — sign in with your email and password."}
+                </p>
+
+                <form
+                  onSubmit={isRegister ? handleRegister : handleSignIn}
+                  className="mt-7 flex flex-col gap-4"
+                >
+                  {isRegister && (
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="name-input" className="text-sm font-medium text-fg-dim">
+                        Name <span className="font-normal text-fg-mute">(optional)</span>
+                      </label>
+                      <input
+                        id="name-input"
+                        type="text"
+                        placeholder="Jane Doe"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full rounded-lg border border-line-strong bg-ink-panel px-4 py-3 text-[15px] text-fg placeholder:text-fg-mute transition-colors focus:border-fg focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="email-input" className="text-sm font-medium text-fg-dim">
+                      Email address
+                    </label>
+                    <input
+                      id="email-input"
+                      type="email"
+                      placeholder="jane.doe@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoFocus={!isRegister}
+                      autoComplete="email"
+                      className="w-full rounded-lg border border-line-strong bg-ink-panel px-4 py-3 text-[15px] text-fg placeholder:text-fg-mute transition-colors focus:border-fg focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="password-input" className="text-sm font-medium text-fg-dim">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="password-input"
+                        type={showPassword ? "text" : "password"}
+                        placeholder={isRegister ? "At least 8 characters" : "Your password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete={isRegister ? "new-password" : "current-password"}
+                        className="w-full rounded-lg border border-line-strong bg-ink-panel px-4 py-3 pr-11 text-[15px] text-fg placeholder:text-fg-mute transition-colors focus:border-fg focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((s) => !s)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-mute transition-colors hover:text-fg"
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {!isRegister && (
+                    <button
+                      type="button"
+                      onClick={() => switchMode("forgot")}
+                      className="-mt-1 self-end text-sm text-fg-mute transition-colors hover:text-fg"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+
+                  {authError && (
+                    <span role="alert" className="text-sm font-medium text-red-600 dark:text-red-400">
+                      {authError}
+                    </span>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-fg px-6 py-3.5 text-base font-medium text-ink transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {loading
+                      ? isRegister
+                        ? "Creating…"
+                        : "Signing in…"
+                      : isRegister
+                        ? "Create account"
+                        : "Sign in"}
+                    {!loading && <ArrowRight size={18} />}
+                  </button>
+                </form>
+
+                <div className="mt-6 text-center text-sm text-fg-dim">
+                  {isRegister ? "Already have an account? " : "New to Arkitype? "}
+                  <button
+                    type="button"
+                    onClick={() => switchMode(isRegister ? "signin" : "register")}
+                    className="font-medium text-fg transition-opacity hover:opacity-80"
+                  >
+                    {isRegister ? "Sign in" : "Create one"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="mt-6 text-center">
             <button
               onClick={() => setView("landing")}
-              className="text-xs text-fg-mute hover:text-fg transition-colors"
+              className="text-sm text-fg-mute transition-colors hover:text-fg"
             >
-              ← Back to landing page
+              ← Back to landing
             </button>
           </div>
         </div>
@@ -171,195 +421,136 @@ export function AuthAndSurvey() {
     );
   }
 
-  // Survey Screen View
+  // ── Survey ──────────────────────────────────────────────────────────────
   if (view === "survey") {
-    return (
-      <div className="min-h-screen bg-ink text-fg flex items-center justify-center px-6 relative overflow-hidden">
-        {/* Dotted Grid Background */}
-        <div className="absolute inset-0 canvas-dotted pointer-events-none opacity-20" />
+    const questions = [
+      {
+        label: "Question 1 of 4",
+        title: "What is your primary role?",
+        grid: true,
+        value: role,
+        set: setRole,
+        options: [
+          { label: "Product Designer", val: "Product Designer" },
+          { label: "Developer", val: "Developer" },
+          { label: "Design Engineer", val: "Design Engineer" },
+          { label: "Product Manager", val: "Product Manager" },
+          { label: "Design Ops", val: "Design Ops" },
+          { label: "Other", val: "Other" },
+        ],
+      },
+      {
+        label: "Question 2 of 4",
+        title: "Why are you using Arkitype today?",
+        grid: false,
+        value: useCase,
+        set: setUseCase,
+        options: [
+          { label: "Build a new design system from scratch", val: "build-new" },
+          { label: "Sync design tokens back into code variables", val: "sync-code" },
+          { label: "Migrate static colours into semantic variables", val: "migrate-static" },
+          { label: "Just exploring next-gen UI paradigms", val: "explore" },
+        ],
+      },
+      {
+        label: "Question 3 of 4",
+        title: "How experienced are you with design tokens?",
+        grid: false,
+        value: experience,
+        set: setExperience,
+        options: [
+          { label: "Beginner — new to variables and token structures", val: "beginner" },
+          { label: "Intermediate — familiar with primitives and semantic tokens", val: "intermediate" },
+          { label: "Expert — composite component tokens, multi-brand pipelines", val: "expert" },
+        ],
+      },
+      {
+        label: "Question 4 of 4",
+        title: "What is your team or company size?",
+        grid: true,
+        value: teamSize,
+        set: setTeamSize,
+        options: [
+          { label: "Just me (solo)", val: "solo" },
+          { label: "2–10 people", val: "small" },
+          { label: "11–50 people", val: "medium" },
+          { label: "51+ people", val: "large" },
+        ],
+      },
+    ];
 
-        <div className="w-full max-w-lg relative z-10">
-          <div className="flex flex-col items-center mb-8 text-center">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500 text-white shadow-lg mb-3">
-              <Compass size={20} className="animate-spin-slow" />
-            </div>
-            <h2 className="text-2xl font-bold tracking-tight">Let's customize your workspace</h2>
-            <p className="text-xs text-fg-mute mt-1.5 max-w-sm">
-              Answer 4 quick questions to help us configure the tokens and studio components for your workflows.
+    const q = questions[surveyStep];
+    const canAdvance = !!q.value;
+
+    return (
+      <div className="min-h-screen bg-ink text-fg flex flex-col items-center justify-center px-6">
+        <div className="w-full max-w-lg">
+          <div className="mb-8 text-center">
+            <span className="font-serif text-2xl tracking-tight text-fg">Arkitype</span>
+            <h1 className="mt-5 font-serif text-3xl tracking-tight text-fg">
+              Set up your workspace
+            </h1>
+            <p className="mx-auto mt-3 max-w-sm text-sm text-fg-dim">
+              Four quick questions so we can tune the starting tokens and studio to
+              your workflow.
             </p>
           </div>
 
-          {/* Survey Card Wizard */}
-          <div className="rounded-2xl border border-line bg-ink-raised/80 p-7 shadow-2xl backdrop-blur-md">
-            {/* Step Indicators */}
-            <div className="flex justify-between items-center gap-1.5 mb-8">
-              {[0, 1, 2, 3].map((s) => (
-                <div 
-                  key={s} 
-                  className={`h-1.5 flex-1 rounded-full transition-all ${
-                    s <= surveyStep ? "bg-gradient-to-r from-indigo-500 to-pink-500" : "bg-line/40"
-                  }`} 
+          <div className="rounded-2xl border border-line bg-ink-raised p-8">
+            {/* Progress */}
+            <div className="mb-8 flex items-center gap-1.5">
+              {questions.map((_, s) => (
+                <div
+                  key={s}
+                  className={`h-1 flex-1 rounded-full transition-colors ${
+                    s <= surveyStep ? "bg-fg" : "bg-line"
+                  }`}
                 />
               ))}
             </div>
 
-            {/* Question 0: Role */}
-            {surveyStep === 0 && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
-                  <Briefcase size={15} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Question 1 of 4</span>
-                </div>
-                <h3 className="text-base font-bold text-fg mb-2">What is your primary professional role?</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    "Product Designer",
-                    "Developer",
-                    "Design Engineer",
-                    "Product Manager",
-                    "Design Ops",
-                    "Other"
-                  ].map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setRole(r)}
-                      className={`py-3 px-4 rounded-xl border text-xs font-semibold text-left transition-all ${
-                        role === r 
-                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" 
-                          : "border-line bg-ink hover:border-line-strong text-fg-dim"
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-fg-mute">
+              {q.label}
+            </p>
+            <h2 className="mt-2 font-serif text-2xl tracking-tight text-fg">{q.title}</h2>
 
-            {/* Question 1: Use Case */}
-            {surveyStep === 1 && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
-                  <HelpCircle size={15} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Question 2 of 4</span>
-                </div>
-                <h3 className="text-base font-bold text-fg mb-2">Why are you using Arkitype today?</h3>
-                <div className="flex flex-col gap-2">
-                  {[
-                    { label: "Build a new design system from scratch", val: "build-new" },
-                    { label: "Sync design tokens back into code variables", val: "sync-code" },
-                    { label: "Migrate static colors into semantic variables", val: "migrate-static" },
-                    { label: "Just exploring next-gen UI paradigms", val: "explore" }
-                  ].map((item) => (
-                    <button
-                      key={item.val}
-                      onClick={() => setUseCase(item.val)}
-                      className={`py-3.5 px-4 rounded-xl border text-xs font-semibold text-left transition-all ${
-                        useCase === item.val
-                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-                          : "border-line bg-ink hover:border-line-strong text-fg-dim"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            <div className={`mt-6 grid gap-2.5 ${q.grid ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
+              {q.options.map((opt) => (
+                <button
+                  key={opt.val}
+                  onClick={() => q.set(opt.val)}
+                  className={optionClass(q.value === opt.val)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
 
-            {/* Question 2: Experience */}
-            {surveyStep === 2 && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
-                  <Zap size={15} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Question 3 of 4</span>
-                </div>
-                <h3 className="text-base font-bold text-fg mb-2">How experienced are you with design tokens?</h3>
-                <div className="flex flex-col gap-2.5">
-                  {[
-                    { title: "Beginner", desc: "Understand styles, new to variables and token structures", val: "beginner" },
-                    { title: "Intermediate", desc: "Familiar with primitives and semantic tokens mapping", val: "intermediate" },
-                    { title: "Expert", desc: "Build composite component tokens, manage multi-brand pipelines", val: "expert" }
-                  ].map((exp) => (
-                    <button
-                      key={exp.val}
-                      onClick={() => setExperience(exp.val)}
-                      className={`p-3.5 rounded-xl border text-left transition-all flex flex-col gap-1 ${
-                        experience === exp.val
-                          ? "border-indigo-500 bg-indigo-500/10"
-                          : "border-line bg-ink hover:border-line-strong"
-                      }`}
-                    >
-                      <span className={`text-xs font-bold ${experience === exp.val ? "text-indigo-600 dark:text-indigo-400" : "text-fg"}`}>
-                        {exp.title}
-                      </span>
-                      <span className="text-[11px] text-fg-mute leading-tight">{exp.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Question 3: Team Size */}
-            {surveyStep === 3 && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
-                  <Users size={15} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Question 4 of 4</span>
-                </div>
-                <h3 className="text-base font-bold text-fg mb-2">What is your team or company size?</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { label: "Just Me (Solo)", val: "solo" },
-                    { label: "2 - 10 people", val: "small" },
-                    { label: "11 - 50 people", val: "medium" },
-                    { label: "51+ people", val: "large" }
-                  ].map((team) => (
-                    <button
-                      key={team.val}
-                      onClick={() => setTeamSize(team.val)}
-                      className={`py-3.5 px-4 rounded-xl border text-xs font-semibold text-left transition-all ${
-                        teamSize === team.val
-                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-                          : "border-line bg-ink hover:border-line-strong text-fg-dim"
-                      }`}
-                    >
-                      {team.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Navigation buttons */}
-            <div className="flex justify-between items-center mt-8 pt-5 border-t border-line/40">
+            {/* Navigation */}
+            <div className="mt-8 flex items-center justify-between border-t border-line pt-6">
               <button
                 disabled={surveyStep === 0}
                 onClick={() => setSurveyStep((s) => s - 1)}
-                className="text-xs font-semibold text-fg-mute hover:text-fg disabled:opacity-30 transition-all"
+                className="text-sm font-medium text-fg-mute transition-colors hover:text-fg disabled:opacity-30"
               >
                 Back
               </button>
 
-              {surveyStep < 3 ? (
+              {surveyStep < questions.length - 1 ? (
                 <button
-                  disabled={
-                    (surveyStep === 0 && !role) ||
-                    (surveyStep === 1 && !useCase) ||
-                    (surveyStep === 2 && !experience)
-                  }
+                  disabled={!canAdvance}
                   onClick={() => setSurveyStep((s) => s + 1)}
-                  className="rounded-lg bg-fg hover:opacity-90 text-ink font-bold text-xs px-4 py-2 transition-all disabled:opacity-40"
+                  className="rounded-lg bg-fg px-6 py-2.5 text-[15px] font-medium text-ink transition-opacity hover:opacity-90 disabled:opacity-40"
                 >
                   Continue
                 </button>
               ) : (
                 <button
-                  disabled={!teamSize}
+                  disabled={!canAdvance}
                   onClick={handleSurveySubmit}
-                  className="rounded-lg bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:brightness-110 text-white font-bold text-xs px-5 py-2 shadow-lg transition-all active:scale-95 disabled:opacity-40"
+                  className="rounded-lg bg-fg px-6 py-2.5 text-[15px] font-medium text-ink transition-opacity hover:opacity-90 disabled:opacity-40"
                 >
-                  Complete Survey & Enter
+                  Enter Arkitype
                 </button>
               )}
             </div>

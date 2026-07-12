@@ -7,13 +7,25 @@ export interface RoleContrastPair {
   label: string; // shown in the UI, e.g. "Primary text on base surface"
 }
 
+// The gate enumerates the *intended, guaranteed* text-on-surface pairings so a
+// user's system is flagged the moment a role stops meeting AA on a surface it
+// actually renders on. Text roles are guaranteed on the two reading surfaces
+// (base + elevated); on tint fills (subtle/sunken) supplementary text steps up
+// to `text-secondary`, so those surfaces gate against secondary rather than
+// muted. Fills gate their on-action label at rest *and* hover.
 export const ROLE_CONTRAST_PAIRS: RoleContrastPair[] = [
   { fg: "text-primary", bg: "surface-base", context: "text-normal", label: "Primary text on base surface" },
   { fg: "text-primary", bg: "surface-elevated", context: "text-normal", label: "Primary text on elevated surface" },
+  { fg: "text-primary", bg: "surface-subtle", context: "text-normal", label: "Primary text on subtle surface" },
   { fg: "text-secondary", bg: "surface-base", context: "text-normal", label: "Secondary text on base surface" },
+  { fg: "text-secondary", bg: "surface-elevated", context: "text-normal", label: "Secondary text on elevated surface" },
+  { fg: "text-secondary", bg: "surface-subtle", context: "text-normal", label: "Secondary text on subtle surface" },
+  { fg: "text-secondary", bg: "surface-sunken", context: "text-normal", label: "Secondary text on sunken surface" },
   { fg: "text-muted", bg: "surface-base", context: "text-normal", label: "Muted text on base surface" },
+  { fg: "text-muted", bg: "surface-elevated", context: "text-normal", label: "Muted text on elevated surface" },
   { fg: "text-on-action", bg: "action-primary-default", context: "text-normal", label: "Button label on primary action" },
   { fg: "text-link", bg: "surface-base", context: "text-normal", label: "Link on base surface" },
+  { fg: "text-link", bg: "surface-elevated", context: "text-normal", label: "Link on elevated surface" },
   { fg: "border-focus", bg: "surface-base", context: "ui-component", label: "Focus ring on base surface" },
   { fg: "feedback-info-text", bg: "feedback-info-surface", context: "text-normal", label: "Info text on info surface" },
   { fg: "feedback-success-text", bg: "feedback-success-surface", context: "text-normal", label: "Success text on success surface" },

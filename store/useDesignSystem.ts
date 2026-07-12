@@ -14,6 +14,11 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { generateRamp, hexToRgba, isValidHex, rampStepLabels } from "@/lib/color";
 import { generateTypeScale, FontRoleId, RoundingMode, STEP_DEFS } from "@/lib/typography";
+import { supabase } from "@/lib/supabase/client";
+import * as db from "@/lib/persistence";
+
+/** Max design files per account. A named constant so tiers can raise it later. */
+export const PROJECT_LIMIT = 24;
 
 /* ────────────────────────────── vocabulary ────────────────────────────── */
 
@@ -43,6 +48,68 @@ export type PreviewMode = "light" | "dark";
 
 /** Appearance of the tool itself (chrome), independent of the preview mode. */
 export type ChromeTheme = "light" | "dark";
+
+/** Global padding/radius "vibe" — a one-shot preset over spacingBase + radiusScale,
+ *  same category as a colour-harmony chip: applies once, then stays fully editable
+ *  by hand in Space/Shape. Not a locked mode. */
+export type Density = "compact" | "standard" | "spacious";
+
+export const DENSITY_PRESETS: Record<Density, { spacingBase: number; radiusScale: number }> = {
+  compact: { spacingBase: 3, radiusScale: 0.75 },
+  standard: { spacingBase: 4, radiusScale: 1 },
+  spacious: { spacingBase: 5, radiusScale: 1.25 },
+};
+
+/* ── Project initialization (MAJOR_OVERHAUL_PLAN.md Phase 2) ────────────────── */
+
+/** Where the finished system is heading — drives which Ship export tab opens first. */
+export type TargetPlatform = "web" | "mobile" | "cross";
+export type EngineeringDestination = "tailwind" | "mui" | "css" | "swiftui";
+
+/** How a new file starts. "blank" = the agnostic skeleton (the only prior flow);
+ *  framework twins seed structural DNA only (radius/type-ratio/density — never
+ *  colour, so brand identity stays the user's); "scrape" fills brand + font from
+ *  a live site via /api/scrape. */
+export type StartingPoint = "blank" | "material" | "tailwind" | "scrape";
+
+/**
+ * Framework-twin structural presets. Colours are deliberately excluded — a twin
+ * matches a framework's *shape* (corner language, type rhythm, spacing density),
+ * not its palette, so the user's brand still leads. Editable afterward like any
+ * other value; this is an opt-in starting point, not an imposed default.
+ */
+export const FRAMEWORK_TWINS: Record<
+  "material" | "tailwind",
+  { label: string; blurb: string; radiusScale: number; scaleFactor: number; density: Density }
+> = {
+  // Material is famously roomy (touch-first) with crisp 4px corners.
+  material: {
+    label: "Material UI",
+    blurb: "Roomy spacing, crisp 4px corners, 1.2 type ratio",
+    radiusScale: 0.5,
+    scaleFactor: 1.2,
+    density: "spacious",
+  },
+  // Tailwind UI reads denser and more editorial, softer 8px corners.
+  tailwind: {
+    label: "Tailwind UI",
+    blurb: "Standard density, soft 8px corners, 1.25 type ratio",
+    radiusScale: 1,
+    scaleFactor: 1.25,
+    density: "standard",
+  },
+};
+
+/** The full result of the init wizard — applied atomically by `applyInitConfig`. */
+export interface InitConfig {
+  startingPoint: StartingPoint;
+  brandHex?: string;
+  secondaryHex?: string;
+  fontFamily?: string;
+  density: Density;
+  targetPlatform: TargetPlatform;
+  engineeringDestination: EngineeringDestination;
+}
 
 /* ── The build order. This IS the product's information architecture. ── */
 
@@ -399,9 +466,18 @@ export interface ComponentConfig {
 export interface ProjectState {
   id: string;
   name: string;
+  /** Client/workspace grouping for the dashboard — undefined = unfiled.
+   *  Lives only in this jsonb blob (no separate DB column/migration). */
+  folder?: string;
   createdAt: number;
   updatedAt: number;
-  meta: { name: string; started: boolean };
+  meta: {
+    name: string;
+    started: boolean;
+    /** Set by the init wizard (Phase 2) — optional, so no persist migrate needed. */
+    targetPlatform?: TargetPlatform;
+    engineeringDestination?: EngineeringDestination;
+  };
   journey: {
     activeStep: StepId;
     done: Partial<Record<StepId, boolean>>;
@@ -411,6 +487,7 @@ export interface ProjectState {
     colorFamilies: ColorFamily[];
     seeds: Record<string, string>;
     colors: Record<string, string[]>;
+    density: Density;
     spacingBase: number;
     spacingMultipliers: number[];
     spacingOverrides: Record<number, number>;
@@ -442,7 +519,9 @@ export interface ArkitypeState {
   user: { email: string; name: string } | null;
   survey: Record<string, string> | null;
   view: "landing" | "login" | "survey" | "dashboard" | "workspace";
-  
+  /** Transient: user arrived via a password-reset link and must set a new password. Never persisted. */
+  recovery: boolean;
+
   /* Multi-project state */
   activeProjectId: string | null;
   projects: Record<string, ProjectState>;
@@ -450,7 +529,13 @@ export interface ArkitypeState {
   /* Tutorial state */
   tutorialStep: number | null; // null if not running, or 0..3
 
-  meta: { name: string; started: boolean };
+  meta: {
+    name: string;
+    started: boolean;
+    /** Set by the init wizard (Phase 2) — optional, so no persist migrate needed. */
+    targetPlatform?: TargetPlatform;
+    engineeringDestination?: EngineeringDestination;
+  };
   journey: {
     activeStep: StepId;
     done: Partial<Record<StepId, boolean>>;
@@ -460,6 +545,7 @@ export interface ArkitypeState {
     colorFamilies: ColorFamily[];
     seeds: Record<string, string>; // derived cache
     colors: Record<string, string[]>; // derived cache (resolved w/ overrides)
+    density: Density;
     spacingBase: number;
     spacingMultipliers: number[];
     spacingOverrides: Record<number, number>;
@@ -498,18 +584,37 @@ export interface ArkitypeState {
   activeLeftTab: "layers" | "tokens";
 
   /* Auth & onboarding actions */
-  login: (email: string, name: string) => void;
-  register: (email: string, name: string) => void;
+  /** Populate the store from a signed-in Supabase session (profile + projects). */
+  hydrateSession: (
+    user: { email: string; name: string },
+    survey: Record<string, string> | null,
+    projects: Record<string, ProjectState>
+  ) => void;
+  /** Wipe all session-scoped state back to the landing view (on sign-out). */
+  clearSession: () => void;
   logout: () => void;
   submitSurvey: (data: Record<string, string>) => void;
   setView: (view: "landing" | "login" | "survey" | "dashboard" | "workspace") => void;
+  /** Toggle the set-a-new-password screen (driven by AuthProvider's PASSWORD_RECOVERY event). */
+  setRecovery: (recovery: boolean) => void;
 
-  /* Multi-project actions */
+  /* Multi-project actions — cloud-backed via lib/persistence */
   selectProject: (id: string) => void;
-  createProject: (name: string) => boolean; // returns success (false if limit hit)
+  createProject: (name: string, folder?: string) => Promise<boolean>; // false if limit hit / not signed in
   deleteProject: (id: string) => void;
-  duplicateProject: (id: string) => boolean; // returns success (false if limit hit)
+  duplicateProject: (id: string) => Promise<boolean>; // false if limit hit
   renameProject: (id: string, name: string) => void;
+  /** Assign/unfile a project (client/workspace grouping). `folder: null` unfiles. */
+  moveProjectToFolder: (id: string, folder: string | null) => void;
+  /** Rename a client/folder across every project that carries it. */
+  renameFolderEverywhere: (oldName: string, newName: string) => void;
+  /** Unfile every project in a folder (does not delete the projects). */
+  deleteFolder: (name: string) => void;
+  /** Apply a density preset (padding/radius "vibe") — one-shot, still editable after. */
+  setDensity: (density: Density) => void;
+  /** Apply the init-wizard result to the active project in one atomic write
+   *  (brand/secondary/font + density + framework-twin structure + meta targets). */
+  applyInitConfig: (config: InitConfig) => void;
 
   /* Tutorial actions */
   setTutorialStep: (step: number | null) => void;
@@ -670,10 +775,16 @@ export const DEFAULT_DARK: Record<string, string> = {
   "surface-overlay": "neutral-50",
   "text-primary": "neutral-50",
   "text-secondary": "neutral-200",
-  "text-muted": "neutral-400",
+  // Mid-tone foregrounds (the "-400" luminance tier, L≈0.35) clear AA on the
+  // base surface but *fail* on the lighter elevated fill (neutral-800): 4.35 < 4.5.
+  // Elevated is the default card surface, so muted/link text on cards was failing
+  // pervasively in dark mode. Bump the mid foregrounds one tier lighter (→ "-300",
+  // L≈0.5) so they clear AA on both base (8.1) and elevated (6.0); link-hover
+  // steps to "-200" to stay a visible hover above the new resting link colour.
+  "text-muted": "neutral-300",
   "text-on-action": "neutral-50",
-  "text-link": "brand-400",
-  "text-link-hover": "brand-300",
+  "text-link": "brand-300",
+  "text-link-hover": "brand-200",
   "action-primary-default": "brand-600",
   "action-primary-hover": "brand-500",
   "action-primary-active": "brand-400",
@@ -796,6 +907,7 @@ function freshPrimitives(): ArkitypeState["primitives"] {
     colorFamilies: families,
     seeds: buildSeeds(families),
     colors: buildColors(families),
+    density: "standard",
     spacingBase: 4,
     spacingMultipliers,
     spacingOverrides: {},
@@ -876,6 +988,7 @@ export const useDesignSystem = create<ArkitypeState>()(
         user: null,
         survey: null,
         view: "landing",
+        recovery: false,
         activeProjectId: null,
         projects: {},
         tutorialStep: null,
@@ -907,12 +1020,28 @@ export const useDesignSystem = create<ArkitypeState>()(
         selectedPartId: null,
         activeLeftTab: "layers",
 
-        /* Auth & onboarding actions */
-        login: (email, name) => set({ user: { email, name }, view: "dashboard" }),
-        register: (email, name) => set({ user: { email, name }, view: "survey" }),
-        logout: () => set({ user: null, survey: null, activeProjectId: null, view: "landing" }),
-        submitSurvey: (data) => set({ survey: data, view: "dashboard" }),
+        /* Auth & onboarding actions (Supabase-backed; driven by AuthProvider) */
+        hydrateSession: (user, survey, projects) =>
+          set({
+            user,
+            survey,
+            projects,
+            activeProjectId: null,
+            // Skip the survey if we've already stored one for this account.
+            view: survey ? "dashboard" : "survey",
+          }),
+        clearSession: () =>
+          set({ user: null, survey: null, projects: {}, activeProjectId: null, view: "landing" }),
+        logout: () => {
+          void supabase.auth.signOut();
+          set({ user: null, survey: null, projects: {}, activeProjectId: null, view: "landing" });
+        },
+        submitSurvey: (data) => {
+          void db.saveSurvey(data);
+          set({ survey: data, view: "dashboard" });
+        },
         setView: (view) => set({ view }),
+        setRecovery: (recovery) => set({ recovery }),
 
         /* Multi-project actions */
         selectProject: (id) =>
@@ -932,57 +1061,54 @@ export const useDesignSystem = create<ArkitypeState>()(
             };
           }),
 
-        createProject: (name) => {
-          const state = get();
-          const currentCount = Object.keys(state.projects).length;
-          if (currentCount >= 3) {
-            return false; // Limit hit!
+        createProject: async (name, folder) => {
+          if (Object.keys(get().projects).length >= PROJECT_LIMIT) return false;
+          const label = name.trim() || "Untitled system";
+          // Build a default system locally, persist it, and adopt the DB uuid.
+          const draft = createDefaultProjectState(`tmp-${Date.now()}`, label);
+          if (folder?.trim()) draft.folder = folder.trim();
+          try {
+            const saved = await db.createProject(label, draft);
+            set((s) => ({ projects: { ...s.projects, [saved.id]: saved } }));
+            get().selectProject(saved.id); // open the new file in the builder
+            return true;
+          } catch (e) {
+            console.error("[arkitype] createProject failed", e);
+            return false;
           }
-          const id = `project-${Date.now()}`;
-          const newProj = createDefaultProjectState(id, name);
-          set((state) => ({
-            projects: {
-              ...state.projects,
-              [id]: newProj,
-            },
-          }));
-          return true;
         },
 
-        deleteProject: (id) =>
+        deleteProject: (id) => {
+          void db.deleteProject(id).catch((e) => console.error("[arkitype] deleteProject failed", e));
           set((state) => {
             const projects = { ...state.projects };
             delete projects[id];
             const activeProjectId = state.activeProjectId === id ? null : state.activeProjectId;
             return { projects, activeProjectId };
-          }),
-
-        duplicateProject: (id) => {
-          const state = get();
-          const currentCount = Object.keys(state.projects).length;
-          if (currentCount >= 3) {
-            return false; // Limit hit!
-          }
-          const source = state.projects[id];
-          if (!source) return false;
-
-          const newId = `project-${Date.now()}`;
-          const clone: ProjectState = JSON.parse(JSON.stringify(source));
-          clone.id = newId;
-          clone.name = `${source.name} (Copy)`;
-          clone.createdAt = Date.now();
-          clone.updatedAt = Date.now();
-
-          set((state) => ({
-            projects: {
-              ...state.projects,
-              [newId]: clone,
-            },
-          }));
-          return true;
+          });
         },
 
-        renameProject: (id, name) =>
+        duplicateProject: async (id) => {
+          if (Object.keys(get().projects).length >= PROJECT_LIMIT) return false;
+          const source = get().projects[id];
+          if (!source) return false;
+          const clone: ProjectState = JSON.parse(JSON.stringify(source));
+          const label = `${source.name} (Copy)`;
+          clone.name = label;
+          clone.createdAt = Date.now();
+          clone.updatedAt = Date.now();
+          try {
+            const saved = await db.createProject(label, clone);
+            set((s) => ({ projects: { ...s.projects, [saved.id]: saved } }));
+            return true;
+          } catch (e) {
+            console.error("[arkitype] duplicateProject failed", e);
+            return false;
+          }
+        },
+
+        renameProject: (id, name) => {
+          void db.renameProject(id, name).catch((e) => console.error("[arkitype] renameProject failed", e));
           set((state) => {
             if (!state.projects[id]) return {};
             const projects = { ...state.projects };
@@ -990,6 +1116,143 @@ export const useDesignSystem = create<ArkitypeState>()(
             // If renaming the active project, update meta too
             const meta = state.activeProjectId === id ? { ...state.meta, name } : state.meta;
             return { projects, meta };
+          });
+        },
+
+        moveProjectToFolder: (id, folder) => {
+          set((state) => {
+            if (!state.projects[id]) return {};
+            const projects = { ...state.projects };
+            const updated = { ...projects[id], folder: folder ?? undefined, updatedAt: Date.now() };
+            projects[id] = updated;
+            void db.saveProject(id, updated.name, updated).catch((e) =>
+              console.error("[arkitype] moveProjectToFolder failed", e)
+            );
+            return { projects };
+          });
+        },
+
+        renameFolderEverywhere: (oldName, newName) => {
+          const trimmed = newName.trim();
+          if (!trimmed) return;
+          set((state) => {
+            const projects = { ...state.projects };
+            let changed = false;
+            for (const id of Object.keys(projects)) {
+              if (projects[id].folder === oldName) {
+                projects[id] = { ...projects[id], folder: trimmed, updatedAt: Date.now() };
+                changed = true;
+                void db.saveProject(id, projects[id].name, projects[id]).catch((e) =>
+                  console.error("[arkitype] renameFolderEverywhere failed", e)
+                );
+              }
+            }
+            return changed ? { projects } : {};
+          });
+        },
+
+        deleteFolder: (name) => {
+          set((state) => {
+            const projects = { ...state.projects };
+            let changed = false;
+            for (const id of Object.keys(projects)) {
+              if (projects[id].folder === name) {
+                projects[id] = { ...projects[id], folder: undefined, updatedAt: Date.now() };
+                changed = true;
+                void db.saveProject(id, projects[id].name, projects[id]).catch((e) =>
+                  console.error("[arkitype] deleteFolder failed", e)
+                );
+              }
+            }
+            return changed ? { projects } : {};
+          });
+        },
+
+        setDensity: (density) =>
+          set((state) => {
+            const preset = DENSITY_PRESETS[density];
+            const radiusSteps = state.primitives.radiusSteps ?? [...BASE_RADII];
+            return {
+              primitives: {
+                ...state.primitives,
+                density,
+                spacingBase: preset.spacingBase,
+                radiusScale: preset.radiusScale,
+                spacing: buildSpacing(
+                  preset.spacingBase,
+                  state.primitives.spacingMultipliers,
+                  state.primitives.spacingOverrides
+                ),
+                radii: buildRadii(preset.radiusScale, state.primitives.radiusOverrides, radiusSteps),
+              },
+            };
+          }),
+
+        applyInitConfig: (config) =>
+          set((state) => {
+            const twin =
+              config.startingPoint === "material"
+                ? FRAMEWORK_TWINS.material
+                : config.startingPoint === "tailwind"
+                  ? FRAMEWORK_TWINS.tailwind
+                  : null;
+
+            // A framework twin dictates its own density/radius/type; otherwise the
+            // wizard's density picker leads.
+            const density = twin ? twin.density : config.density;
+            const preset = DENSITY_PRESETS[density];
+            const radiusScale = twin ? twin.radiusScale : preset.radiusScale;
+            const radiusSteps = state.primitives.radiusSteps ?? [...BASE_RADII];
+
+            // Colour: seed brand (+ optional secondary from a scrape). Twins never
+            // touch colour — brand identity stays the user's.
+            const families = cloneFamilies(state.primitives.colorFamilies);
+            if (config.brandHex && isValidHex(config.brandHex)) {
+              const brand = families.find((f) => f.id === "brand") ?? families[0];
+              if (brand) brand.seed = config.brandHex;
+            }
+            if (config.secondaryHex && isValidHex(config.secondaryHex)) {
+              const secondary = families.find((f) => f.id === "secondary");
+              if (secondary) secondary.seed = config.secondaryHex;
+            }
+
+            // Font: a scraped family flows into the body + heading roles (display/
+            // mono left alone — those are rarely a site's body face).
+            const t = state.primitives.typography;
+            const fontRoles = { ...t.fontRoles };
+            if (config.fontFamily) {
+              for (const role of ["body", "heading"]) {
+                if (fontRoles[role]) fontRoles[role] = { ...fontRoles[role], family: config.fontFamily };
+              }
+            }
+
+            return {
+              meta: {
+                ...state.meta,
+                targetPlatform: config.targetPlatform,
+                engineeringDestination: config.engineeringDestination,
+              },
+              primitives: {
+                ...state.primitives,
+                colorFamilies: families,
+                seeds: buildSeeds(families),
+                colors: buildColors(families),
+                density,
+                spacingBase: preset.spacingBase,
+                radiusScale,
+                spacing: buildSpacing(
+                  preset.spacingBase,
+                  state.primitives.spacingMultipliers,
+                  state.primitives.spacingOverrides
+                ),
+                radii: buildRadii(radiusScale, state.primitives.radiusOverrides, radiusSteps),
+                typography: {
+                  ...t,
+                  fontRoles,
+                  scaleFactor: twin ? twin.scaleFactor : t.scaleFactor,
+                },
+              },
+            };
           }),
 
         /* Tutorial actions */
@@ -1867,7 +2130,7 @@ export const useDesignSystem = create<ArkitypeState>()(
   },
   {
       name: "arkitype-system",
-      version: 11,
+      version: 12,
       // v2 → v3: dynamic colour families, per-mode elevation, typography
       // weights/roles/rounding/overrides, editable spacing/radii + overrides,
       // stored semantic groups + expanded roles.
@@ -1884,6 +2147,9 @@ export const useDesignSystem = create<ArkitypeState>()(
       // v8 -> v9: per-slot `instances` bag on ComponentConfig (atomic-design
       // instance model, see ATOMIC_DESIGN_PLAN.md); lifts Modal's legacy
       // "primaryButton.*" ad hoc properties into instances.primaryAction etc.
+      // v9 -> v10, v10 -> v11: legacy instance lifts + extended-library backfill.
+      // v11 -> v12: `primitives.density` preset (MAJOR_OVERHAUL_PLAN.md Phase 1B);
+      // backfill "standard" so existing spacing/radii read unchanged.
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as any;
         if (!state) return persisted as ArkitypeState;
@@ -2189,23 +2455,27 @@ export const useDesignSystem = create<ArkitypeState>()(
           }
         }
 
+        if (version < 12 && state.primitives && !state.primitives.density) {
+          // v11 -> v12: density preset ("compact" | "standard" | "spacious") on
+          // primitives — backfill "standard" so existing spacing/radii are untouched.
+          state.primitives.density = "standard";
+          if (state.projects) {
+            for (const pid of Object.keys(state.projects)) {
+              const p = state.projects[pid]?.primitives;
+              if (p && !p.density) p.density = "standard";
+            }
+          }
+        }
+
         return state as ArkitypeState;
       },
       storage: createJSONStorage(() => localStorage),
+      // Cloud (Supabase) is the source of truth for the session, the project list
+      // and every design blob. Only tool-chrome UI prefs are cached locally, so a
+      // reload never paints a stale signed-in view before the session is checked.
       partialize: (state) => ({
-        user: state.user,
-        survey: state.survey,
-        view: state.view,
-        activeProjectId: state.activeProjectId,
-        projects: state.projects,
-        meta: state.meta,
-        journey: state.journey,
-        primitives: state.primitives,
-        semantics: state.semantics,
-        components: state.components,
         currentPreviewMode: state.currentPreviewMode,
         chromeTheme: state.chromeTheme,
-        canvasZoom: state.canvasZoom,
       }),
     }
   )

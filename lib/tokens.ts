@@ -135,8 +135,26 @@ export function systemCssVars(
   return vars as CSSProperties;
 }
 
+/**
+ * Tool-chrome token names that are emitted as `--c-*` (see globals.css), NOT as
+ * the `--ark-*` design-system vars `tv()` produces. Referencing one here yields
+ * an undefined variable, so the element silently falls back to its inherited
+ * (often near-black) colour — the "text turns too dark" class of bug. Only DS
+ * roles (surface-*, text-*, action-*, border-*, feedback-*) and raw ramp steps
+ * (brand-600, error-400 …) are valid tokens.
+ */
+const CHROME_LEAK = /^(ink-|fg-|c-|bg-|text-(dim|mute)$)/;
+
 /** var() accessor for a semantic token. */
-export const tv = (token: string): string => `var(--ark-${token})`;
+export const tv = (token: string): string => {
+  if (process.env.NODE_ENV !== "production" && CHROME_LEAK.test(token)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[arkitype] tv("${token}") is a tool-chrome token — --ark-${token} is never emitted, so this renders as an undefined var. Use a semantic role or ramp step instead.`
+    );
+  }
+  return `var(--ark-${token})`;
+};
 
 /** var() accessor for a spacing step (1–8). */
 export const sv = (step: number): string => `var(--ark-space-${step})`;

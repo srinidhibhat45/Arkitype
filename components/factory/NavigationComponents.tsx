@@ -202,7 +202,7 @@ export function TokenSidebar({
               />
             ) : null}
             {showIcons || collapsed ? (
-              <Icon size={15} style={{ color: on ? r("item.accent") ?? tv("action-primary-default") : tv("text-muted"), flexShrink: 0 }} />
+              <Icon size={15} style={{ color: on ? r("item.accent") ?? tv("text-link") : tv("text-muted"), flexShrink: 0 }} />
             ) : null}
             {!collapsed ? item.label : null}
           </span>

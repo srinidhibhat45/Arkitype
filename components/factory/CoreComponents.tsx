@@ -20,7 +20,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
-import { rv, sv, tv } from "@/lib/tokens";
+import { resolveRef, resolveToken, rv, sv, tv } from "@/lib/tokens";
+import { bestTextOn, contrastRatio } from "@/lib/color";
 import { CState, NO_BINDINGS, Resolver, createChildResolver, resolveOptions, useComponentBindings, useVariantComponentBindings } from "@/lib/componentSchema";
 import { TokenIconButton } from "./FormControls";
 
@@ -104,6 +105,19 @@ export function TokenButton({
   // which falls back through the shared filled-scope bindings.
   const r = (key: string, st?: CState) => variantResolve(key, st) ?? resolve(key, st);
   const mode = useDesignSystem((s) => s.currentPreviewMode);
+  const semantics = useDesignSystem((s) => s.semantics);
+  const primitives = useDesignSystem((s) => s.primitives);
+  // Resolve a token (semantic role OR a raw ramp step like "error-500") to its
+  // concrete hex for the active preview mode, so a fill can guarantee readable text.
+  const hexOf = (token: string): string =>
+    semantics.modes[mode][token] !== undefined
+      ? resolveToken({ primitives, semantics }, mode, token)
+      : resolveRef(primitives, token);
+  // A fill's label: keep the intended on-action colour when it clears AA against
+  // that exact background, else fall back to the most readable ink/paper. Guards
+  // dark-mode lightened states and pale brand colours from unreadable labels.
+  const readableOn = (bgToken: string, preferred = "text-on-action"): string =>
+    contrastRatio(hexOf(bgToken), hexOf(preferred)) >= 4.5 ? tv(preferred) : bestTextOn(hexOf(bgToken));
 
   let defBg = "transparent";
   let defBorder = "transparent";
@@ -125,31 +139,43 @@ export function TokenButton({
   } else {
     // Normal states
     if (variant === "filled") {
-      defBg = state === "hover" ? tv("action-primary-hover") : state === "active" ? tv("action-primary-active") : tv("action-primary-default");
-      defColor = tv("text-on-action");
+      const bgTok = state === "hover" ? "action-primary-hover" : state === "active" ? "action-primary-active" : "action-primary-default";
+      defBg = tv(bgTok);
+      defColor = readableOn(bgTok);
     } else if (variant === "tonal") {
-      defBg = state === "hover" ? tv("ink-panel") : state === "active" ? tv("ink-hover") : tv("surface-subtle");
-      defColor = tv("text-dim");
+      // Tonal is a neutral/secondary button — drive it from the action-secondary
+      // roles (defined in both light & dark) so hover/active deepen correctly.
+      // (Previously leaked the chrome tokens ink-panel/ink-hover and text-dim,
+      // which are never emitted as --ark-* vars → undefined → text fell to an
+      // inherited near-black. See the semantic maps in useDesignSystem.ts.)
+      defBg = state === "hover" ? tv("action-secondary-hover") : state === "active" ? tv("action-secondary-active") : tv("action-secondary-default");
+      defColor = tv("text-primary");
     } else if (variant === "elevated") {
-      defBg = state === "hover" ? tv("surface-subtle") : state === "active" ? tv("ink-hover") : tv("surface-elevated");
-      defColor = tv("action-primary-default");
+      defBg = state === "hover" ? tv("surface-subtle") : state === "active" ? tv("action-secondary-hover") : tv("surface-elevated");
+      // Brand-coloured text on a surface must use the mode-tuned link role
+      // (brand-600 in light, the lighter brand-400 in dark). action-primary is a
+      // fill shade and reads far too dark as text on a dark surface.
+      defColor = tv("text-link");
       defShadow = state === "hover" ? "var(--ark-shadow-medium)" : "var(--ark-shadow-low)";
     } else if (variant === "outlined") {
       defBg = state === "hover" ? tv("surface-subtle") : "transparent";
       defBorder = tv("border-default");
-      defColor = tv("action-primary-default");
+      defColor = tv("text-link");
     } else if (variant === "text") {
       defBg = state === "hover" ? tv("surface-subtle") : "transparent";
-      defColor = tv("action-primary-default");
+      defColor = tv("text-link");
     } else if (variant === "error") {
-      defBg = state === "hover" ? (mode === "dark" ? tv("error-400") : tv("error-700")) : state === "active" ? (mode === "dark" ? tv("error-300") : tv("error-800")) : (mode === "dark" ? tv("error-500") : tv("error-600"));
-      defColor = tv("text-on-action");
+      const bgTok = state === "hover" ? (mode === "dark" ? "error-400" : "error-700") : state === "active" ? (mode === "dark" ? "error-300" : "error-800") : (mode === "dark" ? "error-500" : "error-600");
+      defBg = tv(bgTok);
+      defColor = readableOn(bgTok);
     } else if (variant === "warning") {
-      defBg = state === "hover" ? (mode === "dark" ? tv("warning-400") : tv("warning-700")) : state === "active" ? (mode === "dark" ? tv("warning-300") : tv("warning-800")) : (mode === "dark" ? tv("warning-500") : tv("warning-600"));
-      defColor = tv("text-on-action");
+      const bgTok = state === "hover" ? (mode === "dark" ? "warning-400" : "warning-700") : state === "active" ? (mode === "dark" ? "warning-300" : "warning-800") : (mode === "dark" ? "warning-500" : "warning-600");
+      defBg = tv(bgTok);
+      defColor = readableOn(bgTok);
     } else if (variant === "success") {
-      defBg = state === "hover" ? (mode === "dark" ? tv("success-400") : tv("success-700")) : state === "active" ? (mode === "dark" ? tv("success-300") : tv("success-800")) : (mode === "dark" ? tv("success-500") : tv("success-600"));
-      defColor = tv("text-on-action");
+      const bgTok = state === "hover" ? (mode === "dark" ? "success-400" : "success-700") : state === "active" ? (mode === "dark" ? "success-300" : "success-800") : (mode === "dark" ? "success-500" : "success-600");
+      defBg = tv(bgTok);
+      defColor = readableOn(bgTok);
     }
   }
 

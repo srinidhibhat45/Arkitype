@@ -14,6 +14,11 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { generateRamp, hexToRgba, isValidHex, rampStepLabels } from "@/lib/color";
 import { generateTypeScale, FontRoleId, RoundingMode, STEP_DEFS } from "@/lib/typography";
+import { supabase } from "@/lib/supabase/client";
+import * as db from "@/lib/persistence";
+
+/** Max design files per account. A named constant so tiers can raise it later. */
+export const PROJECT_LIMIT = 24;
 
 /* ────────────────────────────── vocabulary ────────────────────────────── */
 
@@ -498,17 +503,23 @@ export interface ArkitypeState {
   activeLeftTab: "layers" | "tokens";
 
   /* Auth & onboarding actions */
-  login: (email: string, name: string) => void;
-  register: (email: string, name: string) => void;
+  /** Populate the store from a signed-in Supabase session (profile + projects). */
+  hydrateSession: (
+    user: { email: string; name: string },
+    survey: Record<string, string> | null,
+    projects: Record<string, ProjectState>
+  ) => void;
+  /** Wipe all session-scoped state back to the landing view (on sign-out). */
+  clearSession: () => void;
   logout: () => void;
   submitSurvey: (data: Record<string, string>) => void;
   setView: (view: "landing" | "login" | "survey" | "dashboard" | "workspace") => void;
 
-  /* Multi-project actions */
+  /* Multi-project actions — cloud-backed via lib/persistence */
   selectProject: (id: string) => void;
-  createProject: (name: string) => boolean; // returns success (false if limit hit)
+  createProject: (name: string) => Promise<boolean>; // false if limit hit / not signed in
   deleteProject: (id: string) => void;
-  duplicateProject: (id: string) => boolean; // returns success (false if limit hit)
+  duplicateProject: (id: string) => Promise<boolean>; // false if limit hit
   renameProject: (id: string, name: string) => void;
 
   /* Tutorial actions */
@@ -670,10 +681,16 @@ export const DEFAULT_DARK: Record<string, string> = {
   "surface-overlay": "neutral-50",
   "text-primary": "neutral-50",
   "text-secondary": "neutral-200",
-  "text-muted": "neutral-400",
+  // Mid-tone foregrounds (the "-400" luminance tier, L≈0.35) clear AA on the
+  // base surface but *fail* on the lighter elevated fill (neutral-800): 4.35 < 4.5.
+  // Elevated is the default card surface, so muted/link text on cards was failing
+  // pervasively in dark mode. Bump the mid foregrounds one tier lighter (→ "-300",
+  // L≈0.5) so they clear AA on both base (8.1) and elevated (6.0); link-hover
+  // steps to "-200" to stay a visible hover above the new resting link colour.
+  "text-muted": "neutral-300",
   "text-on-action": "neutral-50",
-  "text-link": "brand-400",
-  "text-link-hover": "brand-300",
+  "text-link": "brand-300",
+  "text-link-hover": "brand-200",
   "action-primary-default": "brand-600",
   "action-primary-hover": "brand-500",
   "action-primary-active": "brand-400",
@@ -907,11 +924,26 @@ export const useDesignSystem = create<ArkitypeState>()(
         selectedPartId: null,
         activeLeftTab: "layers",
 
-        /* Auth & onboarding actions */
-        login: (email, name) => set({ user: { email, name }, view: "dashboard" }),
-        register: (email, name) => set({ user: { email, name }, view: "survey" }),
-        logout: () => set({ user: null, survey: null, activeProjectId: null, view: "landing" }),
-        submitSurvey: (data) => set({ survey: data, view: "dashboard" }),
+        /* Auth & onboarding actions (Supabase-backed; driven by AuthProvider) */
+        hydrateSession: (user, survey, projects) =>
+          set({
+            user,
+            survey,
+            projects,
+            activeProjectId: null,
+            // Skip the survey if we've already stored one for this account.
+            view: survey ? "dashboard" : "survey",
+          }),
+        clearSession: () =>
+          set({ user: null, survey: null, projects: {}, activeProjectId: null, view: "landing" }),
+        logout: () => {
+          void supabase.auth.signOut();
+          set({ user: null, survey: null, projects: {}, activeProjectId: null, view: "landing" });
+        },
+        submitSurvey: (data) => {
+          void db.saveSurvey(data);
+          set({ survey: data, view: "dashboard" });
+        },
         setView: (view) => set({ view }),
 
         /* Multi-project actions */
@@ -932,57 +964,53 @@ export const useDesignSystem = create<ArkitypeState>()(
             };
           }),
 
-        createProject: (name) => {
-          const state = get();
-          const currentCount = Object.keys(state.projects).length;
-          if (currentCount >= 3) {
-            return false; // Limit hit!
+        createProject: async (name) => {
+          if (Object.keys(get().projects).length >= PROJECT_LIMIT) return false;
+          const label = name.trim() || "Untitled system";
+          // Build a default system locally, persist it, and adopt the DB uuid.
+          const draft = createDefaultProjectState(`tmp-${Date.now()}`, label);
+          try {
+            const saved = await db.createProject(label, draft);
+            set((s) => ({ projects: { ...s.projects, [saved.id]: saved } }));
+            get().selectProject(saved.id); // open the new file in the builder
+            return true;
+          } catch (e) {
+            console.error("[arkitype] createProject failed", e);
+            return false;
           }
-          const id = `project-${Date.now()}`;
-          const newProj = createDefaultProjectState(id, name);
-          set((state) => ({
-            projects: {
-              ...state.projects,
-              [id]: newProj,
-            },
-          }));
-          return true;
         },
 
-        deleteProject: (id) =>
+        deleteProject: (id) => {
+          void db.deleteProject(id).catch((e) => console.error("[arkitype] deleteProject failed", e));
           set((state) => {
             const projects = { ...state.projects };
             delete projects[id];
             const activeProjectId = state.activeProjectId === id ? null : state.activeProjectId;
             return { projects, activeProjectId };
-          }),
-
-        duplicateProject: (id) => {
-          const state = get();
-          const currentCount = Object.keys(state.projects).length;
-          if (currentCount >= 3) {
-            return false; // Limit hit!
-          }
-          const source = state.projects[id];
-          if (!source) return false;
-
-          const newId = `project-${Date.now()}`;
-          const clone: ProjectState = JSON.parse(JSON.stringify(source));
-          clone.id = newId;
-          clone.name = `${source.name} (Copy)`;
-          clone.createdAt = Date.now();
-          clone.updatedAt = Date.now();
-
-          set((state) => ({
-            projects: {
-              ...state.projects,
-              [newId]: clone,
-            },
-          }));
-          return true;
+          });
         },
 
-        renameProject: (id, name) =>
+        duplicateProject: async (id) => {
+          if (Object.keys(get().projects).length >= PROJECT_LIMIT) return false;
+          const source = get().projects[id];
+          if (!source) return false;
+          const clone: ProjectState = JSON.parse(JSON.stringify(source));
+          const label = `${source.name} (Copy)`;
+          clone.name = label;
+          clone.createdAt = Date.now();
+          clone.updatedAt = Date.now();
+          try {
+            const saved = await db.createProject(label, clone);
+            set((s) => ({ projects: { ...s.projects, [saved.id]: saved } }));
+            return true;
+          } catch (e) {
+            console.error("[arkitype] duplicateProject failed", e);
+            return false;
+          }
+        },
+
+        renameProject: (id, name) => {
+          void db.renameProject(id, name).catch((e) => console.error("[arkitype] renameProject failed", e));
           set((state) => {
             if (!state.projects[id]) return {};
             const projects = { ...state.projects };
@@ -990,7 +1018,8 @@ export const useDesignSystem = create<ArkitypeState>()(
             // If renaming the active project, update meta too
             const meta = state.activeProjectId === id ? { ...state.meta, name } : state.meta;
             return { projects, meta };
-          }),
+          });
+        },
 
         /* Tutorial actions */
         setTutorialStep: (step) => set({ tutorialStep: step }),
@@ -2192,20 +2221,12 @@ export const useDesignSystem = create<ArkitypeState>()(
         return state as ArkitypeState;
       },
       storage: createJSONStorage(() => localStorage),
+      // Cloud (Supabase) is the source of truth for the session, the project list
+      // and every design blob. Only tool-chrome UI prefs are cached locally, so a
+      // reload never paints a stale signed-in view before the session is checked.
       partialize: (state) => ({
-        user: state.user,
-        survey: state.survey,
-        view: state.view,
-        activeProjectId: state.activeProjectId,
-        projects: state.projects,
-        meta: state.meta,
-        journey: state.journey,
-        primitives: state.primitives,
-        semantics: state.semantics,
-        components: state.components,
         currentPreviewMode: state.currentPreviewMode,
         chromeTheme: state.chromeTheme,
-        canvasZoom: state.canvasZoom,
       }),
     }
   )

@@ -42,6 +42,7 @@ import {
   Paintbrush,
   Type,
   PaintBucket,
+  Image as ImageIcon,
 } from "lucide-react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
@@ -61,6 +62,7 @@ import {
   useComponentBindings,
 } from "@/lib/componentSchema";
 import { useInspectorData } from "@/components/factory/studioShared";
+import { IconField } from "@/components/factory/IconPicker";
 import { PartHighlight, usePartBox } from "@/components/factory/useHighlight";
 import { ZoomBox } from "@/components/factory/ZoomBox";
 import { HexInput } from "@/components/ui/controls";
@@ -170,6 +172,17 @@ const SIZE_OPTIONS = [
   { label: "Xl", value: "xl" },
 ];
 
+/** A text option that names a Material Icons ligature (prefixIcon, suffixIcon…),
+ *  so the inspector renders the visual IconField picker instead of a raw input. */
+function isIconOption(key: string, label: string): boolean {
+  const k = key.toLowerCase();
+  return (
+    k.endsWith("icon") ||
+    k === "icon" ||
+    /material name/i.test(label)
+  );
+}
+
 /* ── one representative instance of a component, in one state/variant ── */
 
 type HeroCtx = {
@@ -206,7 +219,11 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "input":
       return <TokenInput state={state} size={size} radiusStep={radiusStep} resolve={resolve} />;
     case "textarea":
-      return <TokenTextarea state={state} size={size} radiusStep={radiusStep} resolve={resolve} />;
+      return (
+        <div className="w-64">
+          <TokenTextarea state={state} size={size} radiusStep={radiusStep} resolve={resolve} />
+        </div>
+      );
     case "select":
       return <TokenSelect state={state} size={size} radiusStep={radiusStep} resolve={resolve} />;
     case "checkbox":
@@ -293,6 +310,8 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
           radiusStep={radiusStep}
           presence={os("presence") === "none" ? undefined : os("presence") as any || "online"}
           initials={os("initials") || "JD"}
+          display={os("display") as any}
+          imageUrl={os("imageUrl")}
           shape={os("shape") as any}
           showRing={ob("showRing")}
           group={on("group") ?? 1}
@@ -531,6 +550,7 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "link":
       return (
         <TokenLink
+          state={state}
           underline={os("underline") as any}
           external={ob("external")}
           label={os("label") || "link"}
@@ -623,7 +643,7 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
       );
     case "statGrid":
       return (
-        <div className="w-full">
+        <div className="w-[500px] max-w-[500px] overflow-x-auto">
           <TokenStatGrid
             mode={mode}
             columns={(os("columns") as "auto" | "2" | "3" | "4") || "auto"}
@@ -990,7 +1010,10 @@ export function ComponentStudioPreview({
                           {hero(activeState, { ...opts, [axis.key]: opt.value })}
                         </ZoomBox>
                       </div>
-                      <span className={`text-[10px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
+                      <span
+                        className="text-[10px] font-semibold tracking-wide mt-2 select-none"
+                        style={{ color: isActive ? "var(--ark-text-primary)" : "var(--ark-text-muted)" }}
+                      >
                         {opt.label}
                       </span>
                     </div>
@@ -1043,7 +1066,10 @@ export function ComponentStudioPreview({
                         <div className="p-1.5">
                           <ZoomBox scale={canvasZoom * 0.85}>{hero(st)}</ZoomBox>
                         </div>
-                        <span className={`text-[9.5px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
+                        <span
+                          className="text-[9.5px] font-semibold tracking-wide mt-2 select-none"
+                          style={{ color: isActive ? "var(--ark-text-primary)" : "var(--ark-text-muted)" }}
+                        >
                           {STATE_LABEL[st]}
                         </span>
                       </div>
@@ -1083,7 +1109,10 @@ export function ComponentStudioPreview({
                             {renderHero(id, { state: activeState, size: sz.value as any, radiusStep, resolve, mode, opts })}
                           </ZoomBox>
                         </div>
-                        <span className={`text-[9.5px] font-semibold tracking-wide mt-2 select-none ${isActive ? "text-fg" : "text-fg-mute"}`}>
+                        <span
+                          className="text-[9.5px] font-semibold tracking-wide mt-2 select-none"
+                          style={{ color: isActive ? "var(--ark-text-primary)" : "var(--ark-text-muted)" }}
+                        >
                           {friendlySizes[sz.value] ?? sz.label}
                         </span>
                       </div>
@@ -1771,6 +1800,20 @@ export function ComponentStudioControls({
           {/* Inline Text options */}
           {textOpts.map((o) => {
             const val = (opts[o.key] as string) ?? "";
+
+            // Icon-name options get a visual picker flyout instead of a bare input.
+            if (isIconOption(o.key, o.label)) {
+              return (
+                <div key={o.key} className="col-span-2 flex flex-col gap-1">
+                  <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                    <ImageIcon size={10} />
+                    <span>{o.label}</span>
+                  </span>
+                  <IconField value={val} onChange={(v) => setProperty(id, o.key, v)} />
+                </div>
+              );
+            }
+
             const sizeKey = `${o.key}.size`;
             // Default size mappings depending on key name
             const defaultSize = o.key.includes("title") ? "xl" : o.key.includes("subtitle") ? "sm" : o.key.includes("body") ? "base" : "base";
@@ -1927,18 +1970,23 @@ export function ComponentStudioControls({
               <div className="col-span-2 flex flex-col gap-1">
                 {textOpts.map((o) => {
                   const val = getSlotVal(o.key, o.def) as string;
+                  const isIcon = isIconOption(o.key, o.label);
                   return (
                     <div key={o.key} className="flex flex-col gap-1">
                       <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
-                        <Type size={10} />
+                        {isIcon ? <ImageIcon size={10} /> : <Type size={10} />}
                         <span>{o.label}</span>
                       </span>
-                      <input
-                        type="text"
-                        value={val}
-                        onChange={(e) => setSlotContent(id, slot.id, o.key, e.target.value)}
-                        className="w-full h-7 rounded-md border border-line bg-ink px-2.5 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono"
-                      />
+                      {isIcon ? (
+                        <IconField value={val} onChange={(v) => setSlotContent(id, slot.id, o.key, v)} />
+                      ) : (
+                        <input
+                          type="text"
+                          value={val}
+                          onChange={(e) => setSlotContent(id, slot.id, o.key, e.target.value)}
+                          className="w-full h-7 rounded-md border border-line bg-ink px-2.5 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono"
+                        />
+                      )}
                     </div>
                   );
                 })}
@@ -2076,15 +2124,22 @@ export function ComponentStudioControls({
               <div className="space-y-1.5 py-1 last:border-0 pb-1">
                 {textOpts.map((o) => {
                   const val = getChildPropVal(o.key, o.def) as string;
+                  const isIcon = isIconOption(o.key, o.label);
                   return (
                     <div key={o.key} className="flex items-center justify-between gap-3 py-1 border-b border-line last:border-0 pb-1.5">
                       <span className="text-[11px] text-fg-dim font-medium w-24 shrink-0 truncate">{o.label}</span>
-                      <input
-                        type="text"
-                        value={val}
-                        onChange={(e) => setProperty(id, `${childId}.${o.key}`, e.target.value)}
-                        className="flex-1 rounded-md border border-line bg-ink px-2 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono text-right"
-                      />
+                      {isIcon ? (
+                        <div className="flex-1 min-w-0">
+                          <IconField value={val} onChange={(v) => setProperty(id, `${childId}.${o.key}`, v)} />
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          value={val}
+                          onChange={(e) => setProperty(id, `${childId}.${o.key}`, e.target.value)}
+                          className="flex-1 rounded-md border border-line bg-ink px-2 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono text-right"
+                        />
+                      )}
                     </div>
                   );
                 })}

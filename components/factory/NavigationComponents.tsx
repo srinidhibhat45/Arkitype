@@ -9,7 +9,7 @@
 import type { CSSProperties } from "react";
 import { BarChart3, Check, CreditCard, ExternalLink, Home, Search, Settings } from "lucide-react";
 import { rv, sv, tv } from "@/lib/tokens";
-import { NO_BINDINGS, Resolver, useComponentBindings } from "@/lib/componentSchema";
+import { CState, NO_BINDINGS, Resolver, useComponentBindings } from "@/lib/componentSchema";
 import { TokenAvatar } from "./DisplayComponents";
 
 /* ── Navbar (top app bar) ── */
@@ -322,6 +322,7 @@ export function TokenSteps({
 /* ── Link (text link states) ── */
 
 export function TokenLink({
+  state,
   underline = "auto",
   external = false,
   label = "link",
@@ -329,6 +330,9 @@ export function TokenLink({
   weight = "semibold",
   resolve = NO_BINDINGS,
 }: {
+  /** When given, renders a single line reflecting that one state — like every
+   *  other Token component. Omit only for a full states-at-once showcase. */
+  state?: CState;
   underline?: "auto" | "always" | "none";
   external?: boolean;
   label?: string;
@@ -351,6 +355,37 @@ export function TokenLink({
   const restDecoration = underline === "always" ? "underline" : "none";
   const hoverDecoration = underline === "none" ? "none" : "underline";
   const ext = external ? <ExternalLink size={12} style={{ flexShrink: 0 }} /> : null;
+
+  if (state === "hover") {
+    return (
+      <span style={{ ...base, color: r("link.hover") ?? tv("text-link-hover"), textDecoration: hoverDecoration, textUnderlineOffset: 3 }}>
+        {label}{ext}
+      </span>
+    );
+  }
+  if (state === "focus") {
+    return (
+      <span style={{ ...base, color: linkDefault, textDecoration: restDecoration, outline: `2px solid ${tv("border-focus")}`, outlineOffset: 2, borderRadius: rv(1) }}>
+        {label}{ext}
+      </span>
+    );
+  }
+  if (state === "disabled") {
+    return (
+      <span style={{ ...base, color: r("link.disabled") ?? tv("text-muted"), cursor: "not-allowed", textDecoration: "line-through" }}>
+        {label}{ext}
+      </span>
+    );
+  }
+  if (state) {
+    return (
+      <span style={{ ...base, color: linkDefault, textDecoration: restDecoration, textUnderlineOffset: 3 }}>
+        {label}{ext}
+      </span>
+    );
+  }
+
+  // no state given: full states-at-once showcase
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: sv(2) }}>
       <span style={{ ...base, color: linkDefault, textDecoration: restDecoration, textUnderlineOffset: 3 }}>

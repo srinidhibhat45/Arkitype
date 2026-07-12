@@ -6,6 +6,7 @@
  * (mode-aware wash/border/text like Alert); structure from spacing/radius.
  */
 import { AlertTriangle, Bell, CheckCircle2, Info, X, XCircle } from "lucide-react";
+import { useState } from "react";
 import type { CSSProperties } from "react";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
@@ -178,6 +179,8 @@ export function TokenAvatar({
   shape = "circle",
   showRing = false,
   group = 1,
+  display = "initials",
+  imageUrl,
   resolve = NO_BINDINGS,
 }: {
   size?: "sm" | "md" | "lg";
@@ -187,31 +190,45 @@ export function TokenAvatar({
   shape?: "circle" | "rounded" | "square";
   showRing?: boolean;
   group?: number;
+  display?: "initials" | "image";
+  imageUrl?: string;
   resolve?: Resolver;
 }) {
   const px = size === "sm" ? 26 : size === "md" ? 36 : 48;
   const r = resolve;
   const shapeRadius = shape === "circle" ? rv(7) : shape === "square" ? rv(1) : rv(3);
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = display === "image" && !!imageUrl && !imageFailed;
 
-  const single = (label: string, withPresence: boolean, stacked: boolean) => (
+  const single = (label: string, withPresence: boolean, stacked: boolean, useImage = false) => (
     <span key={label} style={{ position: "relative", display: "inline-flex", marginLeft: stacked ? -px * 0.28 : 0 }}>
       <span
         style={{
           width: px,
           height: px,
           borderRadius: r("container.radius") ?? shapeRadius,
-          background: r("container.bg") ?? tv("action-primary-default"),
+          background: useImage ? undefined : (r("container.bg") ?? tv("action-primary-default")),
           color: r("text.color") ?? tv("text-on-action"),
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          overflow: "hidden",
           fontWeight: 700,
           fontSize: px * 0.36,
           fontFamily: r("text.font") ?? "var(--ark-font-sans)",
           boxShadow: showRing || stacked ? `0 0 0 2px ${tv("surface-base")}` : undefined,
         }}
       >
-        {label}
+        {useImage ? (
+          <img
+            src={imageUrl}
+            alt=""
+            onError={() => setImageFailed(true)}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
+        ) : (
+          label
+        )}
       </span>
       {withPresence && presence ? (
         <span
@@ -234,13 +251,13 @@ export function TokenAvatar({
   );
 
   const count = Math.min(Math.max(Math.round(group), 1), 4);
-  if (count === 1) return single(initials, true, false);
+  if (count === 1) return single(initials, true, false, showImage);
 
-  // Stacked avatar group: the bound initials lead, generic teammates follow.
+  // Stacked avatar group: the bound initials/image lead, generic teammates follow.
   const others = ["LM", "TS", "+5"];
   return (
     <span style={{ display: "inline-flex", alignItems: "center" }}>
-      {single(initials, false, false)}
+      {single(initials, false, false, showImage)}
       {others.slice(0, count - 1).map((o) => single(o, false, true))}
     </span>
   );

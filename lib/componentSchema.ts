@@ -153,6 +153,20 @@ const colorOpt = (key: string, label: string, def: string): OptionSpec => ({
 
 const opt = (value: string, label: string) => ({ value, label });
 
+/** Bundled placeholder headshot (gradient + silhouette) so the Avatar's
+ *  "Image" display works out of the box with no network dependency. */
+const DEFAULT_AVATAR_IMAGE =
+  "data:image/svg+xml;utf8," +
+  "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>" +
+  "<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>" +
+  "<stop offset='0%25' stop-color='%23f59e0b'/>" +
+  "<stop offset='100%25' stop-color='%23ef4444'/>" +
+  "</linearGradient></defs>" +
+  "<rect width='100' height='100' fill='url(%23g)'/>" +
+  "<circle cx='50' cy='40' r='18' fill='white' fill-opacity='0.92'/>" +
+  "<ellipse cx='50' cy='90' rx='32' ry='26' fill='white' fill-opacity='0.92'/>" +
+  "</svg>";
+
 const STYLE_OPTS = [opt("subtle", "Subtle"), opt("solid", "Solid"), opt("outline", "Outline")];
 const FEEDBACK_TONES = [
   opt("info", "Info"),
@@ -725,7 +739,9 @@ const OTHER_SPECS: ComponentSpec[] = [
       },
     ],
     options: [
+      enumOpt("display", "Display", [opt("initials", "Initials"), opt("image", "Image")], "initials", true),
       textOpt("initials", "Initials", "JD"),
+      textOpt("imageUrl", "Image URL", DEFAULT_AVATAR_IMAGE),
       enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large")], "lg"),
       enumOpt("shape", "Shape", [opt("circle", "Circle"), opt("rounded", "Rounded"), opt("square", "Square")], "circle"),
       enumOpt("presence", "Presence status", [opt("online", "Online"), opt("away", "Away"), opt("none", "None")], "online"),
@@ -1762,6 +1778,7 @@ const OTHER_SPECS: ComponentSpec[] = [
         props: [
           prop("tab.activeBg", "Active background", "color", "role:surface-subtle"),
           prop("tab.activeText", "Active text", "color", "role:text-primary"),
+          prop("tab.indicator", "Active indicator", "color", "role:action-primary-default"),
         ],
       },
     ],

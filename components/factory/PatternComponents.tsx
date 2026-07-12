@@ -316,8 +316,14 @@ export function TokenStatGrid({
       style={{
         display: "grid",
         gap: sv(3),
+        // Every card keeps a readable floor width (a currency value + delta chip
+        // never fit below ~220px). A fixed column count that needs more room than
+        // the container simply overflows, and the studio wrapper scrolls it —
+        // rather than the old `1fr` tracks squeezing past the edge and clipping.
         gridTemplateColumns:
-          columns === "auto" ? "repeat(auto-fit, minmax(180px, 1fr))" : `repeat(${columns}, 1fr)`,
+          columns === "auto"
+            ? "repeat(auto-fit, minmax(180px, 1fr))"
+            : `repeat(${columns}, minmax(220px, 1fr))`,
         width: "100%",
       }}
     >

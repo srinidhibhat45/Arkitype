@@ -308,8 +308,9 @@ export function PreviewStep() {
                     radiusStep={Number(buttonCfg?.properties.radiusStep ?? 2)}
                     resolve={buttonResolve}
                     onClick={() => setModalOpen(true)}
+                    prefixIcon={<Plus size={13} />}
                   >
-                    <Plus size={13} /> New transaction
+                    New transaction
                   </TokenButton>
                 </div>
               </div>

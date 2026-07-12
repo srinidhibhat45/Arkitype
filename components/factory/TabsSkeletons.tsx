@@ -212,6 +212,7 @@ export function TabsSkeleton({
   const borderColor = parentResolve("container.borderColor") ?? tv("border-default");
   const activeBg = parentResolve("tab.activeBg") ?? tv("surface-subtle");
   const activeTextColor = parentResolve("tab.activeText") ?? tv("text-primary");
+  const indicatorColor = parentResolve("tab.indicator") ?? tv("action-primary-default");
 
   const body = children ? children(active) : (
     <PanelBody
@@ -467,7 +468,7 @@ export function TabsSkeleton({
                 ...baseBtn,
                 padding: "10px 0",
                 color: on ? activeTextColor : tv("text-muted"),
-                borderBottom: `2px solid ${on ? activeBg : "transparent"}`,
+                borderBottom: `2px solid ${on ? indicatorColor : "transparent"}`,
                 marginBottom: -1,
               }}
             >

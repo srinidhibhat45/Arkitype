@@ -54,6 +54,13 @@ const config: Config = {
           "var(--font-display)",
           "sans-serif",
         ],
+        serif: [
+          "var(--font-serif)",
+          "Georgia",
+          "Cambria",
+          "Times New Roman",
+          "serif",
+        ],
         mono: [
           "var(--font-mono)",
           "ui-monospace",

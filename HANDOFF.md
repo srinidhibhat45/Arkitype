@@ -8,8 +8,13 @@
 > **Arkitype is a standalone product.** It has no dependency on, and shares no code with,
 > any other project. It lives only in this folder (`~/Desktop/Arkitype`).
 >
-> For the blow-by-blow version history (v3→v9), read [`progress.md`](./progress.md) —
-> that's the changelog. **This file is the orientation.** Read this first, then that.
+> For the blow-by-blow version history, read [`progress.md`](./progress.md) — that's
+> the changelog. **This file is the orientation.** Read this first, then that.
+>
+> If you're picking up the product-vision overhaul (client workspaces, framework
+> export, Figma live sync, industry proofing templates), read
+> [`MAJOR_OVERHAUL_PLAN.md`](./MAJOR_OVERHAUL_PLAN.md) instead — it's the resumable,
+> checkpointed plan for that work specifically, with a phase-by-phase status.
 
 ---
 
@@ -139,7 +144,9 @@ button/input/textarea/select/checkbox/radio/switch; untagged parts degrade grace
 ## 6. ⚠️ Persisted store — the landmine
 
 `store/useDesignSystem.ts` is a **Zustand store persisted to localStorage** under the key
-**`arkitype-system`**, currently at **persist `version: 6`**.
+**`arkitype-system`**, currently at **persist `version: 12`** (this number drifts —
+grep `version:` in the `persist(...)` config for ground truth rather than trusting
+this doc).
 
 **If you change the shape of anything that gets persisted, you MUST bump `version` and add a
 `migrate` branch** (the `migrate: (persisted, version) => …` block, ~line 1437). Otherwise a
@@ -181,7 +188,7 @@ components/
   steps/             one file per rail step (§3)
   factory/           token-bound component factory + ComponentStudio + useHighlight + *Skeletons
   ui/                ThemeFrame (preview theming), controls
-lib/                 tokens, color, typography, binding, componentSchema, figma, docs
+lib/                 tokens, color, typography, binding, componentSchema, figma, docs, adapters
 store/               useDesignSystem.ts (persisted Zustand — §6)
 progress.md          the version-by-version build log (authoritative changelog)
 ```

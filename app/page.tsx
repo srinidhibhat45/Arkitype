@@ -69,6 +69,7 @@ export default function ArkitypePage() {
   useEffect(() => setMounted(true), []);
 
   const view = useDesignSystem((s) => s.view);
+  const recovery = useDesignSystem((s) => s.recovery);
   const chromeTheme = useDesignSystem((s) => s.chromeTheme);
 
   useEffect(() => {
@@ -80,7 +81,9 @@ export default function ArkitypePage() {
   return (
     <AuthProvider>
       <FontLoader />
-      {view === "landing" ? (
+      {recovery ? (
+        <AuthAndSurvey />
+      ) : view === "landing" ? (
         <LandingPage />
       ) : view === "login" || view === "survey" ? (
         <AuthAndSurvey />

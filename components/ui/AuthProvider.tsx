@@ -51,7 +51,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session) void hydrateFrom(session);
+      if (event === "PASSWORD_RECOVERY") {
+        // Arrived via a reset link: Supabase has established a short-lived
+        // recovery session. Flag the store so the UI shows "set a new password"
+        // (which takes render precedence over whatever view we hydrate underneath).
+        useDesignSystem.getState().setRecovery(true);
+        if (session) void hydrateFrom(session);
+      } else if (event === "SIGNED_IN" && session) void hydrateFrom(session);
       else if (event === "SIGNED_OUT") useDesignSystem.getState().clearSession();
     });
     return () => {

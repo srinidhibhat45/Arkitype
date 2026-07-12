@@ -1,11 +1,19 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Instrument_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Instrument_Sans, Instrument_Serif, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
 const sans = Instrument_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
+  display: "swap",
+});
+
+const serif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  variable: "--font-serif",
   display: "swap",
 });
 
@@ -29,7 +37,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable} ${display.variable}`}>
+    <html lang="en" className={`${sans.variable} ${serif.variable} ${mono.variable} ${display.variable}`}>
       <body className="bg-ink font-sans text-fg antialiased">
         {children}
       </body>

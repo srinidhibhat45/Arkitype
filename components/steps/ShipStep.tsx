@@ -9,6 +9,7 @@ import { Check, Copy, Download } from "lucide-react";
 import { countTokens, useDesignSystem } from "@/store/useDesignSystem";
 import { compileFigmaBundle } from "@/lib/figma";
 import { generateHandoffDocs } from "@/lib/docs";
+import { compileCssVariables, compileMuiTheme, compileTailwindConfig } from "@/lib/adapters";
 import {
   AsideDivider,
   AsideNote,
@@ -20,7 +21,48 @@ import {
 } from "@/components/ui/controls";
 import { StepScaffold } from "@/components/shell/StepScaffold";
 
-type Artifact = "json" | "docs";
+type Artifact = "json" | "docs" | "css" | "tailwind" | "mui";
+
+const ARTIFACT_META: Record<
+  Artifact,
+  { label: string; title: string; hint: string; filename: (base: string) => string; mime: string }
+> = {
+  json: {
+    label: "Figma JSON",
+    title: "Figma variables bundle",
+    hint: "figma.variables.* compatible",
+    filename: (b) => `${b}-variables.json`,
+    mime: "application/json",
+  },
+  docs: {
+    label: "Docs (MD)",
+    title: "Handoff document",
+    hint: "Markdown",
+    filename: (b) => `${b}-handoff.md`,
+    mime: "text/markdown",
+  },
+  css: {
+    label: "CSS vars",
+    title: "CSS custom properties",
+    hint: ":root + .dark, drop-in",
+    filename: (b) => `${b}-tokens.css`,
+    mime: "text/css",
+  },
+  tailwind: {
+    label: "Tailwind",
+    title: "tailwind.config.js",
+    hint: "colors/spacing/radius/type/shadow/motion",
+    filename: () => "tailwind.config.js",
+    mime: "text/javascript",
+  },
+  mui: {
+    label: "MUI theme",
+    title: "MUI createTheme() sources",
+    hint: "light + dark, resolved values",
+    filename: () => "arkitype-theme.ts",
+    mime: "text/typescript",
+  },
+};
 
 function download(filename: string, content: string, type: string): void {
   const blob = new Blob([content], { type });
@@ -34,16 +76,30 @@ function download(filename: string, content: string, type: string): void {
   URL.revokeObjectURL(url);
 }
 
+/** The init wizard's engineering destination → the export tab that opens first. */
+const DESTINATION_TO_ARTIFACT: Record<string, Artifact> = {
+  tailwind: "tailwind",
+  mui: "mui",
+  css: "css",
+  swiftui: "docs", // no SwiftUI adapter yet (Phase 3) — the handoff doc is the closest fit
+};
+
 export function ShipStep() {
   const state = useDesignSystem();
-  const [artifact, setArtifact] = useState<Artifact>("json");
+  const [artifact, setArtifact] = useState<Artifact>(
+    () => DESTINATION_TO_ARTIFACT[state.meta.engineeringDestination ?? ""] ?? "json"
+  );
   const [copied, setCopied] = useState(false);
 
   const bundle = useMemo(() => compileFigmaBundle(state), [state]);
   const json = useMemo(() => JSON.stringify(bundle, null, 2), [bundle]);
   const docs = useMemo(() => generateHandoffDocs(state), [state]);
+  const css = useMemo(() => compileCssVariables(state), [state]);
+  const tailwind = useMemo(() => compileTailwindConfig(state), [state]);
+  const mui = useMemo(() => compileMuiTheme(state), [state]);
 
-  const content = artifact === "json" ? json : docs;
+  const contentByArtifact: Record<Artifact, string> = { json, docs, css, tailwind, mui };
+  const content = contentByArtifact[artifact];
   const variableCount = bundle.collections.reduce(
     (sum, c) => sum + c.variables.length,
     0
@@ -66,16 +122,16 @@ export function ShipStep() {
   return (
     <StepScaffold
       step="ship"
-      title="Two artifacts, ready to hand off"
-      lede="The Figma bundle matches the Plugin API's variable format — collections, modes, and semantic tokens alias-bound to primitives. The docs give engineers the consumption model, the contrast audit, and copy-paste CSS."
+      title="Five artifacts, ready to hand off"
+      lede="The Figma bundle matches the Plugin API's variable format. The docs give engineers the consumption model, the contrast audit, and copy-paste CSS. CSS vars, Tailwind config, and MUI theme sources turn the same tokens into a running framework config, not just a spec to re-type."
       aside={
         <>
           <Field label="Artifact">
             <Segmented
-              options={[
-                { label: "Figma JSON", value: "json" as const },
-                { label: "Docs (MD)", value: "docs" as const },
-              ]}
+              options={(Object.keys(ARTIFACT_META) as Artifact[]).map((a) => ({
+                label: ARTIFACT_META[a].label,
+                value: a,
+              }))}
               value={artifact}
               onChange={setArtifact}
             />
@@ -134,34 +190,31 @@ export function ShipStep() {
             <PrimaryButton
               full
               onClick={() =>
-                artifact === "json"
-                  ? download(
-                      `${fileBase}-variables.json`,
-                      json,
-                      "application/json"
-                    )
-                  : download(`${fileBase}-handoff.md`, docs, "text/markdown")
+                download(ARTIFACT_META[artifact].filename(fileBase), content, ARTIFACT_META[artifact].mime)
               }
             >
               <Download size={13} />
-              Download {artifact === "json" ? ".json" : ".md"}
+              Download {ARTIFACT_META[artifact].filename(fileBase).split(".").pop()}
             </PrimaryButton>
           </div>
 
           <AsideDivider />
 
           <AsideNote>
-            Semantic variables ship as VARIABLE_ALIAS bindings with resolved
-            hex fallbacks, so the importing plugin can wire references or fall
-            back to flat values.
+            {artifact === "json"
+              ? "Semantic variables ship as VARIABLE_ALIAS bindings with resolved hex fallbacks, so the importing plugin can wire references or fall back to flat values."
+              : artifact === "tailwind"
+                ? "Colours/scales reference the --ark-* CSS variables — download the CSS vars artifact too and import it once, globally."
+                : artifact === "mui"
+                  ? "Palette/spacing/shape/typography are resolved to concrete values; MUI's shadow elevation is left at its default rather than a wrong-length override."
+                  : artifact === "css"
+                    ? "Drop-in :root + .dark custom properties — the same variables every Arkitype preview frame renders from."
+                    : "The consumption model, the contrast audit, and copy-paste CSS."}
           </AsideNote>
         </>
       }
     >
-      <CanvasSection
-        title={artifact === "json" ? "Figma variables bundle" : "Handoff document"}
-        hint={artifact === "json" ? "figma.variables.* compatible" : "Markdown"}
-      >
+      <CanvasSection title={ARTIFACT_META[artifact].title} hint={ARTIFACT_META[artifact].hint}>
         <pre className="whitespace-pre-wrap break-words rounded-xl border border-line bg-ink-panel p-6 font-mono text-[12px] leading-relaxed text-fg-dim">
           {content}
         </pre>

@@ -23,7 +23,11 @@ if (!isSupabaseConfigured && process.env.NODE_ENV !== "production") {
   );
 }
 
-export const supabase: SupabaseClient = createClient(url ?? "", key ?? "", {
+// Supabase's client throws synchronously if the URL isn't valid, which would
+// crash the build (prerendering) when env vars aren't set. Fall back to a
+// placeholder so construction always succeeds; `isSupabaseConfigured` is what
+// actually gates whether callers use it (see lib/persistence.ts).
+export const supabase: SupabaseClient = createClient(url || "https://placeholder.supabase.co", key || "placeholder-key", {
   auth: {
     persistSession: true,
     autoRefreshToken: true,

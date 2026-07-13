@@ -151,7 +151,7 @@ export function LandingPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
-    <div className="bg-dots min-h-screen bg-ink text-fg font-sans antialiased selection:bg-fg/10">
+    <div className="landing-cursor bg-dots min-h-screen bg-ink text-fg font-sans antialiased selection:bg-fg/10">
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="sticky top-0 z-40 border-b border-line/60 bg-ink/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-4">
@@ -449,7 +449,7 @@ function Tile({
 
 function HeroPanel() {
   return (
-    <div aria-hidden className="hero-cursor animate-fade-rise select-none">
+    <div aria-hidden className="animate-fade-rise select-none">
       <div
         className="grid w-full gap-5"
         style={{

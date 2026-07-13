@@ -221,17 +221,22 @@ body {
   animation: fade-rise 1s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
 }
 
-/* ── Figma-style pointer for the hero skeleton collage ─────────────
-   A hand-drawn arrow (not the OS default) so hovering the component
-   mockup reads like a design-tool canvas. Colours track the fg/ink
-   tokens so it stays legible — and on-theme — in both modes. */
-.hero-cursor {
+/* ── Figma-style pointer for the marketing homepage ─────────────────
+   A hand-drawn arrow (not the OS default) so the whole landing page
+   reads like a design-tool canvas. Colours track the fg/ink tokens so
+   it stays legible — and on-theme — in both modes. Applied to every
+   descendant (not just inherited) so it overrides the UA default
+   `cursor: pointer` on links/buttons too. Scoped to `.landing-cursor`,
+   which only the marketing homepage sets — no other view uses it. */
+.landing-cursor,
+.landing-cursor * {
   cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M3 2L3 17.7L6.9 14.1L9.8 20.6L12.6 19.4L9.7 12.9L15.8 12.9Z" fill="%23121214" stroke="%23e8e8eb" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>')
-    3 2, auto;
+    3 2, auto !important;
 }
-.dark .hero-cursor {
+.dark .landing-cursor,
+.dark .landing-cursor * {
   cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M3 2L3 17.7L6.9 14.1L9.8 20.6L12.6 19.4L9.7 12.9L15.8 12.9Z" fill="%23ffffff" stroke="%231a1a1e" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>')
-    3 2, auto;
+    3 2, auto !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

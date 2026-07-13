@@ -221,22 +221,29 @@ body {
   animation: fade-rise 1s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
 }
 
-/* ── Figma-style pointer for the marketing homepage ─────────────────
-   A hand-drawn arrow (not the OS default) so the whole landing page
-   reads like a design-tool canvas. Colours track the fg/ink tokens so
-   it stays legible — and on-theme — in both modes. Applied to every
-   descendant (not just inherited) so it overrides the UA default
-   `cursor: pointer` on links/buttons too. Scoped to `.landing-cursor`,
-   which only the marketing homepage sets — no other view uses it. */
-.landing-cursor,
-.landing-cursor * {
-  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M3 2L3 17.7L6.9 14.1L9.8 20.6L12.6 19.4L9.7 12.9L15.8 12.9Z" fill="%23121214" stroke="%23e8e8eb" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>')
-    3 2, auto !important;
+/* ── Figma-style presence cursor for the marketing homepage ─────────
+   A CSS `cursor: url()` swap can only replace the arrow bitmap — it
+   can't carry the trailing "You" name-tag or glide, so the real thing
+   is drawn by <LandingCursor/> (JS-tracked, follows the pointer). This
+   block only (a) hides the native cursor while that component is live
+   and (b) themes the arrow. `--active` is toggled by the component on
+   mount, and ONLY on fine-pointer devices — so if JS never runs, or on
+   touch, the native cursor is untouched. Scoped to `.landing-cursor`,
+   which nothing but the landing page sets, so no other view is hit. */
+.landing-cursor--active,
+.landing-cursor--active * {
+  cursor: none !important;
 }
-.dark .landing-cursor,
-.dark .landing-cursor * {
-  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M3 2L3 17.7L6.9 14.1L9.8 20.6L12.6 19.4L9.7 12.9L15.8 12.9Z" fill="%23ffffff" stroke="%231a1a1e" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>')
-    3 2, auto !important;
+/* Arrow fill/stroke flip with the chrome theme: near-black on light,
+   white on dark, each with the opposite-colour outline for contrast on
+   any surface — the same reading Figma's own cursor gets. */
+.ark-cursor-arrow {
+  fill: #202127;
+  stroke: #ffffff;
+}
+.dark .ark-cursor-arrow {
+  fill: #ffffff;
+  stroke: #1a1a1e;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -140,6 +140,136 @@ const HIGHLIGHTS = [
   },
 ];
 
+/* ── Figma-style presence cursor ────────────────────────────────────
+ * A pointer arrow trailed by a "You" name-tag — the multiplayer cursor
+ * you see on a Figma canvas — rendered only on the landing page and
+ * only for real (fine) pointers. The native cursor is hidden via the
+ * `.landing-cursor--active` class this component toggles on mount, so
+ * on touch devices or if JS never runs the OS cursor is left intact.
+ *
+ * Position is written straight to the DOM node inside a rAF loop (never
+ * through React state) so moving the mouse doesn't re-render the page,
+ * and the node eases toward the pointer for the characteristic glide.
+ * Everything is pointer-events-none, so it never intercepts clicks. */
+function LandingCursor() {
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Skip entirely on coarse pointers (touch) — there's no cursor to
+    // replace, and hiding it would strip the tap affordance.
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+
+    const el = wrapRef.current;
+    if (!el) return;
+
+    const root = document.querySelector<HTMLElement>(".landing-cursor");
+    root?.classList.add("landing-cursor--active");
+
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // Start off-screen so the tag never flashes at (0,0) before the
+    // first move.
+    let targetX = -100;
+    let targetY = -100;
+    let x = targetX;
+    let y = targetY;
+    let seen = false;
+    let raf = 0;
+
+    const onMove = (e: MouseEvent) => {
+      targetX = e.clientX;
+      targetY = e.clientY;
+      if (!seen) {
+        // Snap to the entry point instead of gliding in from off-screen.
+        seen = true;
+        x = targetX;
+        y = targetY;
+        el.style.opacity = "1";
+      }
+    };
+    const onLeave = () => {
+      el.style.opacity = "0";
+    };
+    const onEnter = () => {
+      if (seen) el.style.opacity = "1";
+    };
+    const onDown = () => el.style.setProperty("--press", "0.82");
+    const onUp = () => el.style.setProperty("--press", "1");
+
+    const tick = () => {
+      // Ease factor: 1 = locked to pointer (reduced-motion), <1 glides.
+      const k = reduce ? 1 : 0.35;
+      x += (targetX - x) * k;
+      y += (targetY - y) * k;
+      el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("mouseup", onUp);
+    document.documentElement.addEventListener("mouseleave", onLeave);
+    document.documentElement.addEventListener("mouseenter", onEnter);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      root?.classList.remove("landing-cursor--active");
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mouseup", onUp);
+      document.documentElement.removeEventListener("mouseleave", onLeave);
+      document.documentElement.removeEventListener("mouseenter", onEnter);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={wrapRef}
+      aria-hidden
+      className="pointer-events-none fixed left-0 top-0 z-[9999] opacity-0"
+      style={{ transition: "opacity 0.18s ease", willChange: "transform" }}
+    >
+      {/* Inner node carries the click "press" squash so it pivots on the
+          arrow tip (0,0), independent of the follow transform above. */}
+      <div
+        style={{
+          transform: "scale(var(--press, 1))",
+          transformOrigin: "0 0",
+          transition: "transform 0.12s ease",
+        }}
+      >
+        {/* Arrow — tip anchored at the wrapper origin (viewBox 0,0). */}
+        <svg
+          width="26"
+          height="30"
+          viewBox="-2 -2 20 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}
+        >
+          <path
+            className="ark-cursor-arrow"
+            d="M0 0L0 17L4.6 13L7.5 19.5L10.2 18.3L7.3 12L13.5 12Z"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            style={{ filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.28))" }}
+          />
+        </svg>
+        {/* Name-tag — slate, offset down-right of the tip like Figma. */}
+        <span
+          className="absolute select-none whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-semibold leading-none text-white shadow-[0_4px_10px_-2px_rgba(0,0,0,0.35)]"
+          style={{ left: 15, top: 19, backgroundColor: "#5b6478" }}
+        >
+          You
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function LandingPage() {
   const setView = useDesignSystem((s) => s.setView);
   const user = useDesignSystem((s) => s.user);
@@ -152,6 +282,7 @@ export function LandingPage() {
 
   return (
     <div className="landing-cursor bg-dots min-h-screen bg-ink text-fg font-sans antialiased selection:bg-fg/10">
+      <LandingCursor />
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="sticky top-0 z-40 border-b border-line/60 bg-ink/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-4">

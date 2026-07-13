@@ -240,21 +240,23 @@ function LandingCursor() {
           transition: "transform 0.12s ease",
         }}
       >
-        {/* Arrow — tip anchored at the wrapper origin (viewBox 0,0). */}
+        {/* Arrow — Figma's own multiplayer cursor shape (the tilted,
+            tapered arrow with softened corners). Its tip sits at viewBox
+            ~(0.9, 2.2); the svg is nudged so that tip lands on the
+            wrapper origin (0,0), i.e. the true pointer hotspot. */}
         <svg
-          width="26"
-          height="30"
-          viewBox="-2 -2 20 24"
+          width="22"
+          height="33"
+          viewBox="0 0 24 36"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}
+          style={{ position: "absolute", left: -1, top: -2, overflow: "visible" }}
         >
           <path
             className="ark-cursor-arrow"
-            d="M0 0L0 17L4.6 13L7.5 19.5L10.2 18.3L7.3 12L13.5 12Z"
-            strokeWidth="1.6"
+            d="M0.928548 2.18278C0.619075 1.37094 1.42087 0.577818 2.2293 0.896107L14.3863 5.68247C15.2271 6.0135 15.2325 7.20148 14.3947 7.54008L9.85984 9.373C9.61167 9.47331 9.41408 9.66891 9.31127 9.91604L7.4194 14.4622C7.06997 15.3016 5.88058 15.2932 5.54308 14.4489L0.928548 2.18278Z"
+            strokeWidth="1.5"
             strokeLinejoin="round"
-            strokeLinecap="round"
             style={{ filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.28))" }}
           />
         </svg>

@@ -15,6 +15,7 @@ import { wcagVerdict } from "@/lib/color";
 import { resolveToken } from "@/lib/tokens";
 import { generateTypeScale, scaleFactorLabel } from "@/lib/typography";
 import { componentOptions, optionValue } from "@/lib/componentSchema";
+import { collectUsedIcons, iconSectionMarkdown } from "@/lib/icons";
 
 const A11Y_PAIRS: Array<[bg: string, fg: string, context: string]> = [
   ["surface-base", "text-primary", "Body copy on app background"],
@@ -206,7 +207,10 @@ export function generateHandoffDocs(state: ArkitypeState): string {
     push();
   }
 
-  push("## 7. Implementation Snippets");
+  // Icon library — Material Symbols setup + the inventory this system uses.
+  iconSectionMarkdown(collectUsedIcons(state), "## 7. Icons").forEach((l) => push(l));
+
+  push("## 8. Implementation Snippets");
   push();
   push("### Figma Plugin (variables import)");
   push();

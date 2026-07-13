@@ -16,6 +16,8 @@ import {
 } from "@/lib/componentSchema";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 import { ComponentDoc, componentDoc } from "@/lib/componentDocs";
+import { ALL_MATERIAL_ICONS } from "@/lib/materialSymbols";
+import { collectUsedIcons, ICON_LIBRARY } from "@/lib/icons";
 
 export interface FigmaRgba {
   r: number;
@@ -100,6 +102,18 @@ export interface FigmaBundleOptions {
   includeComponents?: string[];
 }
 
+/** The icon library carried in the bundle so the plugin can build a page of
+ *  swappable icon components. `names` are Material Symbols ligatures. */
+export interface FigmaIconLibrary {
+  library: string;
+  fontFamily: string;
+  className: string;
+  /** Ligatures actually used by this system's components (swap defaults). */
+  used: string[];
+  /** Full curated set materialised as the swappable Icons page. */
+  names: string[];
+}
+
 export interface FigmaBundle {
   meta: {
     generator: string;
@@ -112,6 +126,7 @@ export interface FigmaBundle {
   structure: { pages: FigmaPageDef[] };
   collections: FigmaCollection[];
   components: FigmaComponent[];
+  icons: FigmaIconLibrary;
 }
 
 const VALUE_MODE = "mode:value";
@@ -915,6 +930,11 @@ export function compileFigmaBundle(
     }
   }
 
+  // Icon library — the used icons drive swap defaults; the union (curated set +
+  // used) is materialised as the Figma "Icons" page of swappable components.
+  const usedIcons = collectUsedIcons(state);
+  const iconNames = Array.from(new Set([...usedIcons, ...ALL_MATERIAL_ICONS])).sort();
+
   return {
     meta: {
       generator: "Arkitype",
@@ -923,6 +943,13 @@ export function compileFigmaBundle(
       systemName: state.meta.name || "Arkitype System",
       tokenCount: countTokens(state),
       componentCount: componentsList.length,
+    },
+    icons: {
+      library: ICON_LIBRARY.name,
+      fontFamily: ICON_LIBRARY.fontFamily,
+      className: ICON_LIBRARY.className,
+      used: usedIcons,
+      names: iconNames,
     },
     structure: { pages },
     collections: [

@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * IconField — a text input for a Material Icons ligature name, paired with a
+ * IconField — a text input for a Material Symbols ligature name, paired with a
  * flyout grid so a valid icon can be found and clicked instead of typed from
  * memory. The flyout only ever inserts names from MATERIAL_ICON_GROUPS, so
  * whatever gets picked is guaranteed to render.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGrid, Search, X } from "lucide-react";
-import { iconDisplayLabel, MATERIAL_ICON_GROUPS } from "@/lib/materialIcons";
+import { iconDisplayLabel, MATERIAL_ICON_GROUPS } from "@/lib/materialSymbols";
 
 export function IconField({
   value,
@@ -59,7 +59,7 @@ export function IconField({
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line bg-ink text-fg-dim hover:border-line-strong hover:text-fg"
         >
           {value ? (
-            <span className="material-icons select-none" style={{ fontSize: 15, lineHeight: 1 }}>
+            <span className="material-symbols-outlined select-none" style={{ fontSize: 15, lineHeight: 1 }}>
               {value}
             </span>
           ) : (
@@ -118,7 +118,7 @@ export function IconField({
                             : "border-transparent text-fg-dim hover:border-line hover:bg-ink"
                         }`}
                       >
-                        <span className="material-icons select-none" style={{ fontSize: 17, lineHeight: 1 }}>
+                        <span className="material-symbols-outlined select-none" style={{ fontSize: 17, lineHeight: 1 }}>
                           {name}
                         </span>
                       </button>

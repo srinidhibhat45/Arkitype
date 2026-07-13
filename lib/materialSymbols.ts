@@ -1,8 +1,10 @@
 /**
- * Curated Material Icons ligature names, grouped for a browsable picker.
- * These are the literal strings the "Material Icons" font (loaded in
- * app/globals.css) renders via `<span className="material-icons">name</span>`
+ * Curated Material Symbols ligature names, grouped for a browsable picker.
+ * These are the literal strings the "Material Symbols Outlined" font (loaded in
+ * app/globals.css) renders via `<span className="material-symbols-outlined">name</span>`
  * — every name here is a real, valid ligature, so picking one always resolves.
+ * Material Symbols is a superset of the classic Material Icons names, so the
+ * curated set below stays valid while gaining the modern library's breadth.
  */
 export interface IconGroup {
   category: string;

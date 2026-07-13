@@ -14,6 +14,17 @@ const OWNED_KEY = "ark:owned";
  * drawn components use the system's actual typefaces (with Inter fallback). */
 let FONTS = { body: "Inter", heading: "Inter", mono: "Courier New" };
 
+/* The icon library (Material Symbols) materialised on the "Icons" page: one
+ * component per ligature, reused by name across syncs so both the swappable
+ * library and any instances placed in components survive re-runs. Populated by
+ * buildIconLibraryPage() before component pages are drawn. */
+let ICON_LIB: {
+  components: Map<string, ComponentNode>;
+  defaultName: string | null;
+  font: FontName;
+  glyphs: boolean; // true when the real Material Symbols font loaded
+} | null = null;
+
 /* Documentation chrome palette — deliberately literal (light, neutral): this
  * is the kit's editorial layer, not part of the user's themed system. */
 const DOC = {
@@ -310,6 +321,7 @@ async function buildDesignSystemFile(bundle: any) {
   const spacePage = ensurePage("f-space", "📐  Foundations · Space & Layout", order++);
   const shapePage = ensurePage("f-shape", "🧊  Foundations · Shape & Elevation", order++);
   const motionPage = ensurePage("f-motion", "🎞️  Foundations · Motion", order++);
+  const iconsOrder = order++;
   const lanePages = lanes.map((lane) => {
     const perComponent = !!lane.laneLabel;
     const key = perComponent ? `comp-${lane.id}` : `lane-${lane.id}`;
@@ -326,7 +338,7 @@ async function buildDesignSystemFile(bundle: any) {
    * component sets get rescued onto the new pages before the sheet rebuild,
    * so only empty husks are ever deleted. */
   const expectedKeys = new Set<string>([
-    "cover", "start", "f-colour", "f-type", "f-space", "f-shape", "f-motion", "changelog",
+    "cover", "start", "f-colour", "f-type", "f-space", "f-shape", "f-motion", "icons", "changelog",
   ]);
   lanePages.forEach(({ page }) => expectedKeys.add(page.getPluginData(PAGE_KEY)));
   const stalePages = figma.root.children.filter(
@@ -341,6 +353,10 @@ async function buildDesignSystemFile(bundle: any) {
   await buildSpacePage(spacePage, bundle, figmaVarsMap);
   await buildShapePage(shapePage, bundle, figmaVarsMap);
   await buildMotionPage(motionPage, bundle);
+
+  /* Icon library — must exist before component pages so icon slots can place
+   * instances of it. */
+  await buildIconLibraryPage(bundle, figmaVarsMap, iconsOrder);
 
   /* Component pages (sets preserved across syncs) */
   const existingSets = collectExistingComponents();
@@ -1182,6 +1198,10 @@ async function buildComponentSection(
   /* Component properties (properties-panel controls) */
   await applyComponentProperties(built.node, comp.properties || []);
 
+  /* Icon slots → INSTANCE_SWAP properties, so icons are picked from the
+   * Properties panel exactly like the design-system's Icons page/variants. */
+  await applyIconSwapProperties(built.node);
+
   /* Spec table: properties + token bindings */
   const specRow = stackFrame(section, "spec", "HORIZONTAL", 20, 0);
   const propsCol = stackFrame(specRow, "Properties", "VERTICAL", 8, 20);
@@ -1297,6 +1317,263 @@ function hexToFigmaRgb(hex: string): RGB {
   const b = parseInt(cleanHex.substring(4, 6), 16) / 255;
   
   return { r, g, b };
+}
+
+/* ── ICON LIBRARY (Material Symbols) ──────────────────────────────────────
+ * A dedicated "Icons" page holds one component per ligature, combined into a
+ * single "Icon" variant set. Component icon slots place instances of these and
+ * expose an INSTANCE_SWAP property, so a designer swaps icons from the panel —
+ * the real design-system pattern (icons as a page of variants, swapped in).
+ */
+
+/** Load the icon glyph font, degrading gracefully when it isn't installed. */
+async function loadIconFont(): Promise<{ font: FontName; glyphs: boolean }> {
+  const candidates: FontName[] = [
+    { family: "Material Symbols Outlined", style: "Regular" },
+    { family: "Material Icons", style: "Regular" },
+  ];
+  for (const f of candidates) {
+    try {
+      await figma.loadFontAsync(f);
+      return { font: f, glyphs: true };
+    } catch (e) { /* try next */ }
+  }
+  const fallback = await loadFontSafe(FONTS.body, "Regular");
+  return { font: fallback, glyphs: false };
+}
+
+/** Build/refresh the Icons page: a swappable "Icon" variant set. Idempotent —
+ *  icon components are reused by ligature name so instances survive re-syncs. */
+async function buildIconLibraryPage(
+  bundle: any,
+  figmaVarsMap: Map<string, Variable>,
+  order: number
+): Promise<void> {
+  const names: string[] = (bundle.icons && bundle.icons.names) || [];
+  if (!names.length) { ICON_LIB = null; return; }
+
+  const page = ensurePage("icons", "🔣  Icons", order);
+  const { font, glyphs } = await loadIconFont();
+
+  /* Page header — find-or-create, never via clearOwnedContent (that would wipe
+   * the icon set, which is what we must preserve). */
+  const oldHeader = page.children.find(c => c.getPluginData("ark:iconHeader") === "1");
+  if (oldHeader) oldHeader.remove();
+  const header = stackFrame(page, "Icons — header", "VERTICAL", 10, 0);
+  header.setPluginData("ark:iconHeader", "1");
+  header.x = 100; header.y = 90;
+  await docText(header, "Icons", 40, "Bold", DOC.ink);
+  await docText(
+    header,
+    `${bundle.icons.library || "Material Symbols"} · ${names.length} icons. One component per icon, combined as the “Icon” variant set below. Component icon slots reference these as instance-swap properties — select a component, then swap its icon from the Properties panel.` +
+      (glyphs ? "" : "  ⚠ The Material Symbols font isn’t installed in this Figma editor, so icons show name placeholders — enable the free font to render glyphs."),
+    13, "Regular", DOC.inkMuted, { width: 820 }
+  );
+
+  /* Existing set + adopt its variants by their stored ligature. */
+  let set = page.children.find(c => c.getPluginData(COMP_KEY) === "__icons__") as ComponentSetNode | undefined;
+  const components = new Map<string, ComponentNode>();
+  if (set && set.type === "COMPONENT_SET") {
+    for (const child of set.children) {
+      if (child.type === "COMPONENT") {
+        const n = child.getPluginData("ark:icon");
+        if (n) components.set(n, child);
+      }
+    }
+  }
+
+  const fresh: ComponentNode[] = [];
+  for (const name of names) {
+    let comp = components.get(name);
+    if (!comp) {
+      comp = figma.createComponent();
+      comp.setPluginData("ark:icon", name);
+      fresh.push(comp);
+      components.set(name, comp);
+    }
+    comp.name = `Name=${name}`;
+    comp.description = `Material Symbols · ${name}`;
+    comp.layoutMode = "HORIZONTAL";
+    comp.primaryAxisAlignItems = "CENTER";
+    comp.counterAxisAlignItems = "CENTER";
+    comp.primaryAxisSizingMode = "FIXED";
+    comp.counterAxisSizingMode = "FIXED";
+    comp.resize(24, 24);
+    comp.fills = [];
+    [...comp.children].forEach(c => c.remove());
+    const glyph = figma.createText();
+    glyph.name = "glyph";
+    glyph.fontName = font;
+    glyph.characters = glyphs ? name : name.slice(0, 2);
+    glyph.fontSize = glyphs ? 20 : 8;
+    glyph.fills = semPaint(figmaVarsMap, "text/primary", { r: 0.1, g: 0.1, b: 0.12 });
+    comp.appendChild(glyph);
+  }
+
+  /* Drop icons no longer in the library. */
+  const nameSet = new Set(names);
+  for (const [n, comp] of Array.from(components.entries())) {
+    if (!nameSet.has(n)) { comp.remove(); components.delete(n); }
+  }
+
+  const ordered = names.map(n => components.get(n)).filter(Boolean) as ComponentNode[];
+  try {
+    if (!set || set.type !== "COMPONENT_SET") {
+      const cols = 24;
+      ordered.forEach((c, i) => { c.x = (i % cols) * 40; c.y = 260 + Math.floor(i / cols) * 40; page.appendChild(c); });
+      set = figma.combineAsVariants(ordered, page);
+    } else {
+      fresh.forEach(c => { if (c.parent !== set) set!.appendChild(c); });
+    }
+    set.name = "Icon";
+    set.setPluginData(COMP_KEY, "__icons__");
+    set.x = 100; set.y = 240;
+    set.layoutMode = "NONE";
+    set.clipsContent = false;
+  } catch (e: any) {
+    log(`Icon set combine skipped: ${e.message}`, "warning");
+  }
+
+  const defaultName =
+    ["star", "favorite", "circle", "add"].find(n => components.has(n)) || names[0] || null;
+  ICON_LIB = { components, defaultName, font, glyphs };
+  log(
+    `Icon library ready — ${components.size} icons${glyphs ? "" : " (font not installed; placeholders shown)"}.`,
+    glyphs ? "success" : "warning"
+  );
+}
+
+/** The library ligature to use for a slot: the chosen one if it exists, else
+ *  the library default. Null when no icon library is available. */
+function resolveIconName(name: string | undefined): string | null {
+  if (!ICON_LIB) return null;
+  if (name && ICON_LIB.components.has(name)) return name;
+  return ICON_LIB.defaultName;
+}
+
+/** A fresh instance of the icon component for `name` (or the default), tagged so
+ *  swap-property wiring can find it. Null when the library is unavailable. */
+function makeIconInstance(slotName: string, name: string | undefined): InstanceNode | null {
+  const resolved = resolveIconName(name);
+  if (!resolved || !ICON_LIB) return null;
+  const comp = ICON_LIB.components.get(resolved);
+  if (!comp) return null;
+  try {
+    const inst = comp.createInstance();
+    inst.name = slotName;
+    inst.setPluginData("ark:iconSlot", slotName);
+    return inst;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Expose each icon slot as an INSTANCE_SWAP component property on the set, and
+ *  wire every variant's slot instance to it. Fully guarded: on any failure the
+ *  export keeps working with plain (still natively-swappable) icon instances. */
+async function applyIconSwapProperties(node: ComponentSetNode | ComponentNode): Promise<void> {
+  if (!ICON_LIB) return;
+  const variants: ComponentNode[] =
+    node.type === "COMPONENT_SET"
+      ? (node.children.filter(c => c.type === "COMPONENT") as ComponentNode[])
+      : [node];
+
+  const slotNames = new Set<string>();
+  for (const v of variants) {
+    v.findAll(n => n.getPluginData("ark:iconSlot") !== "").forEach(n =>
+      slotNames.add(n.getPluginData("ark:iconSlot"))
+    );
+  }
+
+  const LABELS: Record<string, string> = {
+    prefixIcon: "Prefix icon", suffixIcon: "Suffix icon", icon: "Icon",
+  };
+
+  for (const slot of Array.from(slotNames)) {
+    const label = LABELS[slot] || "Icon";
+    let key: string | undefined;
+    try {
+      const defs = node.componentPropertyDefinitions;
+      key = Object.keys(defs).find(k => k.split("#")[0] === label);
+      if (!key) {
+        const firstInst = variants[0].findOne(
+          n => n.getPluginData("ark:iconSlot") === slot
+        ) as InstanceNode | null;
+        const defId =
+          firstInst && firstInst.mainComponent ? firstInst.mainComponent.id : null;
+        if (!defId) continue;
+        key = node.addComponentProperty(label, "INSTANCE_SWAP", defId);
+      }
+    } catch (e: any) {
+      log(`Icon swap prop '${label}' on '${node.name}': ${e.message}`, "warning");
+      continue;
+    }
+    for (const v of variants) {
+      const insts = v.findAll(n => n.getPluginData("ark:iconSlot") === slot);
+      for (const inst of insts) {
+        try {
+          inst.componentPropertyReferences = {
+            ...(inst.componentPropertyReferences || {}),
+            mainComponent: key,
+          };
+        } catch (e) { /* leave as native swap */ }
+      }
+    }
+  }
+}
+
+/** Tint a paint (LITERAL or ALIAS-resolved) onto a node's `fills`. */
+function applyIconColor(
+  node: SceneNode & { fills: any },
+  colorBinding: any,
+  figmaVarsMap: Map<string, Variable>
+) {
+  if (colorBinding && colorBinding.type === "ALIAS") {
+    const fVar = figmaVarsMap.get(`${colorBinding.collection}/${colorBinding.path}`);
+    if (fVar) {
+      node.fills = [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", fVar)];
+    }
+  } else if (colorBinding && colorBinding.value) {
+    node.fills = [{ type: "SOLID", color: hexToFigmaRgb(colorBinding.value.toString()) }];
+  }
+}
+
+/**
+ * Draw one icon slot: an instance of the Material Symbols library component
+ * (swappable via the "Icon" variant set / INSTANCE_SWAP property) tinted to
+ * the part's colour binding. Falls back to a plain coloured dot frame when the
+ * icon library isn't available (older bundle, or the glyph font missing) so a
+ * sync never fails over this.
+ */
+function renderIconSlot(
+  parent: FrameNode | ComponentNode,
+  slotName: string,
+  size: number,
+  colorBinding: any,
+  iconName: string | undefined,
+  figmaVarsMap: Map<string, Variable>
+): SceneNode {
+  const inst = makeIconInstance(slotName, iconName);
+  if (inst) {
+    inst.resize(size, size);
+    const glyph = inst.findOne(n => n.name === "glyph") as TextNode | null;
+    if (glyph) applyIconColor(glyph, colorBinding, figmaVarsMap);
+    parent.appendChild(inst);
+    return inst;
+  }
+  // Fallback: coloured dot placeholder (no icon library in this bundle/file).
+  const slot = figma.createFrame();
+  slot.name = slotName;
+  slot.resize(size, size);
+  slot.fills = [];
+  const dot = figma.createEllipse();
+  const inset = Math.max(1, size * 0.15);
+  dot.resize(size - inset * 2, size - inset * 2);
+  dot.x = inset; dot.y = inset;
+  applyIconColor(dot, colorBinding, figmaVarsMap);
+  slot.appendChild(dot);
+  parent.appendChild(slot);
+  return slot;
 }
 
 /** Shorthand for a semantic-token alias binding. */
@@ -1975,55 +2252,18 @@ async function drawButton(node: ComponentNode, styles: any, options: any, compon
   if (componentId === "button") {
     // Icon slots are ALWAYS drawn so the "Show prefix/suffix icon" boolean
     // component properties have a layer to toggle; default visibility follows
-    // the stored option.
-    const iconSlot = (slotName: string) => {
-      const slot = figma.createFrame();
-      slot.name = slotName;
-      slot.resize(14, 14);
-      slot.fills = [];
-      const dot = figma.createEllipse();
-      dot.resize(10, 10);
-      dot.x = 2; dot.y = 2;
-
-      const iconColor = styles[`${slotName}.color`];
-      if (iconColor && iconColor.type === "ALIAS") {
-        const fVar = figmaVarsMap.get(`${iconColor.collection}/${iconColor.path}`);
-        if (fVar) dot.fills = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', fVar)];
-      } else if (iconColor && iconColor.value) {
-        dot.fills = [{ type: 'SOLID', color: hexToFigmaRgb(iconColor.value.toString()) }];
-      }
-      slot.appendChild(dot);
-      node.appendChild(slot);
-      return slot;
-    };
-
-    const prefix = iconSlot("prefixIcon");
+    // the stored option (which also names the Material Symbols icon to place).
+    const prefix = renderIconSlot(node, "prefixIcon", 14, styles["prefixIcon.color"], options.prefixIcon, figmaVarsMap);
     prefix.visible = !!options.prefixIcon;
 
     const label = await createTextHelper(node, "label", options.label || "Action Button", 13, styles["label.color"], "Inter", "Semi Bold", figmaVarsMap);
     bindTextVars(label, styles, "label", figmaVarsMap);
 
-    const suffix = iconSlot("suffixIcon");
+    const suffix = renderIconSlot(node, "suffixIcon", 14, styles["suffixIcon.color"], options.suffixIcon, figmaVarsMap);
     suffix.visible = !!options.suffixIcon;
   } else {
     // IconButton
-    const icon = figma.createFrame();
-    icon.name = "icon";
-    icon.resize(16, 16);
-    icon.fills = [];
-    const dot = figma.createEllipse();
-    dot.resize(12, 12);
-    dot.x = 2; dot.y = 2;
-    
-    const iconColor = styles["icon.color"];
-    if (iconColor && iconColor.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${iconColor.collection}/${iconColor.path}`);
-      if (fVar) dot.fills = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', fVar)];
-    } else if (iconColor && iconColor.value) {
-      dot.fills = [{ type: 'SOLID', color: hexToFigmaRgb(iconColor.value.toString()) }];
-    }
-    icon.appendChild(dot);
-    node.appendChild(icon);
+    renderIconSlot(node, "icon", 16, styles["icon.color"], options.icon, figmaVarsMap);
   }
 }
 

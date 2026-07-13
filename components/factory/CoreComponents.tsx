@@ -218,7 +218,7 @@ export function TokenButton({
         <Loader2 data-ark-part="prefixIcon" size={pxNum(r("prefixIcon.size"), 14)} className="ark-spin" style={{ color: prefixColor }} />
       ) : prefixIcon ? (
         typeof prefixIcon === "string" ? (
-          <span className="material-icons select-none shrink-0" style={{ fontSize: prefixIconSize, color: prefixColor }}>
+          <span className="material-symbols-outlined select-none shrink-0" style={{ fontSize: prefixIconSize, color: prefixColor }}>
             {prefixIcon}
           </span>
         ) : (
@@ -228,7 +228,7 @@ export function TokenButton({
       <span data-ark-part="label">{children}</span>
       {suffixIcon ? (
         typeof suffixIcon === "string" ? (
-          <span className="material-icons select-none shrink-0" style={{ fontSize: suffixIconSize, color: suffixColor }}>
+          <span className="material-symbols-outlined select-none shrink-0" style={{ fontSize: suffixIconSize, color: suffixColor }}>
             {suffixIcon}
           </span>
         ) : (

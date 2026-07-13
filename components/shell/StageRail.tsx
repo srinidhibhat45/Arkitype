@@ -200,10 +200,6 @@ export function StageRail() {
                       </span>
                       {isDone ? (
                         <Check size={12} className="shrink-0 text-fg-dim" />
-                      ) : active ? (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg" />
-                      ) : isVisited ? (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg-mute" />
                       ) : null}
                     </button>
 

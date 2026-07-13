@@ -12,6 +12,8 @@ import {
   PROJECT_LIMIT,
 } from "@/store/useDesignSystem";
 import { HexInput } from "@/components/ui/controls";
+import { BetaTag } from "@/components/ui/BetaTag";
+import { matchGoogleFont } from "@/lib/googleFonts";
 import { useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -38,9 +40,13 @@ import {
 
 const UNFILED = "__unfiled__";
 
-/** Text input with autocomplete over existing folder names — the one control
- *  that both creates and assigns clients, so there's no separate "manage
- *  folders" surface: a folder exists the moment a project carries its name. */
+/** Text input with a self-rendered dropdown over existing folder names — the
+ *  one control that both creates and assigns clients, so there's no separate
+ *  "manage folders" surface: a folder exists the moment a project carries its
+ *  name. A native <datalist> looked the part but rendered as an unstyled,
+ *  browser-default popup that's easy to miss (or that never shows at all in
+ *  some embedded contexts) — this draws its own list so picking or creating a
+ *  client is always visible. */
 function FolderField({
   id,
   value,
@@ -52,22 +58,66 @@ function FolderField({
   onChange: (v: string) => void;
   folderNames: string[];
 }) {
+  const [open, setOpen] = useState(false);
+  const trimmed = value.trim();
+  const matches = folderNames.filter((f) => f.toLowerCase().includes(trimmed.toLowerCase()));
+  const exactMatch = folderNames.some((f) => f.toLowerCase() === trimmed.toLowerCase());
+  const showCreate = trimmed.length > 0 && !exactMatch;
+  const showPanel = open && (matches.length > 0 || showCreate || folderNames.length === 0);
+
   return (
-    <>
+    <div className="relative">
       <input
-        list={id}
+        id={id}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" || e.key === "Enter") e.currentTarget.blur();
+        }}
         placeholder="No client"
+        autoComplete="off"
         className="h-10 w-full rounded-lg border border-line-strong bg-ink px-3 text-sm text-fg placeholder:text-fg-mute focus:border-fg focus:outline-none"
       />
-      <datalist id={id}>
-        {folderNames.map((f) => (
-          <option key={f} value={f} />
-        ))}
-      </datalist>
-    </>
+      {showPanel && (
+        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-48 overflow-y-auto rounded-lg border border-line-strong bg-ink-raised py-1 shadow-lg">
+          {matches.map((f) => (
+            <button
+              key={f}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(f);
+              }}
+              className="block w-full truncate px-3 py-2 text-left text-sm text-fg hover:bg-ink-hover"
+            >
+              {f}
+            </button>
+          ))}
+          {showCreate && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(trimmed);
+              }}
+              className={`flex w-full items-center gap-1.5 px-3 py-2 text-left text-sm text-fg-dim hover:bg-ink-hover ${
+                matches.length > 0 ? "border-t border-line" : ""
+              }`}
+            >
+              <Plus size={12} /> Create client &ldquo;{trimmed}&rdquo;
+            </button>
+          )}
+          {matches.length === 0 && !showCreate && folderNames.length === 0 && (
+            <p className="px-3 py-2 text-[12px] text-fg-mute">
+              No clients yet — type a name to create one.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -184,6 +234,27 @@ function NewFileWizard({
 
   const isTwin = startingPoint === "material" || startingPoint === "tailwind";
 
+  // The scraped families we can actually load from Google Fonts, routed by
+  // role: the first text face drives display/heading/body, the first monospace
+  // goes to the mono role. Self-hosted faces ("sohne-var") yield null — we say
+  // so up front instead of applying a font that would silently render the
+  // fallback.
+  const { matchedFont, matchedMono } = useMemo(() => {
+    let text: string | null = null;
+    let mono: string | null = null;
+    for (const f of scraped?.fonts ?? []) {
+      const hit = matchGoogleFont(f);
+      if (!hit) continue;
+      if (hit.category === "mono") mono = mono ?? hit.family;
+      else text = text ?? hit.family;
+    }
+    return { matchedFont: text, matchedMono: mono };
+  }, [scraped]);
+
+  // The scrape path needs a successful extraction before step 2 — otherwise
+  // "From a live site" would create a file indistinguishable from Blank.
+  const scrapeReady = startingPoint !== "scrape" || scraped !== null;
+
   const pickStart = (sp: StartingPoint) => {
     setStartingPoint(sp);
     // A twin implies its native engineering destination — a sensible default the
@@ -223,7 +294,8 @@ function NewFileWizard({
       startingPoint,
       brandHex,
       secondaryHex: startingPoint === "scrape" ? scraped?.colors?.[1] : undefined,
-      fontFamily: startingPoint === "scrape" ? scraped?.fonts?.[0] : undefined,
+      fontFamily: startingPoint === "scrape" ? (matchedFont ?? undefined) : undefined,
+      monoFamily: startingPoint === "scrape" ? (matchedMono ?? undefined) : undefined,
       density,
       targetPlatform: platform,
       engineeringDestination: destination,
@@ -329,11 +401,24 @@ function NewFileWizard({
                         </div>
                       </div>
                     )}
-                    {scraped.fonts.length > 0 && (
+                    {matchedFont || matchedMono ? (
                       <p className="text-[11px] text-fg-mute">
-                        Font <span className="text-fg-dim">{scraped.fonts[0]}</span>
+                        Font{" "}
+                        {matchedFont && <span className="text-fg-dim">{matchedFont}</span>}
+                        {matchedFont && " for display, headings and body"}
+                        {matchedFont && matchedMono && " · "}
+                        {matchedMono && (
+                          <>
+                            <span className="text-fg-dim">{matchedMono}</span> for code
+                          </>
+                        )}
                       </p>
-                    )}
+                    ) : scraped.fonts.length > 0 ? (
+                      <p className="text-[11px] text-fg-mute">
+                        Font <span className="text-fg-dim">{scraped.fonts[0]}</span> is self-hosted and
+                        can&apos;t be loaded here — your type stays on Inter
+                      </p>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -342,10 +427,16 @@ function NewFileWizard({
             <button
               type="button"
               onClick={() => setStep(2)}
-              className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-fg text-sm font-medium text-ink transition-opacity hover:opacity-90"
+              disabled={!scrapeReady}
+              className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-fg text-sm font-medium text-ink transition-opacity hover:opacity-90 disabled:opacity-40"
             >
               Next <ArrowRight size={15} />
             </button>
+            {!scrapeReady && (
+              <p className="mt-2 text-center text-[11px] text-fg-mute">
+                Extract a site first — or pick another starting point.
+              </p>
+            )}
           </>
         ) : (
           <>
@@ -372,11 +463,30 @@ function NewFileWizard({
               <HexInput value={brandHex} onChange={setBrandHex} />
             </div>
 
+            {startingPoint === "scrape" && scraped && (
+              <p className="mb-3 rounded-lg border border-line px-3 py-2 text-[11px] leading-relaxed text-fg-mute">
+                From the site: brand{scraped.colors.length > 1 ? " + secondary" : ""} colour
+                {matchedFont ? (
+                  <>
+                    {" "}and the <span className="text-fg-dim">{matchedFont}</span> typeface
+                  </>
+                ) : matchedMono ? (
+                  <>
+                    {" "}and <span className="text-fg-dim">{matchedMono}</span> for code
+                  </>
+                ) : (
+                  " (its typeface isn't publicly available, so Inter stays)"
+                )}{" "}
+                will seed this system.
+              </p>
+            )}
+
             {isTwin ? (
               <p className="mb-3 rounded-lg border border-line px-3 py-2 text-[11px] leading-relaxed text-fg-mute">
-                {FRAMEWORK_TWINS[startingPoint as "material" | "tailwind"].label} sets a{" "}
-                {FRAMEWORK_TWINS[startingPoint as "material" | "tailwind"].density} baseline with its own
-                corner and type rhythm — adjust later in Space & Shape.
+                {FRAMEWORK_TWINS[startingPoint as "material" | "tailwind"].label} sets{" "}
+                {FRAMEWORK_TWINS[startingPoint as "material" | "tailwind"].fonts.body} type, a{" "}
+                {FRAMEWORK_TWINS[startingPoint as "material" | "tailwind"].density} baseline and its own
+                corner, shadow and motion language — all editable later.
               </p>
             ) : (
               <div className="mb-3">
@@ -516,7 +626,13 @@ export function ProjectDashboard() {
     setNotice("");
     const ok = await createProject(name, folder || undefined);
     if (!ok) {
-      setNotice(`You've reached the limit of ${PROJECT_LIMIT} design files.`);
+      // createProject returns false both at the limit and on a failed save —
+      // only blame the limit when we're actually at it.
+      setNotice(
+        projectList.length >= PROJECT_LIMIT
+          ? `You've reached the limit of ${PROJECT_LIMIT} design files.`
+          : "Couldn't create the file — check your connection and try again."
+      );
       return;
     }
     // createProject selects the new file, so applyInitConfig targets it.
@@ -698,7 +814,12 @@ export function ProjectDashboard() {
       {/* ── Header ──────────────────────────────────────────── */}
       <header className="sticky top-0 z-20 border-b border-line/60 bg-ink/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="font-serif text-2xl tracking-tight text-fg">Arkitype</span>
+          <span className="flex items-center gap-2.5 font-serif text-2xl tracking-tight text-fg">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="" width={28} height={28} className="rounded-md" />
+            Arkitype
+            <BetaTag />
+          </span>
           <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={toggleChromeTheme}

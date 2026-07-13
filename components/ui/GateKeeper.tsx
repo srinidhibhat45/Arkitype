@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Eye, EyeOff, ArrowRight, ShieldAlert, Layers } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, ShieldAlert } from "lucide-react";
 
 interface GateKeeperProps {
   children: React.ReactNode;
@@ -70,9 +70,8 @@ export function GateKeeper({ children }: GateKeeperProps) {
           >
             {/* Logo/Branding */}
             <div className="mb-8 text-center">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5 shadow-[0_0_20px_rgba(255,255,255,0.02)] backdrop-blur-md">
-                <Layers className="h-7 w-7 text-white" />
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.png" alt="" width={56} height={56} className="mx-auto mb-4 rounded-2xl" />
               <h1 className="text-3xl font-bold tracking-tight text-white">Arkitype</h1>
               <p className="mt-2 text-sm text-zinc-400 font-medium">Design System Builder • Private Access</p>
             </div>

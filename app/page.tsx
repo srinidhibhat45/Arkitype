@@ -62,6 +62,28 @@ function Workspace() {
   );
 }
 
+/**
+ * Small-screen gate: Arkitype is a workspace tool and simply doesn't fit a
+ * phone. Below md (768px) an opaque overlay blocks the whole app — CSS-only,
+ * so it needs no resize listeners and can't flash on SSR.
+ */
+function MobileGate() {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink px-8 text-center md:hidden">
+      <div>
+        <p className="font-serif text-2xl tracking-tight text-fg">Arkitype</p>
+        <p className="mt-6 font-serif text-3xl leading-snug text-fg">
+          This needs a bigger canvas.
+        </p>
+        <p className="mx-auto mt-4 max-w-xs text-sm leading-relaxed text-fg-dim">
+          Arkitype is a design-system builder — there isn&apos;t room for it on a
+          phone. Please open it on a desktop or a larger screen.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function ArkitypePage() {
   // Gate on client mount so the persisted chrome prefs hydrate before first
   // paint (avoids an SSR/localStorage class mismatch on <html>).
@@ -80,6 +102,7 @@ export default function ArkitypePage() {
 
   return (
     <AuthProvider>
+      <MobileGate />
       <FontLoader />
       {recovery ? (
         <AuthAndSurvey />

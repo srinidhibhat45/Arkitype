@@ -105,6 +105,32 @@ export function isGoogleFont(family: string): boolean {
   return GOOGLE_FONTS.some((f) => f.family === name) && !SYSTEM_FONT_NAMES.has(name);
 }
 
+/** Lowercase alphanumerics only — "Source Code Pro" and "SourceCodePro" collide. */
+const simplifyFontName = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Best-effort map from a font name found in the wild (a scraped CSS
+ * font-family, often a self-hosted alias like "sohne-var" or a squashed name
+ * like "SourceCodePro") to a font we can actually load from Google Fonts.
+ * Returns null when the family isn't publicly available — callers should keep
+ * their current font rather than apply a name that will never render.
+ */
+export function matchGoogleFont(raw: string): GoogleFont | null {
+  // Drop variable-font suffixes: "sohne-var", "InterVariable", "Roboto VF".
+  const name = primaryFamilyName(raw).replace(/[\s_-]*(variable|var|vf)$/i, "").trim();
+  const target = simplifyFontName(name);
+  if (!target) return null;
+  const exact = GOOGLE_FONTS.find((f) => simplifyFontName(f.family) === target);
+  if (exact) return exact;
+  // "GeistSans" means Geist — but only fall back to the suffix-less family when
+  // no catalog font carries the suffix itself (Nunito Sans must stay Nunito Sans).
+  const stripped = target.replace(/(sans|serif|text|display)$/, "");
+  if (stripped && stripped !== target) {
+    return GOOGLE_FONTS.find((f) => simplifyFontName(f.family) === stripped) ?? null;
+  }
+  return null;
+}
+
 export function buildGoogleFontUrl(families: string[]): string | null {
   const unique = Array.from(new Set(families.map(primaryFamilyName))).filter(isGoogleFont);
   if (unique.length === 0) return null;

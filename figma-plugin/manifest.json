@@ -1,5 +1,6 @@
 {
   "name": "Arkitype Design System Sync",
+  "id": "arkitype-design-system-sync-dev",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "ui.html",

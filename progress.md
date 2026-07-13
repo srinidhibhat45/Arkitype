@@ -496,3 +496,80 @@ Skeleton (both self-heal missing ids).
 
 
 
+
+## Design-System File Export Overhaul (2026-07-13)
+- **Complete Figma kit output**: The plugin's "Build Library" (now "Generate
+  Design System File") no longer dumps one flat frame — it builds a full
+  multi-page kit: Cover → Getting started → Foundations (Colour / Typography /
+  Space & Layout / Shape & Elevation / Motion) → one page per component lane
+  (Controls / Display / Navigation / Patterns) → Changelog.
+- **Per-component usage docs** (`lib/componentDocs.ts`, new): description,
+  when-to-use, do/don't, and a11y note authored for all 49 wired components;
+  rendered as a documentation sheet next to every component set and embedded
+  in the set's Figma description.
+- **Labelled variant matrices**: each set's variants are laid out on a
+  state-column × option-row grid with row/column labels drawn beside the set.
+- **Figma component properties**: TEXT props (Label, Placeholder, Title…) and
+  BOOLEAN props (Show prefix icon, Show dot, Dismissible…) are created on the
+  sets and wired to named layers via `componentPropertyReferences` — instance
+  users edit copy and toggle icons from the properties panel, exactly like a
+  hand-built kit. Property definitions live in `FIGMA_PROP_DEFS`
+  (`lib/figma.ts`) and flow through the bundle.
+- **Token-binding sweep**: renderers' hardcoded dark-theme RGBs replaced with
+  semantic-variable bindings (`semPaint`), text nodes bind fontSize/fontWeight
+  to type variables where aliased, and component copy renders in the user's
+  own font roles (`font/body`, `font/mono`) instead of always-Inter.
+- **7 new plugin renderers**: chip, rating, popover, fileUpload, timeline,
+  tree, datePicker (previously fell back to a placeholder label).
+- **Update-in-place contract**: pages/sheets/sets tagged with plugin data
+  (`ark:pageId` / `ark:sectionId` / `ark:componentId`); re-syncs update the
+  same variables and redraw variants inside the same sets (instances keep
+  overrides), stale variants are pruned, and every sync appends a Changelog
+  entry. Status detection is now document-wide.
+- **Bundle enrichment** (`lib/figma.ts`): `structure.pages` (lane → page map),
+  `docs`, `properties`, lane display names, `meta.systemName/componentCount`.
+- **Ship step**: artifact renamed "Figma kit", trace shows component + page
+  counts. `scripts/test-exporter.ts` passes (50 components; Button = 8
+  variants × 5 states with 14 aliased bindings). Both `npx tsc --noEmit` and
+  the plugin build exit 0.
+
+
+## Figma Kit Fidelity Pass (2026-07-13)
+- **Variant styling actually varies now** (`lib/figma.ts`): the bundle compiler
+  used the schema's spec default for every variant, so all 8 button variants
+  (and every tone-driven component) exported pixel-identical. Added
+  `buttonVariantDefault()` mirroring `TokenButton`'s per-variant recipe —
+  error/warning/success bind to their ramp 600/700/800 steps per state,
+  outlined/text go transparent with `text/link` labels and `border/default`
+  strokes, tonal rides `action-secondary-*`, elevated rides surface roles.
+  User overrides (variant-scoped or shared) still win.
+- **Tone washes injected** (`injectVariantExtras`): badge/tag/alert/banner now
+  carry per-tone `container.bg/border`, text colours, and accent bindings
+  (semantic `feedback/*` roles preferred so they flip in dark mode; brand tones
+  fall back to ramp steps). Toast keeps its neutral surface but gets a
+  tone-accurate `indicator.color`. Plugin renderers read the injected keys.
+- **One Figma page per component**: `structure.pages` is now one page per
+  component (lane metadata included) instead of one page per lane; the plugin
+  names pages "🎛 Controls · Button", keys them `comp-<id>`, rescues live
+  component sets onto their new pages, and deletes the now-empty legacy
+  `lane-*` pages (never touching user content).
+- **Include/exclude components on export** (`ShipStep`): the Figma-kit aside
+  gains a per-lane checklist (All/None per lane, live n/50 count) feeding
+  `compileFigmaBundle(state, { includeComponents })`.
+- **Elevation is real Figma effects now**: shadow tokens become local effect
+  styles ("Arkitype / Elevation / Light|Dark / <level>", idempotent by name);
+  the compiler injects `container.elevation` for card/modal/popover/toast/
+  statGrid/dropdown/tooltip and the elevated button (hover deepens low→medium),
+  and the plugin applies the style via `effectStyleId` (clearing it when a
+  variant loses elevation). The Shape page demos reference the same styles.
+- **Patterns un-skewed**: `drawCardModal` called `drawDivider(node, …)` which
+  restyled the *card itself* to a 180×1 horizontal sliver — every card/modal
+  variant rendered as a crushed mess. Replaced with `appendDividerLine()`
+  (a stretch child rule). Also: card/modal get their stored `padding` option
+  as fallback (was 0 — content flush to edges), badges get pill padding,
+  alert/toast titles read the right style keys (`text.title`/`text.body`),
+  and statGrid/buttonGroup get wider grid cells.
+- Verified: `npx tsc --noEmit` exit 0, plugin `npm run build` exit 0,
+  `scripts/test-exporter.ts` passes (50 components, Button 40 variants), and a
+  bundle-level check confirms distinct variant/tone bindings, per-component
+  pages, elevation levels, and the include filter.

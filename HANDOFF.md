@@ -168,9 +168,18 @@ appear for existing users without a hard migrate.
   roles, dynamic step labels). This is what every component reads.
 - `lib/color.ts` — ramp generation (`generateRamp`, `familyRamp`), harmony suggestions.
 - `lib/typography.ts` — `generateTypeScale` (size/leading/weight/role + rounding).
-- `lib/figma.ts` — the Figma variables bundle (dynamic families, type/weight/font/shadow,
-  hex-or-alias semantics). **Tokens-only by design** — component bindings/options are NOT in
-  the Figma bundle yet (see next steps).
+- `lib/figma.ts` — the Figma design-system bundle: variables (dynamic families,
+  type/weight/font/shadow, hex-or-alias semantics) **plus** components (per-variant resolved
+  bindings + options), per-component docs, Figma component-property definitions
+  (`FIGMA_PROP_DEFS` — TEXT/BOOLEAN props wired to named layers), and `structure.pages`
+  (lane → Figma page map).
+- `lib/componentDocs.ts` — authored usage documentation (description / when-to-use /
+  do / don't / a11y) for every wired component; rendered onto each component's sheet in
+  the generated Figma file.
+- `figma-plugin/` — consumes the bundle and builds a complete multi-page kit (Cover,
+  Getting started, Foundations, one page per lane, Changelog). Idempotent via plugin-data
+  tags (`ark:pageId`/`ark:sectionId`/`ark:componentId`): re-syncs update variables and
+  redraw variants in place, so instances never break.
 - `lib/docs.ts` — the exported docs; §6 lists "Configured components" (resolved options +
   override counts). Token count is ~187.
 

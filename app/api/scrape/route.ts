@@ -169,6 +169,23 @@ function rankColors(css: string, count: number): string[] {
     .map((s) => s.hex);
 }
 
+/**
+ * Families loaded via a Google Fonts stylesheet URL — the highest-signal font
+ * source a page can offer: the family name is canonical (no self-hosted alias)
+ * and guaranteed loadable in the builder.
+ */
+function googleFontFamilies(html: string): string[] {
+  const out: string[] = [];
+  for (const m of Array.from(html.matchAll(/fonts\.googleapis\.com\/css2?\?([^"'\s>)]+)/gi))) {
+    const qs = m[1].replace(/&amp;/g, "&");
+    for (const fm of Array.from(qs.matchAll(/family=([^&:;]+)/gi))) {
+      const family = decodeURIComponent(fm[1].replace(/\+/g, " ")).trim();
+      if (family) out.push(family);
+    }
+  }
+  return Array.from(new Set(out));
+}
+
 function rankFonts(css: string, count: number): string[] {
   const tally = new Map<string, { display: string; n: number }>();
   for (const m of Array.from(css.matchAll(/font-family\s*:\s*([^;}{]+)/gi))) {
@@ -210,7 +227,10 @@ export async function POST(req: NextRequest) {
 
   const css = await gatherCss(html, parsed);
   const colors = rankColors(css || html, 5);
-  const fonts = rankFonts(css || html, 3);
+  // Google-Fonts-linked families lead (canonical + loadable), CSS-derived ones follow.
+  const linked = googleFontFamilies(html);
+  const ranked = rankFonts(css || html, 3);
+  const fonts = Array.from(new Set([...linked, ...ranked])).slice(0, 4);
 
   if (colors.length === 0 && fonts.length === 0) {
     return NextResponse.json(

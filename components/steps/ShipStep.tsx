@@ -8,6 +8,8 @@ import { useMemo, useState } from "react";
 import { Check, Copy, Download } from "lucide-react";
 import { countTokens, useDesignSystem } from "@/store/useDesignSystem";
 import { compileFigmaBundle } from "@/lib/figma";
+import { COMPONENT_LANES } from "@/lib/componentLanes";
+import { WIRED_COMPONENTS } from "@/lib/componentSchema";
 import { generateHandoffDocs } from "@/lib/docs";
 import { compileCssVariables, compileMuiTheme, compileTailwindConfig } from "@/lib/adapters";
 import {
@@ -28,10 +30,10 @@ const ARTIFACT_META: Record<
   { label: string; title: string; hint: string; filename: (base: string) => string; mime: string }
 > = {
   json: {
-    label: "Figma JSON",
-    title: "Figma variables bundle",
-    hint: "figma.variables.* compatible",
-    filename: (b) => `${b}-variables.json`,
+    label: "Figma kit",
+    title: "Figma design-system bundle",
+    hint: "variables + components + docs pages",
+    filename: (b) => `${b}-design-system.json`,
     mime: "application/json",
   },
   docs: {
@@ -84,14 +86,51 @@ const DESTINATION_TO_ARTIFACT: Record<string, Artifact> = {
   swiftui: "docs", // no SwiftUI adapter yet (Phase 3) — the handoff doc is the closest fit
 };
 
+/** Wired components grouped by lane — the pickable kit contents. */
+const PICKER_LANES = COMPONENT_LANES.map((lane) => ({
+  id: lane.id,
+  label: lane.label,
+  items: lane.items.filter((i) => WIRED_COMPONENTS.has(i.id)),
+})).filter((lane) => lane.items.length > 0);
+
+const ALL_WIRED_IDS = PICKER_LANES.flatMap((l) => l.items.map((i) => i.id));
+
 export function ShipStep() {
   const state = useDesignSystem();
   const [artifact, setArtifact] = useState<Artifact>(
     () => DESTINATION_TO_ARTIFACT[state.meta.engineeringDestination ?? ""] ?? "json"
   );
   const [copied, setCopied] = useState(false);
+  // Components excluded from the Figma kit export (empty = ship everything).
+  const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
 
-  const bundle = useMemo(() => compileFigmaBundle(state), [state]);
+  const toggleComponent = (id: string): void => {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const setLane = (laneId: string, include: boolean): void => {
+    const laneIds = PICKER_LANES.find((l) => l.id === laneId)?.items.map((i) => i.id) ?? [];
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      laneIds.forEach((id) => (include ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  };
+
+  const includedIds = useMemo(
+    () => ALL_WIRED_IDS.filter((id) => !excluded.has(id)),
+    [excluded]
+  );
+
+  const bundle = useMemo(
+    () => compileFigmaBundle(state, { includeComponents: includedIds }),
+    [state, includedIds]
+  );
   const json = useMemo(() => JSON.stringify(bundle, null, 2), [bundle]);
   const docs = useMemo(() => generateHandoffDocs(state), [state]);
   const css = useMemo(() => compileCssVariables(state), [state]);
@@ -137,6 +176,62 @@ export function ShipStep() {
             />
           </Field>
 
+          {artifact === "json" && (
+            <>
+              <AsideDivider />
+              <div className="mb-6 rounded-xl border border-line p-4">
+                <div className="mb-1 flex items-baseline justify-between">
+                  <p className="text-[12px] font-medium text-fg-dim">Kit components</p>
+                  <span className="font-mono text-[11px] text-fg-mute">
+                    {includedIds.length}/{ALL_WIRED_IDS.length}
+                  </span>
+                </div>
+                <p className="mb-3 text-[11px] leading-relaxed text-fg-mute">
+                  Untick anything you don&apos;t want in the Figma kit. Each included
+                  component gets its own page.
+                </p>
+                <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                  {PICKER_LANES.map((lane) => {
+                    const laneIncluded = lane.items.filter((i) => !excluded.has(i.id)).length;
+                    const allOn = laneIncluded === lane.items.length;
+                    return (
+                      <div key={lane.id}>
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-mute">
+                            {lane.label}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setLane(lane.id, !allOn)}
+                            className="text-[10px] text-fg-mute underline-offset-2 hover:text-fg-dim hover:underline"
+                          >
+                            {allOn ? "None" : "All"}
+                          </button>
+                        </div>
+                        <div className="space-y-0.5">
+                          {lane.items.map((item) => (
+                            <label
+                              key={item.id}
+                              className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-[12px] text-fg-dim hover:bg-ink-panel"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={!excluded.has(item.id)}
+                                onChange={() => toggleComponent(item.id)}
+                                className="h-3 w-3 accent-current"
+                              />
+                              {item.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
           <AsideDivider />
 
           <div className="mb-6 rounded-xl border border-line p-4">
@@ -160,6 +255,18 @@ export function ShipStep() {
                 <span className="text-fg-mute">Collections</span>
                 <span className="font-mono text-fg-dim">
                   {bundle.collections.length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-fg-mute">Components</span>
+                <span className="font-mono text-fg-dim">
+                  {bundle.components.length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-fg-mute">Figma pages</span>
+                <span className="font-mono text-fg-dim">
+                  {bundle.structure.pages.length + 8}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -202,7 +309,7 @@ export function ShipStep() {
 
           <AsideNote>
             {artifact === "json"
-              ? "Semantic variables ship as VARIABLE_ALIAS bindings with resolved hex fallbacks, so the importing plugin can wire references or fall back to flat values."
+              ? "Feed this to the Arkitype Figma plugin: it builds a complete kit — Cover, Foundations, and one page per component with usage docs, variant grids, component properties, elevation effect styles, and token-bound layers. Re-running it updates everything in place."
               : artifact === "tailwind"
                 ? "Colours/scales reference the --ark-* CSS variables — download the CSS vars artifact too and import it once, globally."
                 : artifact === "mui"

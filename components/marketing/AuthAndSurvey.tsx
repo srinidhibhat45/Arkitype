@@ -2,13 +2,65 @@
 
 import { useDesignSystem } from "@/store/useDesignSystem";
 import { supabase } from "@/lib/supabase/client";
-import { useState } from "react";
-import { ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { BetaTag } from "@/components/ui/BetaTag";
+import { useEffect, useState } from "react";
+import { ArrowRight, ArrowLeft, Eye, EyeOff, ShieldAlert } from "lucide-react";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
+const BETA_ACK_KEY = "arkitype_beta_ack";
 
 type AuthMode = "signin" | "register" | "forgot";
+
+/** Blocks the sign-in/create-account form until the user explicitly accepts
+ *  that this is unstable pre-release software. Shown once — acknowledgement
+ *  is remembered in localStorage so returning users aren't nagged every visit. */
+function BetaDisclaimer({ onAccept }: { onAccept: () => void }) {
+  return (
+    <div className="min-h-screen bg-ink text-fg flex flex-col items-center justify-center px-6">
+      <div className="w-full max-w-md">
+        <div className="mb-10 flex items-center justify-center gap-2.5 text-center">
+          <span className="font-serif text-3xl tracking-tight text-fg">Arkitype</span>
+          <BetaTag />
+        </div>
+
+        <div className="rounded-2xl border border-line bg-ink-raised p-8 sm:p-9">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10">
+            <ShieldAlert className="h-5 w-5 text-amber-500" />
+          </div>
+          <h1 className="mt-5 font-serif text-2xl tracking-tight text-fg">Before you continue</h1>
+          <p className="mt-3 text-sm leading-relaxed text-fg-dim">
+            Arkitype is <span className="font-medium text-fg">unstable, pre-release software</span>.
+            Bugs, breaking changes, and outright data loss — including full loss of a saved design
+            file — are possible at any time.
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-fg-dim">
+            Don&apos;t rely on it for anything you can&apos;t afford to lose. Export what matters
+            often from the Ship step.
+          </p>
+
+          <button
+            type="button"
+            onClick={onAccept}
+            className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-fg px-6 py-3.5 text-base font-medium text-ink transition-opacity hover:opacity-90"
+          >
+            I understand, continue
+            <ArrowRight size={18} />
+          </button>
+        </div>
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => (window.location.href = window.location.origin)}
+            className="text-sm text-fg-mute transition-colors hover:text-fg"
+          >
+            ← Back to landing
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function AuthAndSurvey() {
   const view = useDesignSystem((s) => s.view);
@@ -16,6 +68,17 @@ export function AuthAndSurvey() {
   const recovery = useDesignSystem((s) => s.recovery);
   const setRecovery = useDesignSystem((s) => s.setRecovery);
   const submitSurveyAction = useDesignSystem((s) => s.submitSurvey);
+
+  // Defaults to false on both server and first client paint (no localStorage
+  // access during render, so no hydration mismatch), then syncs once mounted.
+  const [betaAck, setBetaAck] = useState(false);
+  useEffect(() => {
+    if (localStorage.getItem(BETA_ACK_KEY) === "true") setBetaAck(true);
+  }, []);
+  const acceptBetaDisclaimer = () => {
+    localStorage.setItem(BETA_ACK_KEY, "true");
+    setBetaAck(true);
+  };
 
   // Email + password auth states
   const [mode, setMode] = useState<AuthMode>("signin");
@@ -160,8 +223,9 @@ export function AuthAndSurvey() {
     return (
       <div className="min-h-screen bg-ink text-fg flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-md">
-          <div className="mb-10 text-center">
+          <div className="mb-10 flex items-center justify-center gap-2.5 text-center">
             <span className="font-serif text-3xl tracking-tight text-fg">Arkitype</span>
+            <BetaTag />
           </div>
 
           <div className="rounded-2xl border border-line bg-ink-raised p-8 sm:p-9">
@@ -216,6 +280,10 @@ export function AuthAndSurvey() {
     );
   }
 
+  if (view === "login" && !betaAck) {
+    return <BetaDisclaimer onAccept={acceptBetaDisclaimer} />;
+  }
+
   if (view === "login") {
     const isForgot = mode === "forgot";
     const isRegister = mode === "register";
@@ -223,8 +291,9 @@ export function AuthAndSurvey() {
       <div className="min-h-screen bg-ink text-fg flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-md">
           {/* Wordmark */}
-          <div className="mb-10 text-center">
+          <div className="mb-10 flex items-center justify-center gap-2.5 text-center">
             <span className="font-serif text-3xl tracking-tight text-fg">Arkitype</span>
+            <BetaTag />
           </div>
 
           <div className="rounded-2xl border border-line bg-ink-raised p-8 sm:p-9">
@@ -486,7 +555,10 @@ export function AuthAndSurvey() {
       <div className="min-h-screen bg-ink text-fg flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-lg">
           <div className="mb-8 text-center">
-            <span className="font-serif text-2xl tracking-tight text-fg">Arkitype</span>
+            <div className="flex items-center justify-center gap-2">
+              <span className="font-serif text-2xl tracking-tight text-fg">Arkitype</span>
+              <BetaTag />
+            </div>
             <h1 className="mt-5 font-serif text-3xl tracking-tight text-fg">
               Set up your workspace
             </h1>

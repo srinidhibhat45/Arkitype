@@ -468,7 +468,7 @@
       </div>
       <div class="actions">
         <button class="btn btn-secondary" id="syncVarsBtn" disabled onclick="syncVariables()">Sync Variables</button>
-        <button class="btn" id="buildLibraryBtn" disabled onclick="buildComponentLibrary()">Build Library</button>
+        <button class="btn" id="buildLibraryBtn" disabled onclick="buildComponentLibrary()">Generate Design System File</button>
       </div>
     </div>
 
@@ -506,7 +506,7 @@
           addLog(msg.text, msg.level);
           break;
         case 'schema-status':
-          updateStatus(msg.detected, msg.projectName, msg.tokenCount, msg.componentCount);
+          updateStatus(msg.detected, msg.projectName, msg.tokenCount, msg.componentCount, msg.pageCount);
           break;
         case 'sync-complete':
           showAlert(msg.success ? 'success' : 'error', msg.message);
@@ -677,7 +677,7 @@
 
     function buildComponentLibrary() {
       if (!activeSchema) return;
-      addLog(`[UI] Dispatching Build Components Library request...`, 'info');
+      addLog(`[UI] Generating design system file (pages, foundations, component sheets)...`, 'info');
       parent.postMessage({
         pluginMessage: {
           type: 'generate-components',
@@ -722,13 +722,13 @@
     }
 
     // Status Indicator
-    function updateStatus(detected, name, tokens, components) {
+    function updateStatus(detected, name, tokens, components, pages) {
       const dot = document.getElementById('statusDot');
       const text = document.getElementById('statusText');
       
       if (detected) {
         dot.className = 'status-dot active';
-        text.innerText = `${name || 'Arkitype'} (${tokens} tokens, ${components} components)`;
+        text.innerText = `${name || 'Arkitype'} (${tokens} tokens, ${components} components${pages ? `, ${pages} pages` : ''})`;
       } else {
         dot.className = 'status-dot';
         text.innerText = 'No schema loaded';

@@ -14,6 +14,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { generateRamp, hexToRgba, isValidHex, rampStepLabels } from "@/lib/color";
 import { generateTypeScale, FontRoleId, RoundingMode, STEP_DEFS } from "@/lib/typography";
+import { matchGoogleFont } from "@/lib/googleFonts";
 import { supabase } from "@/lib/supabase/client";
 import * as db from "@/lib/persistence";
 
@@ -74,29 +75,95 @@ export type StartingPoint = "blank" | "material" | "tailwind" | "scrape";
 
 /**
  * Framework-twin structural presets. Colours are deliberately excluded — a twin
- * matches a framework's *shape* (corner language, type rhythm, spacing density),
- * not its palette, so the user's brand still leads. Editable afterward like any
- * other value; this is an opt-in starting point, not an imposed default.
+ * matches a framework's *shape* (corner language, type rhythm, spacing density,
+ * shadows, motion, and its native typeface), not its palette, so the user's
+ * brand still leads. Editable afterward like any other value; this is an
+ * opt-in starting point, not an imposed default.
  */
 export const FRAMEWORK_TWINS: Record<
   "material" | "tailwind",
-  { label: string; blurb: string; radiusScale: number; scaleFactor: number; density: Density }
+  {
+    label: string;
+    blurb: string;
+    radiusScale: number;
+    scaleFactor: number;
+    density: Density;
+    /** Family per font role — must be loadable Google Fonts so they render. */
+    fonts: { display: string; heading: string; body: string; mono: string };
+    /** Replaces the default radius steps outright (aligned with radiusNames). */
+    radiusSteps?: number[];
+    /** Pins exact px sizes per type step (a true twin of a discrete scale). */
+    sizeOverrides?: Record<string, number>;
+    durations: Record<DurationName, number>;
+    easings: EasingToken[];
+    elevation: ElevationTokens;
+  }
 > = {
-  // Material is famously roomy (touch-first) with crisp 4px corners.
+  // Material is famously roomy (touch-first) with crisp 4px corners, Roboto
+  // type, dp-tier shadows and its standard/emphasized easing curves.
   material: {
     label: "Material UI",
-    blurb: "Roomy spacing, crisp 4px corners, 1.2 type ratio",
-    radiusScale: 0.5,
+    blurb: "Roboto type, roomy spacing, crisp 4px corners, Material motion",
+    radiusScale: 0.5, // over the base steps: md lands on 4px
     scaleFactor: 1.2,
     density: "spacious",
+    fonts: { display: "Roboto", heading: "Roboto", body: "Roboto", mono: "Roboto Mono" },
+    durations: { fast: 100, base: 200, slow: 300 },
+    easings: [
+      { name: "linear", value: "linear" },
+      { name: "out", value: "cubic-bezier(0, 0, 0, 1)" }, // M3 standard-decelerate
+      { name: "in-out", value: "cubic-bezier(0.2, 0, 0, 1)" }, // M3 standard
+      { name: "spring", value: "cubic-bezier(0.05, 0.7, 0.1, 1)" }, // M3 emphasized-decelerate
+    ],
+    elevation: {
+      light: [
+        { name: "flat", x: 0, y: 0, blur: 0, spread: 0, color: "#000000", opacity: 0 },
+        { name: "low", x: 0, y: 1, blur: 3, spread: 0, color: "#000000", opacity: 0.24 },
+        { name: "medium", x: 0, y: 3, blur: 8, spread: 0, color: "#000000", opacity: 0.24 },
+        { name: "high", x: 0, y: 8, blur: 24, spread: 0, color: "#000000", opacity: 0.28 },
+      ],
+      dark: [
+        { name: "flat", x: 0, y: 0, blur: 0, spread: 0, color: "#000000", opacity: 0 },
+        { name: "low", x: 0, y: 1, blur: 3, spread: 0, color: "#000000", opacity: 0.4 },
+        { name: "medium", x: 0, y: 3, blur: 8, spread: 0, color: "#000000", opacity: 0.45 },
+        { name: "high", x: 0, y: 8, blur: 24, spread: 0, color: "#000000", opacity: 0.5 },
+      ],
+    },
   },
-  // Tailwind UI reads denser and more editorial, softer 8px corners.
+  // Tailwind UI: Inter type, Tailwind's exact rounded/shadow/text scales and
+  // its ease-out/ease-in-out timing.
   tailwind: {
     label: "Tailwind UI",
-    blurb: "Standard density, soft 8px corners, 1.25 type ratio",
+    blurb: "Inter type, Tailwind radius, shadow & text scales",
     radiusScale: 1,
-    scaleFactor: 1.25,
+    scaleFactor: 1.25, // backdrop for any step without a pinned size
     density: "standard",
+    fonts: { display: "Inter", heading: "Inter", body: "Inter", mono: "JetBrains Mono" },
+    // rounded-sm 2, rounded 4, rounded-md 6, rounded-lg 8, rounded-xl 12, rounded-2xl 16
+    radiusSteps: [0, 2, 4, 6, 8, 12, 16, 9999],
+    // text-xs → text-4xl: Tailwind's discrete sizes, pinned per step.
+    sizeOverrides: { xs: 12, sm: 14, base: 16, lg: 18, xl: 20, "2xl": 24, "3xl": 30, "4xl": 36 },
+    durations: { fast: 150, base: 300, slow: 500 },
+    easings: [
+      { name: "linear", value: "linear" },
+      { name: "out", value: "cubic-bezier(0, 0, 0.2, 1)" },
+      { name: "in-out", value: "cubic-bezier(0.4, 0, 0.2, 1)" },
+      { name: "spring", value: "cubic-bezier(0.34, 1.56, 0.64, 1)" },
+    ],
+    elevation: {
+      light: [
+        { name: "flat", x: 0, y: 0, blur: 0, spread: 0, color: "#000000", opacity: 0 },
+        { name: "low", x: 0, y: 1, blur: 2, spread: 0, color: "#000000", opacity: 0.05 },
+        { name: "medium", x: 0, y: 4, blur: 6, spread: -1, color: "#000000", opacity: 0.1 },
+        { name: "high", x: 0, y: 10, blur: 15, spread: -3, color: "#000000", opacity: 0.1 },
+      ],
+      dark: [
+        { name: "flat", x: 0, y: 0, blur: 0, spread: 0, color: "#000000", opacity: 0 },
+        { name: "low", x: 0, y: 1, blur: 2, spread: 0, color: "#000000", opacity: 0.3 },
+        { name: "medium", x: 0, y: 4, blur: 6, spread: -1, color: "#000000", opacity: 0.4 },
+        { name: "high", x: 0, y: 10, blur: 15, spread: -3, color: "#000000", opacity: 0.5 },
+      ],
+    },
   },
 };
 
@@ -106,6 +173,8 @@ export interface InitConfig {
   brandHex?: string;
   secondaryHex?: string;
   fontFamily?: string;
+  /** A scraped monospace family — routed to the mono role, never to body. */
+  monoFamily?: string;
   density: Density;
   targetPlatform: TargetPlatform;
   engineeringDestination: EngineeringDestination;
@@ -1202,7 +1271,9 @@ export const useDesignSystem = create<ArkitypeState>()(
             const density = twin ? twin.density : config.density;
             const preset = DENSITY_PRESETS[density];
             const radiusScale = twin ? twin.radiusScale : preset.radiusScale;
-            const radiusSteps = state.primitives.radiusSteps ?? [...BASE_RADII];
+            const radiusSteps = twin?.radiusSteps
+              ? [...twin.radiusSteps]
+              : (state.primitives.radiusSteps ?? [...BASE_RADII]);
 
             // Colour: seed brand (+ optional secondary from a scrape). Twins never
             // touch colour — brand identity stays the user's.
@@ -1216,13 +1287,30 @@ export const useDesignSystem = create<ArkitypeState>()(
               if (secondary) secondary.seed = config.secondaryHex;
             }
 
-            // Font: a scraped family flows into the body + heading roles (display/
-            // mono left alone — those are rarely a site's body face).
+            // Fonts. A twin brings its framework's native faces. A scraped family
+            // is only applied when it maps to a loadable Google Font — assigning a
+            // site's self-hosted alias ("sohne-var") would silently render the
+            // fallback and look like nothing happened.
             const t = state.primitives.typography;
             const fontRoles = { ...t.fontRoles };
-            if (config.fontFamily) {
-              for (const role of ["body", "heading"]) {
-                if (fontRoles[role]) fontRoles[role] = { ...fontRoles[role], family: config.fontFamily };
+            let familiesMirror = t.families;
+            if (twin) {
+              for (const role of ["display", "heading", "body", "mono"] as const) {
+                if (fontRoles[role]) fontRoles[role] = { ...fontRoles[role], family: twin.fonts[role] };
+              }
+              familiesMirror = { sans: twin.fonts.body, mono: twin.fonts.mono };
+            } else {
+              const matched = config.fontFamily ? matchGoogleFont(config.fontFamily) : null;
+              if (matched && matched.category !== "mono") {
+                for (const role of ["display", "heading", "body"]) {
+                  if (fontRoles[role]) fontRoles[role] = { ...fontRoles[role], family: matched.family };
+                }
+                familiesMirror = { ...familiesMirror, sans: matched.family };
+              }
+              const mono = config.monoFamily ? matchGoogleFont(config.monoFamily) : null;
+              if (mono && mono.category === "mono" && fontRoles.mono) {
+                fontRoles.mono = { ...fontRoles.mono, family: mono.family };
+                familiesMirror = { ...familiesMirror, mono: mono.family };
               }
             }
 
@@ -1240,6 +1328,7 @@ export const useDesignSystem = create<ArkitypeState>()(
                 density,
                 spacingBase: preset.spacingBase,
                 radiusScale,
+                radiusSteps,
                 spacing: buildSpacing(
                   preset.spacingBase,
                   state.primitives.spacingMultipliers,
@@ -1249,8 +1338,24 @@ export const useDesignSystem = create<ArkitypeState>()(
                 typography: {
                   ...t,
                   fontRoles,
+                  families: familiesMirror,
                   scaleFactor: twin ? twin.scaleFactor : t.scaleFactor,
+                  sizeOverrides: twin?.sizeOverrides
+                    ? { ...twin.sizeOverrides }
+                    : t.sizeOverrides,
                 },
+                motion: twin
+                  ? {
+                      durations: { ...twin.durations },
+                      easings: twin.easings.map((e) => ({ ...e })),
+                    }
+                  : state.primitives.motion,
+                elevation: twin
+                  ? {
+                      light: cloneShadows(twin.elevation.light),
+                      dark: cloneShadows(twin.elevation.dark),
+                    }
+                  : state.primitives.elevation,
               },
             };
           }),

@@ -163,6 +163,18 @@ body {
   background-size: 16px 16px;
 }
 
+/* Same dot texture as the app's canvas, but background-image only (no
+   background-color) — composes on top of bg-ink instead of resetting it, and
+   dialled down further since it's ambient marketing texture, not a work
+   surface. */
+.bg-dots {
+  background-image: radial-gradient(rgb(var(--c-line-strong) / 0.4) 1.25px, transparent 1.25px);
+  background-size: 16px 16px;
+}
+.dark .bg-dots {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1.25px, transparent 1.25px);
+}
+
 @keyframes generative-border {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
@@ -180,4 +192,55 @@ body {
   ) !important;
   animation: generative-border 2.5s ease infinite !important;
   color: #ffffff !important;
+}
+
+/* ── Scroll-reveal animation (marketing) ─────────────────────────── */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-fade-rise {
+  animation: fade-rise 1s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+}
+
+/* ── Figma-style pointer for the hero skeleton collage ─────────────
+   A hand-drawn arrow (not the OS default) so hovering the component
+   mockup reads like a design-tool canvas. Colours track the fg/ink
+   tokens so it stays legible — and on-theme — in both modes. */
+.hero-cursor {
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M3 2L3 17.7L6.9 14.1L9.8 20.6L12.6 19.4L9.7 12.9L15.8 12.9Z" fill="%23121214" stroke="%23e8e8eb" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>')
+    3 2, auto;
+}
+.dark .hero-cursor {
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M3 2L3 17.7L6.9 14.1L9.8 20.6L12.6 19.4L9.7 12.9L15.8 12.9Z" fill="%23ffffff" stroke="%231a1a1e" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>')
+    3 2, auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .animate-fade-rise {
+    animation: none;
+  }
 }

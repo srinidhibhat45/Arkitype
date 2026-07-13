@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Instrument_Sans, Instrument_Serif, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Fraunces, Instrument_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
 const sans = Instrument_Sans({
@@ -9,12 +9,12 @@ const sans = Instrument_Sans({
   display: "swap",
 });
 
-const serif = Instrument_Serif({
+const serif = Fraunces({
   subsets: ["latin"],
-  weight: "400",
   style: ["normal", "italic"],
   variable: "--font-serif",
   display: "swap",
+  axes: ["opsz", "SOFT", "WONK"],
 });
 
 const mono = JetBrains_Mono({
@@ -32,7 +32,7 @@ const display = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Arkitype — Build the system before the screens",
   description:
-    "A guided design-system builder: from one brand colour to a shipped Figma bundle, in seven ordered steps.",
+    "A guided design-system builder: from one brand colour to a shipped Figma bundle, in eight ordered steps.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

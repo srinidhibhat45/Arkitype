@@ -339,9 +339,9 @@ export function LandingPage() {
             </Reveal>
             <Reveal delay={90}>
               <h1 className="max-w-2xl font-serif text-6xl leading-[1.05] tracking-tight text-fg sm:text-7xl lg:text-8xl">
-                Build the system
+                Because building Design Systems
                 <br />
-                before the screens.
+                shouldn&rsquo;t be a Pain in the A**
               </h1>
             </Reveal>
             <Reveal delay={180}>

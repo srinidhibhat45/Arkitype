@@ -25,6 +25,14 @@ let ICON_LIB: {
   glyphs: boolean; // true when the real Material Symbols font loaded
 } | null = null;
 
+/* Molecule sets built so far this generation, keyed by component id. Organisms
+ * (modal, card, …) look their molecules up here to place real nested instances
+ * — the atomic-design contract the schema's `slots` describe — instead of
+ * faking a button with a plain frame. Populated by buildComponentSet as each
+ * set is created/updated; controls (button, iconButton) always build before
+ * patterns (modal) so the lookup is populated by the time it's needed. */
+const BUILT_SETS = new Map<string, ComponentSetNode | ComponentNode>();
+
 /* Documentation chrome palette — deliberately literal (light, neutral): this
  * is the kit's editorial layer, not part of the user's themed system. */
 const DOC = {
@@ -45,20 +53,23 @@ function log(text: string, level: 'info' | 'success' | 'warning' | 'error' = 'in
   figma.ui.postMessage({ type: 'log', text, level });
 }
 
-// Helper: Report sync status to UI (document-wide, all pages)
-function updateStatusInUi() {
-  const collections = figma.variables.getLocalVariableCollections();
+// Helper: Report sync status to UI (document-wide, all pages).
+// Uses the async document APIs required under `documentAccess: "dynamic-page"`.
+async function updateStatusInUi() {
+  const collections = await figma.variables.getLocalVariableCollectionsAsync();
   const primitives = collections.find(c => c.name === "Arkitype / Primitives");
   const semantics = collections.find(c => c.name === "Arkitype / Semantics");
 
   if (primitives && semantics) {
-    const vars = figma.variables.getLocalVariables();
+    const vars = await figma.variables.getLocalVariablesAsync();
     const count = vars.filter(v =>
       v.variableCollectionId === primitives.id ||
       v.variableCollectionId === semantics.id
     ).length;
 
-    // Count Arkitype component sets across the whole document
+    // Count Arkitype component sets across the whole document. Dynamic-page
+    // access requires every page to be loaded before traversing the root.
+    await figma.loadAllPagesAsync();
     const componentSets = figma.root.findAll(node =>
       (node.type === "COMPONENT_SET" || node.type === "COMPONENT") &&
       (node.getPluginData(COMP_KEY) !== "" || node.name.startsWith("Arkitype / "))
@@ -84,12 +95,12 @@ function updateStatusInUi() {
 
 // Show UI with larger comfortable default box size
 figma.showUI(__html__, { width: 540, height: 680 });
-updateStatusInUi();
+void updateStatusInUi();
 
 // Messaging event handler
 figma.ui.onmessage = async (msg) => {
   if (msg.type === 'check-current-file') {
-    updateStatusInUi();
+    await updateStatusInUi();
   } else if (msg.type === 'sync-variables') {
     try {
       await syncVariables(msg.payload);
@@ -98,7 +109,7 @@ figma.ui.onmessage = async (msg) => {
         success: true,
         message: 'Variables successfully synchronized in Figma!'
       });
-      updateStatusInUi();
+      await updateStatusInUi();
     } catch (e: any) {
       log(`Error syncing variables: ${e.message}`, 'error');
       figma.ui.postMessage({
@@ -116,7 +127,7 @@ figma.ui.onmessage = async (msg) => {
         success: true,
         message: 'Design system file generated — check the pages panel for Cover, Foundations, and component pages.'
       });
-      updateStatusInUi();
+      await updateStatusInUi();
     } catch (e: any) {
       log(`Error generating design system: ${e.message}`, 'error');
       figma.ui.postMessage({
@@ -132,8 +143,8 @@ figma.ui.onmessage = async (msg) => {
 async function syncVariables(bundle: any) {
   log("Starting variable synchronization...", "info");
   
-  const localCollections = figma.variables.getLocalVariableCollections();
-  
+  const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+
   // 1. Get or Create Primitives Collection
   let primitivesColl = localCollections.find(c => c.name === "Arkitype / Primitives");
   if (!primitivesColl) {
@@ -189,7 +200,7 @@ async function syncVariables(bundle: any) {
     }
   }
 
-  const allFigmaVars = figma.variables.getLocalVariables();
+  const allFigmaVars = await figma.variables.getLocalVariablesAsync();
   const variableMap = new Map<string, Variable>(); // maps "CollectionName/path" -> Variable object
 
   // 3. Pass 1: Create all variables and set literal values
@@ -268,7 +279,7 @@ async function syncVariables(bundle: any) {
   }
   
   // 5. Elevation tokens → shared local effect styles.
-  ensureElevationStyles(bundle);
+  await ensureElevationStyles(bundle);
 
   log(`Synced ${variableMap.size} variables successfully.`, "success");
 }
@@ -289,17 +300,21 @@ function bundleVarArray(bundleColl: any): any[] {
 async function buildDesignSystemFile(bundle: any) {
   const components = bundle.components || [];
   log(`Building design system file (${components.length} components)...`, "info");
+  BUILT_SETS.clear();
+  // Dynamic-page access: load every page before any figma.root traversal below
+  // (ensurePage, stale-page cleanup, collectExistingComponents all walk it).
+  await figma.loadAllPagesAsync();
   await loadStandardFonts();
   resolveSystemFonts(bundle);
 
   const systemName = (bundle.meta && bundle.meta.systemName) || "Arkitype System";
   figma.root.setPluginData("ark:systemName", systemName);
 
-  const figmaVarsMap = buildFigmaVarsMap();
+  const figmaVarsMap = await buildFigmaVarsMap();
 
   /* Elevation levels become local effect styles (Light + Dark) so components
    * cast real shadows via a shared style, not baked-in per-node effects. */
-  ensureElevationStyles(bundle);
+  await ensureElevationStyles(bundle);
 
   /* Page structure (with fallback for bundles without `structure`).
    * New bundles carry one page per component (`laneLabel` set); legacy
@@ -400,11 +415,11 @@ async function buildDesignSystemFile(bundle: any) {
 
 /* ── infrastructure helpers ── */
 
-function buildFigmaVarsMap(): Map<string, Variable> {
-  const collections = figma.variables.getLocalVariableCollections();
+async function buildFigmaVarsMap(): Promise<Map<string, Variable>> {
+  const collections = await figma.variables.getLocalVariableCollectionsAsync();
   const primitivesColl = collections.find(c => c.name === "Arkitype / Primitives");
   const map = new Map<string, Variable>();
-  figma.variables.getLocalVariables().forEach(v => {
+  (await figma.variables.getLocalVariablesAsync()).forEach(v => {
     const colName = primitivesColl && v.variableCollectionId === primitivesColl.id ? "Primitives" : "Semantics";
     map.set(`${colName}/${v.name}`, v);
   });
@@ -747,9 +762,9 @@ async function buildSpacePage(page: PageNode, bundle: any, figmaVarsMap: Map<str
  * Idempotent: re-syncs update the same styles by name. */
 const ELEVATION_STYLES = new Map<string, EffectStyle>();
 
-function ensureElevationStyles(bundle: any): void {
+async function ensureElevationStyles(bundle: any): Promise<void> {
   ELEVATION_STYLES.clear();
-  const existing = figma.getLocalEffectStyles();
+  const existing = await figma.getLocalEffectStylesAsync();
   for (const mode of ["light", "dark"]) {
     for (const v of primitiveVars(bundle, `shadow/${mode}/`)) {
       const level = v.name.split("/")[2];
@@ -1052,6 +1067,7 @@ async function buildComponentSet(
   resultNode.description = `${comp.description}\n\nSee the “${comp.name} — Sheet” frame for usage guidance and token bindings. Managed by Arkitype — re-syncs update this ${resultNode.type === "COMPONENT_SET" ? "set" : "component"} in place.`;
   resultNode.setPluginData(COMP_KEY, comp.id);
   existingSets.set(comp.id, resultNode);
+  BUILT_SETS.set(comp.id, resultNode);
 
   return { node: resultNode, states, optionCombos, cellW, cellH };
 }
@@ -1466,6 +1482,60 @@ function makeIconInstance(slotName: string, name: string | undefined): InstanceN
   } catch (e) {
     return null;
   }
+}
+
+/** Set a VARIANT property on an instance only when both the property and the
+ *  requested value legally exist on the source set — silently skips otherwise,
+ *  so an unexpected variant schema never breaks the parent organism's build. */
+function trySetVariant(inst: InstanceNode, name: string, value: string): void {
+  try {
+    const prop = inst.componentProperties[name];
+    if (!prop || prop.type !== "VARIANT") return;
+    const main = inst.mainComponent;
+    const set = main && main.parent && main.parent.type === "COMPONENT_SET" ? (main.parent as ComponentSetNode) : null;
+    const legal = set ? set.variantGroupProperties[name]?.values : null;
+    if (legal && legal.indexOf(value) === -1) return;
+    inst.setProperties({ [name]: value });
+  } catch (e) { /* leave the instance on its default variant */ }
+}
+
+/** Set the "Label" TEXT component property on a button instance (its key carries
+ *  a `#id` suffix, so match on the name part). Guarded — no-op if absent. */
+function trySetInstanceText(inst: InstanceNode, propName: string, value: string): void {
+  try {
+    const key = Object.keys(inst.componentProperties).find(
+      (k) => k.split("#")[0] === propName && inst.componentProperties[k].type === "TEXT"
+    );
+    if (key) inst.setProperties({ [key]: value });
+  } catch (e) { /* text stays at the component default */ }
+}
+
+/**
+ * A real nested instance of a previously-built molecule set (button /
+ * iconButton), configured from an organism slot: `variant` + `state` via the
+ * set's variant properties, visible text via its "Label" property. Returns null
+ * when that molecule wasn't part of this export (e.g. the user unticked Button),
+ * so callers can fall back to a drawn control. This is what makes a Modal's
+ * Confirm/Cancel true instances of the Button component instead of fake frames.
+ */
+function makeButtonInstance(
+  compId: string,
+  slotName: string,
+  opts: { variant?: string; state?: string; label?: string }
+): InstanceNode | null {
+  const set = BUILT_SETS.get(compId);
+  if (!set) return null;
+  let inst: InstanceNode;
+  try {
+    inst = set.type === "COMPONENT_SET" ? set.defaultVariant!.createInstance() : (set as ComponentNode).createInstance();
+  } catch (e) {
+    return null;
+  }
+  inst.name = slotName;
+  if (opts.variant) trySetVariant(inst, "variant", opts.variant);
+  trySetVariant(inst, "state", opts.state || "default");
+  if (opts.label !== undefined) trySetInstanceText(inst, "Label", opts.label);
+  return inst;
 }
 
 /** Expose each icon slot as an INSTANCE_SWAP component property on the set, and
@@ -2709,38 +2779,56 @@ async function drawCardModal(node: ComponentNode, styles: any, options: any, com
   footer.itemSpacing = 8;
   footer.layoutAlign = "STRETCH";
   footer.primaryAxisAlignItems = componentId === "modal" ? "MAX" : "MIN";
+  footer.counterAxisAlignItems = "CENTER";
   footer.primaryAxisSizingMode = "AUTO";
   footer.counterAxisSizingMode = "AUTO";
 
-  if (componentId === "modal") {
-    const btnCancel = figma.createFrame();
-    btnCancel.name = "btnCancel";
-    btnCancel.layoutMode = "HORIZONTAL";
-    btnCancel.paddingLeft = 12; btnCancel.paddingRight = 12;
-    btnCancel.paddingTop = 6; btnCancel.paddingBottom = 6;
-    btnCancel.cornerRadius = 6;
-    btnCancel.fills = semPaint(figmaVarsMap, "surface/subtle", { r: 0.93, g: 0.93, b: 0.95 });
-    btnCancel.strokes = semPaint(figmaVarsMap, "border/default", { r: 0.85, g: 0.85, b: 0.88 });
-    await createTextHelper(btnCancel, "text", "Cancel", 11, null, "Inter", "Medium", figmaVarsMap);
-    footer.appendChild(btnCancel);
+  // A hand-drawn button, used only when the real Button component isn't part of
+  // this export (e.g. it was unticked on the Ship screen). Hugs its label on
+  // both axes — the fixed-size frames this replaced rendered as oversized boxes.
+  const drawnButton = async (name: string, label: string, primary: boolean): Promise<FrameNode> => {
+    const b = figma.createFrame();
+    b.name = name;
+    b.layoutMode = "HORIZONTAL";
+    b.primaryAxisSizingMode = "AUTO";
+    b.counterAxisSizingMode = "AUTO";
+    b.primaryAxisAlignItems = "CENTER";
+    b.counterAxisAlignItems = "CENTER";
+    b.paddingLeft = 14; b.paddingRight = 14;
+    b.paddingTop = 8; b.paddingBottom = 8;
+    b.cornerRadius = 6;
+    if (primary) {
+      const activeVar = figmaVarsMap.get("Semantics/action/primary/default");
+      b.fills = activeVar
+        ? [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', activeVar)]
+        : [{ type: 'SOLID', color: { r: 0.38, g: 0.4, b: 0.95 } }];
+      await createTextHelper(b, "label", label, 12, sem("text/on/action"), "Inter", "Semi Bold", figmaVarsMap);
+    } else {
+      b.fills = semPaint(figmaVarsMap, "surface/subtle", { r: 0.93, g: 0.93, b: 0.95 });
+      b.strokes = semPaint(figmaVarsMap, "border/default", { r: 0.85, g: 0.85, b: 0.88 });
+      b.strokeWeight = 1;
+      await createTextHelper(b, "label", label, 12, null, "Inter", "Medium", figmaVarsMap);
+    }
+    return b;
+  };
+
+  // Secondary action (Cancel) — modal only, mirrors the schema's secondaryAction
+  // slot (an outlined Button instance). Falls back to a drawn button.
+  if (componentId === "modal" && options.showSecondary !== false) {
+    const cancel =
+      makeButtonInstance("button", "secondaryAction", { variant: "outlined", label: "Cancel" }) ||
+      (await drawnButton("secondaryAction", "Cancel", false));
+    footer.appendChild(cancel);
   }
 
-  const btnAction = figma.createFrame();
-  btnAction.name = "btnAction";
-  btnAction.layoutMode = "HORIZONTAL";
-  btnAction.paddingLeft = 16; btnAction.paddingRight = 16;
-  btnAction.paddingTop = 6; btnAction.paddingBottom = 6;
-  btnAction.cornerRadius = 6;
-  
-  const activeVar = figmaVarsMap.get("Semantics/action/primary/default");
-  if (activeVar) {
-    btnAction.fills = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', activeVar)];
-  } else {
-    btnAction.fills = [{ type: 'SOLID', color: { r: 0.38, g: 0.4, b: 0.95 } }];
-  }
-  
-  await createTextHelper(btnAction, "text", options.btnLabel || "Confirm", 11, sem("text/on/action"), "Inter", "Semi Bold", figmaVarsMap);
-  footer.appendChild(btnAction);
+  // Primary action (Confirm) — the schema's primaryAction slot, a filled Button
+  // instance. Nesting the real component here is the fix for the missing
+  // instances; the drawn button is only a no-Button-in-export fallback.
+  const confirmLabel = options.btnLabel || (componentId === "modal" ? "Confirm" : "Action");
+  const confirm =
+    makeButtonInstance("button", "primaryAction", { variant: "filled", label: confirmLabel }) ||
+    (await drawnButton("primaryAction", confirmLabel, true));
+  footer.appendChild(confirm);
 
   node.appendChild(footer);
 }

@@ -1,10 +1,18 @@
 {
   "name": "Arkitype Design System Sync",
-  "id": "arkitype-design-system-sync-dev",
+  "id": "1658818555967908857",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "ui.html",
   "editorType": [
     "figma"
-  ]
+  ],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": [
+      "https://fonts.googleapis.com",
+      "https://fonts.gstatic.com"
+    ],
+    "reasoning": "Loads the Instrument Sans and JetBrains Mono UI fonts from Google Fonts."
+  }
 }

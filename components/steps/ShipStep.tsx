@@ -282,6 +282,35 @@ export function ShipStep() {
             </div>
           </div>
 
+          {artifact === "json" && (
+            <>
+              <AsideDivider />
+              <div className="mb-6 rounded-xl border border-line p-4">
+                <p className="mb-3 text-[12px] font-medium text-fg-dim">
+                  Load this into Figma
+                </p>
+                <ol className="space-y-3">
+                  {[
+                    "Download the file below, or copy it to your clipboard.",
+                    "Open Figma and run the “Arkitype Design System Sync” plugin.",
+                    "Drop the file into its Import tab — or paste the JSON.",
+                    "Click “Sync Variables” for tokens only, or “Generate Design System File” for the full kit.",
+                  ].map((step, i) => (
+                    <li
+                      key={step}
+                      className="flex gap-2.5 text-[12px] leading-relaxed text-fg-mute"
+                    >
+                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-line-strong text-[10px] font-bold text-fg-dim">
+                        {i + 1}
+                      </span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </>
+          )}
+
           <div className="space-y-2">
             <GhostButton full onClick={copy}>
               {copied ? (
@@ -309,7 +338,7 @@ export function ShipStep() {
 
           <AsideNote>
             {artifact === "json"
-              ? "Feed this to the Arkitype Figma plugin: it builds a complete kit — Cover, Foundations, and one page per component with usage docs, variant grids, component properties, elevation effect styles, and token-bound layers. Re-running it updates everything in place."
+              ? "The plugin builds a complete kit — Cover, Foundations, and one page per component with usage docs, variant grids, component properties, elevation effect styles, and token-bound layers. Re-running it after edits updates everything in place, so instances and overrides survive."
               : artifact === "tailwind"
                 ? "Colours/scales reference the --ark-* CSS variables — download the CSS vars artifact too and import it once, globally."
                 : artifact === "mui"

@@ -62,6 +62,20 @@ export interface FigmaComponentVariant {
 }
 
 /**
+ * A resolved slot on an organism — one nested instance of a molecule
+ * (button / iconButton / input) with its content already merged from the
+ * schema defaults and the user's stored per-instance overrides. The plugin
+ * uses this to place a REAL instance of the molecule's component set inside
+ * the organism, configured to `content` (label, variant, size, icons), rather
+ * than hand-drawing a look-alike frame.
+ */
+export interface FigmaSlot {
+  id: string;
+  componentId: string;
+  content: Record<string, string | number | boolean>;
+}
+
+/**
  * A non-variant Figma component property (properties panel entry).
  * TEXT drives a text layer's characters; BOOLEAN drives a layer's visibility.
  * `layer` is the node name the plugin wires the property to inside every variant.
@@ -83,6 +97,8 @@ export interface FigmaComponent {
   docs: ComponentDoc;
   properties: FigmaComponentProperty[];
   variants: FigmaComponentVariant[];
+  /** Named molecule instances this organism nests (empty for atoms/molecules). */
+  slots: FigmaSlot[];
 }
 
 /** One Figma page of the generated kit: a single component (with its lane). */
@@ -898,6 +914,18 @@ export function compileFigmaBundle(
       };
     });
     
+    // Resolve each slot's content (schema defaults merged with the user's
+    // stored per-instance overrides) so the plugin can nest a real, correctly
+    // configured molecule instance instead of a hand-drawn look-alike.
+    const slots: FigmaSlot[] = (spec.slots ?? []).map((slot) => {
+      const stored = state.components[cid]?.instances?.[slot.id];
+      const content: Record<string, string | number | boolean> = {};
+      for (const o of slot.content) {
+        content[o.key] = optionValue(stored, o);
+      }
+      return { id: slot.id, componentId: slot.componentId, content };
+    });
+
     const { name, lane, laneLabel } = laneInfoFor(cid);
     const docs = componentDoc(cid, name);
     return {
@@ -910,6 +938,7 @@ export function compileFigmaBundle(
       docs,
       properties: compileFigmaProps(state, cid),
       variants,
+      slots,
     };
   }).filter((c) => c !== null) as FigmaComponent[];
 

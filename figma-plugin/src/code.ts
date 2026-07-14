@@ -33,6 +33,12 @@ let ICON_LIB: {
  * patterns (modal) so the lookup is populated by the time it's needed. */
 const BUILT_SETS = new Map<string, ComponentSetNode | ComponentNode>();
 
+/* The slots of the component currently being drawn, keyed by slot id. Set once
+ * per component in buildComponentSet (before its variants are drawn) so the
+ * organism renderers can place real nested molecule instances configured to the
+ * slot's resolved content — the atomic-design contract carried in the bundle. */
+let CURRENT_SLOTS = new Map<string, { componentId: string; content: Record<string, any> }>();
+
 /* Documentation chrome palette — deliberately literal (light, neutral): this
  * is the kit's editorial layer, not part of the user's themed system. */
 const DOC = {
@@ -221,7 +227,9 @@ async function syncVariables(bundle: any) {
       );
       
       if (!figmaVar) {
-        figmaVar = figma.variables.createVariable(varName, targetColl.id, type);
+        // Under documentAccess: "dynamic-page" (incremental mode) createVariable
+        // must be handed the collection NODE, not its id.
+        figmaVar = figma.variables.createVariable(varName, targetColl, type);
       }
       
       variableMap.set(`${isSemantics ? "Semantics" : "Primitives"}/${varName}`, figmaVar);
@@ -982,6 +990,13 @@ async function buildComponentSet(
   const { w: cellW, h: cellH } = cellSizeFor(comp.id);
   const variantNodes: ComponentNode[] = [];
 
+  /* Publish this component's slots so the organism renderers can nest real
+   * molecule instances (button/iconButton/input) configured to slot content. */
+  CURRENT_SLOTS = new Map();
+  for (const slot of (comp.slots || [])) {
+    CURRENT_SLOTS.set(slot.id, { componentId: slot.componentId, content: slot.content || {} });
+  }
+
   for (const variantData of comp.variants) {
     const comboProps = variantData.properties;
     const comboState = comboProps.state || "default";
@@ -1270,6 +1285,17 @@ function isAncestorOf(candidate: BaseNode, node: BaseNode): boolean {
   return false;
 }
 
+/** True when `node` sits inside an INSTANCE somewhere below `root` — i.e. it
+ *  belongs to a nested molecule instance, not the organism's own layers. */
+function isInsideInstance(node: BaseNode, root: BaseNode): boolean {
+  let p: BaseNode | null = node.parent;
+  while (p && p.id !== root.id) {
+    if (p.type === "INSTANCE") return true;
+    p = p.parent;
+  }
+  return false;
+}
+
 /* ── changelog ── */
 
 async function appendChangelogEntry(page: PageNode, bundle: any) {
@@ -1510,18 +1536,53 @@ function trySetInstanceText(inst: InstanceNode, propName: string, value: string)
   } catch (e) { /* text stays at the component default */ }
 }
 
+/** Swap the icon shown by a nested molecule instance's icon slot, and reveal
+ *  that slot. `slotLayer` is the molecule's internal icon-slot name
+ *  (prefixIcon / suffixIcon / icon). Best-effort: prefers the exposed
+ *  INSTANCE_SWAP component property, falls back to swapping the inner instance
+ *  directly, and always makes the slot visible. No-op without an icon library. */
+function setNestedIcon(inst: InstanceNode, slotLayer: string, iconName: string): void {
+  if (!iconName || !ICON_LIB) return;
+  const resolved = resolveIconName(iconName);
+  const iconComp = resolved ? ICON_LIB.components.get(resolved) : null;
+  if (!iconComp) return;
+  const PROP_LABEL: Record<string, string> = {
+    prefixIcon: "Prefix icon", suffixIcon: "Suffix icon", icon: "Icon",
+  };
+  const label = PROP_LABEL[slotLayer] || "Icon";
+  let swapped = false;
+  try {
+    const key = Object.keys(inst.componentProperties).find(
+      (k) => k.split("#")[0] === label && inst.componentProperties[k].type === "INSTANCE_SWAP"
+    );
+    if (key) {
+      inst.setProperties({ [key]: iconComp.id });
+      swapped = true;
+    }
+  } catch (e) { /* fall through to a direct swap */ }
+  // Reveal (and, if the property route failed, retarget) the inner icon slot.
+  try {
+    const target = inst.findOne((n) => n.getPluginData("ark:iconSlot") === slotLayer) as InstanceNode | null;
+    if (target) {
+      target.visible = true;
+      if (!swapped && target.type === "INSTANCE") target.swapComponent(iconComp);
+    }
+  } catch (e) { /* leave the instance on its default icon */ }
+}
+
 /**
  * A real nested instance of a previously-built molecule set (button /
- * iconButton), configured from an organism slot: `variant` + `state` via the
- * set's variant properties, visible text via its "Label" property. Returns null
- * when that molecule wasn't part of this export (e.g. the user unticked Button),
- * so callers can fall back to a drawn control. This is what makes a Modal's
- * Confirm/Cancel true instances of the Button component instead of fake frames.
+ * iconButton / input …), configured to `content`: `variant` via the set's
+ * variant property, visible text via its "Label" property, and prefix/suffix/
+ * lead icons via the set's icon-swap properties. Returns null when that molecule
+ * wasn't part of this export (e.g. the user unticked Button), so callers can
+ * fall back to a drawn control. This is what makes a Modal's Confirm/Cancel — or
+ * an Alert's action/dismiss — true instances of the real component, not frames.
  */
-function makeButtonInstance(
+function nestInstance(
   compId: string,
-  slotName: string,
-  opts: { variant?: string; state?: string; label?: string }
+  name: string,
+  content: Record<string, any>
 ): InstanceNode | null {
   const set = BUILT_SETS.get(compId);
   if (!set) return null;
@@ -1531,11 +1592,25 @@ function makeButtonInstance(
   } catch (e) {
     return null;
   }
-  inst.name = slotName;
-  if (opts.variant) trySetVariant(inst, "variant", opts.variant);
-  trySetVariant(inst, "state", opts.state || "default");
-  if (opts.label !== undefined) trySetInstanceText(inst, "Label", opts.label);
+  inst.name = name;
+  if (content.variant !== undefined) trySetVariant(inst, "variant", String(content.variant));
+  if (content.tone !== undefined) trySetVariant(inst, "tone", String(content.tone));
+  trySetVariant(inst, "state", content.state ? String(content.state) : "default");
+  if (content.label !== undefined) trySetInstanceText(inst, "Label", String(content.label));
+  if (content.prefixIcon) setNestedIcon(inst, "prefixIcon", String(content.prefixIcon));
+  if (content.suffixIcon) setNestedIcon(inst, "suffixIcon", String(content.suffixIcon));
+  if (content.icon) setNestedIcon(inst, "icon", String(content.icon));
   return inst;
+}
+
+/** Nest the molecule for a named organism slot, configured to the slot's
+ *  resolved content from the bundle. Null when the molecule isn't in the export
+ *  (caller draws a fallback) or the organism declares no such slot. `extra`
+ *  overrides/augments the slot content (e.g. a default dismiss icon). */
+function makeSlotInstance(slotId: string, extra: Record<string, any> = {}): InstanceNode | null {
+  const slot = CURRENT_SLOTS.get(slotId);
+  if (!slot) return null;
+  return nestInstance(slot.componentId, slotId, { ...slot.content, ...extra });
 }
 
 /** Expose each icon slot as an INSTANCE_SWAP component property on the set, and
@@ -1548,11 +1623,14 @@ async function applyIconSwapProperties(node: ComponentSetNode | ComponentNode): 
       ? (node.children.filter(c => c.type === "COMPONENT") as ComponentNode[])
       : [node];
 
+  // Only this component's OWN icon slots — never ones living inside a nested
+  // molecule instance (those are driven by that molecule's own swap property).
+  const ownIconSlots = (v: ComponentNode) =>
+    v.findAll(n => n.getPluginData("ark:iconSlot") !== "" && !isInsideInstance(n, v));
+
   const slotNames = new Set<string>();
   for (const v of variants) {
-    v.findAll(n => n.getPluginData("ark:iconSlot") !== "").forEach(n =>
-      slotNames.add(n.getPluginData("ark:iconSlot"))
-    );
+    ownIconSlots(v).forEach(n => slotNames.add(n.getPluginData("ark:iconSlot")));
   }
 
   const LABELS: Record<string, string> = {
@@ -1566,9 +1644,9 @@ async function applyIconSwapProperties(node: ComponentSetNode | ComponentNode): 
       const defs = node.componentPropertyDefinitions;
       key = Object.keys(defs).find(k => k.split("#")[0] === label);
       if (!key) {
-        const firstInst = variants[0].findOne(
+        const firstInst = ownIconSlots(variants[0]).find(
           n => n.getPluginData("ark:iconSlot") === slot
-        ) as InstanceNode | null;
+        ) as InstanceNode | undefined;
         const defId =
           firstInst && firstInst.mainComponent ? firstInst.mainComponent.id : null;
         if (!defId) continue;
@@ -1579,7 +1657,7 @@ async function applyIconSwapProperties(node: ComponentSetNode | ComponentNode): 
       continue;
     }
     for (const v of variants) {
-      const insts = v.findAll(n => n.getPluginData("ark:iconSlot") === slot);
+      const insts = ownIconSlots(v).filter(n => n.getPluginData("ark:iconSlot") === slot);
       for (const inst of insts) {
         try {
           inst.componentPropertyReferences = {
@@ -2147,7 +2225,15 @@ async function drawPopover(node: ComponentNode, styles: any, options: any, figma
   const body = await createTextHelper(node, "body", "Anchored contextual content with room for a quick action.", 11.5, sem("text/muted"), "Inter", "Regular", figmaVarsMap);
   body.resize(220, body.height);
   body.textAutoResize = "HEIGHT";
-  await createTextHelper(node, "action", "Quick action →", 11.5, sem("text/link"), "Inter", "Medium", figmaVarsMap);
+
+  // Action — a REAL Button instance from the "action" slot; the link-style text
+  // is only a fallback for exports without the Button component.
+  const action = makeSlotInstance("action");
+  if (action) {
+    node.appendChild(action);
+  } else {
+    await createTextHelper(node, "action", "Quick action →", 11.5, sem("text/link"), "Inter", "Medium", figmaVarsMap);
+  }
 }
 
 async function drawFileUpload(node: ComponentNode, styles: any, options: any, figmaVarsMap: Map<string, Variable>) {
@@ -2176,6 +2262,11 @@ async function drawFileUpload(node: ComponentNode, styles: any, options: any, fi
 
   await createTextHelper(node, "title", "Drop files to upload", 12.5, styles["text.color"], "Inter", "Semi Bold", figmaVarsMap);
   await createTextHelper(node, "hint", "or click to browse · max 10 MB", 10.5, sem("text/muted"), "Inter", "Regular", figmaVarsMap);
+
+  // Browse — a REAL Button instance from the "browse" slot (outlined). Present
+  // only when the Button component is part of this export.
+  const browse = makeSlotInstance("browse");
+  if (browse) node.appendChild(browse);
 }
 
 async function drawTimeline(node: ComponentNode, styles: any, options: any, figmaVarsMap: Map<string, Variable>) {
@@ -2715,16 +2806,32 @@ async function drawAlertToastBanner(node: ComponentNode, styles: any, options: a
   const descColor = styles["text.color"] || styles["text.body"];
   await createTextHelper(messageStack, "title", options.title || "Notification Title", 12, titleColor, "Inter", "Bold", figmaVarsMap);
   await createTextHelper(messageStack, "desc", options.description || options.body || "Detailed message regarding the alert.", 11, descColor, "Inter", "Regular", figmaVarsMap);
-  
+
+  // Optional action — a REAL Button instance from the "action" slot, placed in
+  // the content column. Only appears when the schema's action option is on and
+  // the Button component is part of this export.
+  if (options.action) {
+    const action = makeSlotInstance("action");
+    if (action) messageStack.appendChild(action);
+  }
+
   node.appendChild(messageStack);
 
-  const close = figma.createVector();
-  close.name = "closeIcon";
-  close.vectorPaths = [{ windingRule: "NONZERO", data: "M 2 2 L 8 8 M 8 2 L 2 8" }];
-  close.strokes = semPaint(figmaVarsMap, "text/muted", { r: 0.5, g: 0.5, b: 0.5 });
-  close.strokeWeight = 1.2;
-  close.visible = options.dismissible !== false;
-  node.appendChild(close);
+  // Dismiss — a REAL IconButton instance from the "dismiss" slot (ghost, close
+  // glyph). Falls back to a drawn ✕ when IconButton isn't in this export.
+  if (options.dismissible !== false) {
+    const dismiss = makeSlotInstance("dismiss", { icon: "close" });
+    if (dismiss) {
+      node.appendChild(dismiss);
+    } else {
+      const close = figma.createVector();
+      close.name = "closeIcon";
+      close.vectorPaths = [{ windingRule: "NONZERO", data: "M 2 2 L 8 8 M 8 2 L 2 8" }];
+      close.strokes = semPaint(figmaVarsMap, "text/muted", { r: 0.5, g: 0.5, b: 0.5 });
+      close.strokeWeight = 1.2;
+      node.appendChild(close);
+    }
+  }
 }
 
 async function drawCardModal(node: ComponentNode, styles: any, options: any, componentId: string, figmaVarsMap: Map<string, Variable>) {
@@ -2812,25 +2919,28 @@ async function drawCardModal(node: ComponentNode, styles: any, options: any, com
     return b;
   };
 
-  // Secondary action (Cancel) — modal only, mirrors the schema's secondaryAction
-  // slot (an outlined Button instance). Falls back to a drawn button.
-  if (componentId === "modal" && options.showSecondary !== false) {
-    const cancel =
-      makeButtonInstance("button", "secondaryAction", { variant: "outlined", label: "Cancel" }) ||
-      (await drawnButton("secondaryAction", "Cancel", false));
-    footer.appendChild(cancel);
+  // Footer actions are REAL nested Button instances. Modal reads the schema's
+  // primaryAction / secondaryAction slots; Card has no slots, so it nests a
+  // Button from its btnLabel / showButton options. A hand-drawn button is only
+  // used when the Button component isn't part of this export.
+  const wantFooter = componentId === "modal" || options.showButton !== false;
+  if (wantFooter) {
+    if (componentId === "modal" && options.showSecondary !== false) {
+      const cancel =
+        makeSlotInstance("secondaryAction") ||
+        (await drawnButton("secondaryAction", "Cancel", false));
+      footer.appendChild(cancel);
+    }
+
+    const confirmLabel = options.btnLabel || (componentId === "modal" ? "Confirm" : "Action");
+    const confirm =
+      makeSlotInstance("primaryAction") ||
+      nestInstance("button", "primaryAction", { variant: "filled", label: confirmLabel }) ||
+      (await drawnButton("primaryAction", confirmLabel, true));
+    footer.appendChild(confirm);
   }
 
-  // Primary action (Confirm) — the schema's primaryAction slot, a filled Button
-  // instance. Nesting the real component here is the fix for the missing
-  // instances; the drawn button is only a no-Button-in-export fallback.
-  const confirmLabel = options.btnLabel || (componentId === "modal" ? "Confirm" : "Action");
-  const confirm =
-    makeButtonInstance("button", "primaryAction", { variant: "filled", label: confirmLabel }) ||
-    (await drawnButton("primaryAction", confirmLabel, true));
-  footer.appendChild(confirm);
-
-  node.appendChild(footer);
+  if (footer.children.length > 0) node.appendChild(footer);
 }
 
 async function drawInteractiveNavigation(node: ComponentNode, styles: any, options: any, componentId: string, figmaVarsMap: Map<string, Variable>) {
@@ -2866,6 +2976,11 @@ async function drawInteractiveNavigation(node: ComponentNode, styles: any, optio
     tab2.fills = [];
     await createTextHelper(tab2, "label", "Inactive Tab", 12.5, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
     node.appendChild(tab2);
+
+    // Panel action — a REAL Button instance from the "panelAction" slot,
+    // trailing the tab strip. Present only when Button is in this export.
+    const panelAction = makeSlotInstance("panelAction");
+    if (panelAction) node.appendChild(panelAction);
 
   } else if (componentId === "accordion") {
     node.primaryAxisSizingMode = "FIXED";
@@ -3145,15 +3260,22 @@ async function drawComplexDisplays(node: ComponentNode, styles: any, options: an
     sub.resize(200, 10);
     sub.textAutoResize = "HEIGHT";
     
-    const btn = figma.createFrame();
-    btn.name = "btn";
-    btn.layoutMode = "HORIZONTAL";
-    btn.paddingLeft = 12; btn.paddingRight = 12;
-    btn.paddingTop = 4; btn.paddingBottom = 4;
-    btn.cornerRadius = 4;
-    btn.fills = semPaint(figmaVarsMap, "action/secondary/default", { r: 0.92, g: 0.92, b: 0.94 });
-    await createTextHelper(btn, "text", "Import Files", 10.5, null, "Inter", "Medium", figmaVarsMap);
-    node.appendChild(btn);
+    // Action — a REAL Button instance from the "action" slot; the drawn button
+    // is only a fallback for exports that don't include the Button component.
+    const action = makeSlotInstance("action");
+    if (action) {
+      node.appendChild(action);
+    } else {
+      const btn = figma.createFrame();
+      btn.name = "btn";
+      btn.layoutMode = "HORIZONTAL";
+      btn.paddingLeft = 12; btn.paddingRight = 12;
+      btn.paddingTop = 4; btn.paddingBottom = 4;
+      btn.cornerRadius = 4;
+      btn.fills = semPaint(figmaVarsMap, "action/secondary/default", { r: 0.92, g: 0.92, b: 0.94 });
+      await createTextHelper(btn, "text", "Import Files", 10.5, null, "Inter", "Medium", figmaVarsMap);
+      node.appendChild(btn);
+    }
 
   } else if (componentId === "codeBlock") {
     node.primaryAxisSizingMode = "FIXED";
@@ -3280,18 +3402,26 @@ async function drawAdvancedControls(
     node.counterAxisAlignItems = "MIN";
 
     await createTextHelper(node, "label", "Email Address", 11.5, styles["text.color"], "Inter", "Bold", figmaVarsMap);
-    
-    const input = figma.createFrame();
-    input.name = "input";
-    input.layoutMode = "HORIZONTAL";
-    input.paddingLeft = 8; input.paddingRight = 8;
-    input.paddingTop = 6; input.paddingBottom = 6;
-    input.cornerRadius = 4;
-    input.fills = semPaint(figmaVarsMap, "surface/elevated", { r: 0.98, g: 0.98, b: 0.99 });
-    input.strokes = semPaint(figmaVarsMap, "border/default", { r: 0.87, g: 0.87, b: 0.9 });
-    
-    await createTextHelper(input, "text", "name@example.com", 11, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
-    node.appendChild(input);
+
+    // Control — a REAL Input instance from the "control" slot, stretched to the
+    // field width. Falls back to a drawn input when Input isn't in this export.
+    const control = makeSlotInstance("control");
+    if (control) {
+      control.layoutAlign = "STRETCH";
+      node.appendChild(control);
+    } else {
+      const input = figma.createFrame();
+      input.name = "input";
+      input.layoutMode = "HORIZONTAL";
+      input.paddingLeft = 8; input.paddingRight = 8;
+      input.paddingTop = 6; input.paddingBottom = 6;
+      input.cornerRadius = 4;
+      input.fills = semPaint(figmaVarsMap, "surface/elevated", { r: 0.98, g: 0.98, b: 0.99 });
+      input.strokes = semPaint(figmaVarsMap, "border/default", { r: 0.87, g: 0.87, b: 0.9 });
+
+      await createTextHelper(input, "text", "name@example.com", 11, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
+      node.appendChild(input);
+    }
 
     await createTextHelper(node, "helpText", "Required for notification logs.", 10, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
   }

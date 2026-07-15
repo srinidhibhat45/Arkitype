@@ -643,6 +643,9 @@ export interface ArkitypeState {
   canvasZoom: number;
   /** Transient "jump here and highlight X" target — never persisted. */
   pendingFocus: { step: StepId; anchor: string } | null;
+  /** Cloud autosave status for the active file, driven by AuthProvider. Never persisted. */
+  saveStatus: "idle" | "saving" | "saved" | "error";
+  saveError: string | null;
 
   /* Transient UI state */
   activeComponentId: string | null;
@@ -783,6 +786,9 @@ export interface ArkitypeState {
   setChromeTheme: (theme: ChromeTheme) => void;
   toggleChromeTheme: () => void;
   setCanvasZoom: (zoom: number) => void;
+
+  /** Driven by AuthProvider's autosave effect — never call directly from UI. */
+  setSaveStatus: (status: "idle" | "saving" | "saved" | "error", error?: string | null) => void;
 }
 
 /* ────────────────────────────── defaults ────────────────────────────── */
@@ -1018,6 +1024,7 @@ export const useDesignSystem = create<ArkitypeState>()(
           if (merged.activeProjectId && merged.projects[merged.activeProjectId] && !isSelectingProject) {
             const p = { ...merged.projects[merged.activeProjectId] };
             p.updatedAt = Date.now();
+            if (merged.meta.name.trim()) p.name = merged.meta.name;
             p.meta = merged.meta;
             p.journey = merged.journey;
             p.primitives = merged.primitives;
@@ -1080,6 +1087,8 @@ export const useDesignSystem = create<ArkitypeState>()(
         chromeTheme: "light",
         canvasZoom: 1,
         pendingFocus: null,
+        saveStatus: "idle",
+        saveError: null,
 
         /* Transient UI state */
         activeComponentId: "button",
@@ -2231,6 +2240,8 @@ export const useDesignSystem = create<ArkitypeState>()(
         })),
 
       setCanvasZoom: (zoom) => set({ canvasZoom: zoom }),
+
+      setSaveStatus: (status, error = null) => set({ saveStatus: status, saveError: error }),
     };
   },
   {

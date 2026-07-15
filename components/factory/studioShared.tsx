@@ -8,7 +8,8 @@
  * (legacy) Inspector and the new floating-card ComponentStudio render an
  * identical picker and read the same live option lists off the design system.
  */
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { ArrowUpRight, Check, Pipette, X } from "lucide-react";
 import { PreviewMode, RADII_NAMES, useDesignSystem } from "@/store/useDesignSystem";
 import { rampStepLabels } from "@/lib/color";
@@ -17,6 +18,63 @@ import { resolveRef, resolveToken } from "@/lib/tokens";
 import { bindingSource, bindingSwatch, describeBinding } from "@/lib/binding";
 
 /* ── shared option data pulled from the live system ── */
+
+/**
+ * Portals a flyout to `document.body` and positions it against its anchor's
+ * live bounding rect. The property inspector is a narrow, scrollable,
+ * user-resizable panel — a plain `position: absolute` popover nested inside
+ * it gets clipped by the panel's own scroll/overflow or ends up anchored to
+ * the wrong containing block, which is why colour/icon flyouts have been
+ * rendering detached from their trigger. Fixed positioning off the anchor's
+ * real screen coordinates sidesteps all of that.
+ */
+export function AnchoredPopover({
+  anchorRef,
+  open,
+  align = "left",
+  className = "",
+  children,
+}: {
+  anchorRef: RefObject<HTMLElement | null>;
+  open: boolean;
+  align?: "left" | "right";
+  className?: string;
+  children: ReactNode;
+}) {
+  const [rect, setRect] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = anchorRef.current?.getBoundingClientRect();
+      if (r) setRect({ top: r.top, bottom: r.bottom, left: r.left, right: r.right });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open, anchorRef]);
+
+  if (!open || !rect || typeof document === "undefined") return null;
+
+  const gutter = 8;
+  const style: CSSProperties = {
+    position: "fixed",
+    top: rect.bottom + 6,
+    maxHeight: `calc(100vh - ${rect.bottom + 6 + gutter}px)`,
+    ...(align === "left" ? { left: rect.left } : { right: Math.max(gutter, window.innerWidth - rect.right) }),
+  };
+
+  return createPortal(
+    <div className={`z-[1000] ${className}`} style={style}>
+      {children}
+    </div>,
+    document.body
+  );
+}
 
 export function useInspectorData() {
   const primitives = useDesignSystem((s) => s.primitives);

@@ -200,6 +200,27 @@ const DENSITY_OPTIONS: { value: Density; label: string }[] = [
   { value: "spacious", label: "Spacious" },
 ];
 
+// A blank file's starting brand colour is picked randomly from this set so
+// dashboard thumbnails are distinguishable at a glance before a designer has
+// touched the Colour step — otherwise every new file shares the same
+// hardcoded default and the dashboard grid is unreadable.
+const RANDOM_BRAND_SEEDS = [
+  "#4f46e5", // indigo
+  "#0ea5e9", // sky
+  "#059669", // emerald
+  "#d97706", // amber
+  "#db2777", // pink
+  "#7c3aed", // violet
+  "#dc2626", // red
+  "#0d9488", // teal
+  "#ca8a04", // yellow
+  "#e11d48", // rose
+  "#2563eb", // blue
+  "#65a30d", // lime
+];
+const randomBrandSeed = () =>
+  RANDOM_BRAND_SEEDS[Math.floor(Math.random() * RANDOM_BRAND_SEEDS.length)];
+
 /**
  * Two-step init wizard (MAJOR_OVERHAUL_PLAN.md Phase 2). Step 1 answers the
  * infrastructure question ("how do you start?"); step 2 names the file and sets
@@ -227,7 +248,7 @@ function NewFileWizard({
 
   const [name, setName] = useState(defaultName);
   const [folder, setFolder] = useState("");
-  const [brandHex, setBrandHex] = useState("#4f46e5");
+  const [brandHex, setBrandHex] = useState(randomBrandSeed);
   const [density, setDensity] = useState<Density>("standard");
   const [platform, setPlatform] = useState<TargetPlatform>("web");
   const [destination, setDestination] = useState<EngineeringDestination>("tailwind");

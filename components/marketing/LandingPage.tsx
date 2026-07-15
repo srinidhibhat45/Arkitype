@@ -350,7 +350,7 @@ export function LandingPage() {
           <div>
             <Reveal>
               <p className="mb-7 text-sm font-medium uppercase tracking-[0.2em] text-fg-mute">
-                Design-system builder · Public beta
+                Design-system builder · Public alpha
               </p>
             </Reveal>
             <Reveal delay={90}>
@@ -539,7 +539,7 @@ export function LandingPage() {
             Arkitype
             <BetaTag />
           </span>
-          <span>© {new Date().getFullYear()} Arkitype · Public beta</span>
+          <span>© {new Date().getFullYear()} Arkitype · Public alpha</span>
           <div className="flex items-center gap-5">
             <Link href="/docs" className="transition-colors hover:text-fg">
               Docs

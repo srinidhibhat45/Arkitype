@@ -11,7 +11,9 @@ export function TopBar() {
   const toggleChromeTheme = useDesignSystem((s) => s.toggleChromeTheme);
   const done = useDesignSystem((s) => s.journey.done);
   const goToStep = useDesignSystem((s) => s.goToStep);
-  
+  const saveStatus = useDesignSystem((s) => s.saveStatus);
+  const saveError = useDesignSystem((s) => s.saveError);
+
   const setView = useDesignSystem((s) => s.setView);
   const setTutorialStep = useDesignSystem((s) => s.setTutorialStep);
 
@@ -48,8 +50,17 @@ export function TopBar() {
       />
 
       <div id="workspace-topbar-actions" className="ml-auto flex items-center gap-3">
-        <span className="hidden text-[11px] text-fg-mute sm:block">
-          Autosaved
+        <span
+          className={`hidden text-[11px] sm:block ${
+            saveStatus === "error" ? "text-rose-500" : "text-fg-mute"
+          }`}
+          title={saveStatus === "error" ? (saveError ?? "Save failed") : undefined}
+        >
+          {saveStatus === "saving"
+            ? "Saving…"
+            : saveStatus === "error"
+              ? "Save failed"
+              : "Autosaved"}
         </span>
 
         {/* Guided Tour Launcher */}

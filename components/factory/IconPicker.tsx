@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGrid, Search, X } from "lucide-react";
 import { iconDisplayLabel, MATERIAL_ICON_GROUPS } from "@/lib/materialSymbols";
+import { AnchoredPopover } from "@/components/factory/studioShared";
 
 export function IconField({
   value,
@@ -22,13 +23,15 @@ export function IconField({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      if (containerRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -74,8 +77,13 @@ export function IconField({
           className="h-7 min-w-0 flex-1 rounded-md border border-line bg-ink px-2 text-[11px] text-fg focus:border-focus focus:outline-none font-mono"
         />
       </div>
-      {open ? (
-        <div className="absolute right-0 top-full z-[100] mt-1.5 w-72 rounded-lg border border-line-strong bg-ink-panel p-2.5 shadow-2xl">
+      <AnchoredPopover
+        anchorRef={containerRef}
+        open={open}
+        align="right"
+        className="w-72 rounded-lg border border-line-strong bg-ink-panel p-2.5 shadow-2xl"
+      >
+        <div ref={popoverRef}>
           <div className="mb-2 flex items-center gap-1.5 rounded-md border border-line bg-ink px-2">
             <Search size={12} className="shrink-0 text-fg-mute" />
             <input
@@ -134,7 +142,7 @@ export function IconField({
             ) : null}
           </div>
         </div>
-      ) : null}
+      </AnchoredPopover>
     </div>
   );
 }

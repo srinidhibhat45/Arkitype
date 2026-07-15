@@ -57,8 +57,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // (which takes render precedence over whatever view we hydrate underneath).
         useDesignSystem.getState().setRecovery(true);
         if (session) void hydrateFrom(session);
-      } else if (event === "SIGNED_IN" && session) void hydrateFrom(session);
-      else if (event === "SIGNED_OUT") useDesignSystem.getState().clearSession();
+      } else if (event === "SIGNED_IN" && session) {
+        // Supabase re-fires SIGNED_IN on window/tab focus (its background
+        // token-refresh check), not just on a real sign-in. Re-hydrating then
+        // would reset activeProjectId/view and boot the user out of whatever
+        // file they had open. Only hydrate on an actual new sign-in.
+        if (!useDesignSystem.getState().user) void hydrateFrom(session);
+      } else if (event === "SIGNED_OUT") useDesignSystem.getState().clearSession();
     });
     return () => {
       active = false;
@@ -66,31 +71,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Debounced autosave of the active file, on real design changes only.
+  // Debounced autosave of the active file, on real design changes only —
+  // flushed immediately (bypassing the debounce) the moment the user leaves
+  // the workspace, switches files, or closes the tab, so a quick
+  // edit-then-navigate can never lose the edit to a pending timer.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let pending: { id: string; cur: ProjectState } | null = null;
+
+    const flush = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (!pending) return;
+      const { id, cur } = pending;
+      pending = null;
+      useDesignSystem.getState().setSaveStatus("saving");
+      db.saveProject(id, cur.name, cur)
+        .then(() => useDesignSystem.getState().setSaveStatus("saved"))
+        .catch((e) => {
+          console.error("[arkitype] autosave failed", e);
+          useDesignSystem.getState().setSaveStatus("error", e?.message ?? "Save failed");
+        });
+    };
+
     const unsub = useDesignSystem.subscribe((state, prev) => {
+      if (prev.view === "workspace" && state.view !== "workspace") flush();
+      if (prev.activeProjectId && prev.activeProjectId !== state.activeProjectId) flush();
+
       const id = state.activeProjectId;
       if (!id) return;
       const cur = state.projects[id];
       if (!cur) return;
       const before = prev.activeProjectId === id ? prev.projects[id] : undefined;
       const designChanged =
-        !before ||
-        cur.meta !== before.meta ||
-        cur.journey !== before.journey ||
-        cur.primitives !== before.primitives ||
-        cur.semantics !== before.semantics ||
-        cur.components !== before.components;
+        !!before &&
+        (cur.meta !== before.meta ||
+          cur.journey !== before.journey ||
+          cur.primitives !== before.primitives ||
+          cur.semantics !== before.semantics ||
+          cur.components !== before.components);
       if (!designChanged) return;
+      pending = { id, cur };
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        db.saveProject(id, cur.name, cur).catch((e) =>
-          console.error("[arkitype] autosave failed", e)
-        );
-      }, 1200);
+      timer = setTimeout(flush, 1200);
     });
+
+    // A refresh/tab close kills the debounce timer outright. Flush whatever's
+    // pending (best effort — the request may not finish before unload) and
+    // warn the user via the native "leave site?" prompt so they get a chance
+    // to wait the extra beat instead of silently losing the edit.
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const hadPending = pending !== null;
+      flush();
+      if (hadPending) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       if (timer) clearTimeout(timer);
       unsub();
     };

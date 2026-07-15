@@ -121,7 +121,7 @@ export function GateKeeper({ children }: GateKeeperProps) {
                   type="submit"
                   className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-[14px] font-semibold text-black transition-all hover:bg-zinc-200 active:scale-[0.98]"
                 >
-                  Enter Private Beta
+                  Enter Private Alpha
                   <ArrowRight size={16} />
                 </button>
               </form>
@@ -177,7 +177,7 @@ export function GateKeeper({ children }: GateKeeperProps) {
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="text-white">•</span>
-                    <span>Performance optimizations are running in developer beta modes.</span>
+                    <span>Performance optimizations are running in developer alpha modes.</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="text-white">•</span>

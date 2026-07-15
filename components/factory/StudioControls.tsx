@@ -9,12 +9,13 @@
  *   • space      → TokenSlider snapping across the spacing scale (space:n)
  *   • dimension  → TokenSlider, free px (px:n)  ← the "padding can be custom" lane
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as RadixSlider from "@radix-ui/react-slider";
 import { ChevronRight, RotateCcw } from "lucide-react";
 import type { ReactNode } from "react";
 import { describeBinding } from "@/lib/binding";
 import {
+  AnchoredPopover,
   ColorPicker,
   InspectorData,
   Swatch,
@@ -248,6 +249,20 @@ export function TokenSwatchCard({
   const [pendingValue, setPendingValue] = useState<string | null>(null);
   const [pendingWarning, setPendingWarning] = useState<{ label: string; ratio: number } | null>(null);
   const desc = describeBinding(binding);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (anchorRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
 
   const handlePick = (newVal: string) => {
     if (contrastAgainstHex) {
@@ -266,7 +281,7 @@ export function TokenSwatchCard({
   };
 
   return (
-    <div className="relative w-full min-w-0 flex items-center">
+    <div ref={anchorRef} className="relative w-full min-w-0 flex items-center">
       <button
         type="button"
         onClick={() => {
@@ -285,8 +300,8 @@ export function TokenSwatchCard({
           {desc.label}
         </span>
       </button>
-      {open ? (
-        <div className={`absolute top-full mt-1.5 z-[100] w-64 shadow-2xl ${align === "left" ? "left-0" : "right-0"}`}>
+      <AnchoredPopover anchorRef={anchorRef} open={open} align={align} className="w-64 shadow-2xl">
+        <div ref={popoverRef}>
           {pendingWarning ? (
             <div className="rounded-lg border border-red-500/20 bg-red-950/95 backdrop-blur-md p-3 text-[11px] text-white">
               <div className="mb-2 font-medium">
@@ -326,7 +341,7 @@ export function TokenSwatchCard({
             />
           )}
         </div>
-      ) : null}
+      </AnchoredPopover>
     </div>
   );
 }

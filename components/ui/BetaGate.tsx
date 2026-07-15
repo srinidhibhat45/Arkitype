@@ -57,9 +57,9 @@ export function BetaGate({ onUnlock }: { onUnlock: () => void }) {
           <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-line-strong text-fg-dim">
             <Lock size={18} />
           </div>
-          <h1 className="mt-5 font-serif text-2xl tracking-tight text-fg">Private beta</h1>
+          <h1 className="mt-5 font-serif text-2xl tracking-tight text-fg">Private alpha</h1>
           <p className="mt-3 text-sm leading-relaxed text-fg-dim">
-            Arkitype is in a controlled beta. Enter the access password to continue to sign in.
+            Arkitype is in a controlled alpha. Enter the access password to continue to sign in.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">

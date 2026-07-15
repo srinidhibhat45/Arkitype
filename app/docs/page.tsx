@@ -609,7 +609,7 @@ export default function DocsPage() {
               items={[
                 {
                   label: "Is my work safe? Can I lose data?",
-                  body: "Arkitype is beta software and can be unstable — treat it accordingly. Export what matters from Ship regularly rather than relying on a single saved copy.",
+                  body: "Arkitype is alpha software and can be unstable — treat it accordingly. Export what matters from Ship regularly rather than relying on a single saved copy.",
                 },
                 {
                   label: "How many design files can I have?",

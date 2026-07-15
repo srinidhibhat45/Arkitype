@@ -8,6 +8,7 @@
     "start": "next start -p 3111"
   },
   "dependencies": {
+    "@next/third-parties": "^14.2.35",
     "@radix-ui/react-select": "2.1.2",
     "@radix-ui/react-slider": "1.2.1",
     "@radix-ui/react-switch": "1.1.1",

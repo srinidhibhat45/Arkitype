@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import Link from "next/link";
 import { useDesignSystem, STEP_META, STEP_ORDER } from "@/store/useDesignSystem";
 import { BetaTag } from "@/components/ui/BetaTag";
+import { trackEvent } from "@/lib/analytics";
 import {
   ArrowRight,
   Moon,
@@ -278,7 +279,14 @@ export function LandingPage() {
   const chromeTheme = useDesignSystem((s) => s.chromeTheme);
   const toggleChromeTheme = useDesignSystem((s) => s.toggleChromeTheme);
 
-  const start = () => setView(user ? "dashboard" : "login");
+  const start = (source: string) => {
+    trackEvent("get_started_click", { source });
+    setView(user ? "dashboard" : "login");
+  };
+  const signIn = (source: string) => {
+    trackEvent("sign_in_click", { source });
+    setView("login");
+  };
   const scrollTo = (id: string) =>
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
@@ -305,6 +313,14 @@ export function LandingPage() {
             >
               Docs
             </Link>
+            <a
+              href="https://forms.gle/rbLCRSNM2qAanjfA9"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden rounded-lg px-4 py-2.5 text-[15px] font-medium text-fg-dim transition-colors hover:text-fg md:block"
+            >
+              Report a bug
+            </a>
             <button
               onClick={toggleChromeTheme}
               aria-label="Toggle light or dark theme"
@@ -313,13 +329,13 @@ export function LandingPage() {
               {chromeTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
             </button>
             <button
-              onClick={() => setView("login")}
+              onClick={() => signIn("header")}
               className="hidden rounded-lg px-4 py-2.5 text-[15px] font-medium text-fg-dim transition-colors hover:text-fg sm:block"
             >
               Sign in
             </button>
             <button
-              onClick={start}
+              onClick={() => start("header")}
               className="rounded-lg bg-fg px-5 py-2.5 text-[15px] font-medium text-ink transition hover:-translate-y-0.5 hover:opacity-90"
             >
               Get started
@@ -338,10 +354,8 @@ export function LandingPage() {
               </p>
             </Reveal>
             <Reveal delay={90}>
-              <h1 className="max-w-2xl font-serif text-6xl leading-[1.05] tracking-tight text-fg sm:text-7xl lg:text-8xl">
-                Because building Design Systems
-                <br />
-                shouldn&rsquo;t be a Pain in the A**
+              <h1 className="max-w-xl font-serif text-5xl leading-[1.15] tracking-tight text-fg sm:text-6xl lg:text-7xl">
+                Design systems, without the pain in the a**
               </h1>
             </Reveal>
             <Reveal delay={180}>
@@ -355,7 +369,7 @@ export function LandingPage() {
             <Reveal delay={270}>
               <div className="mt-11 flex flex-col gap-4 sm:flex-row sm:items-center">
                 <button
-                  onClick={start}
+                  onClick={() => start("hero")}
                   className="inline-flex items-center justify-center gap-2 rounded-lg bg-fg px-8 py-4 text-lg font-medium text-ink transition hover:-translate-y-0.5 hover:opacity-90"
                 >
                   Get started
@@ -506,7 +520,7 @@ export function LandingPage() {
               Name a system, pick a hue, and let every step follow from there.
             </p>
             <button
-              onClick={start}
+              onClick={() => start("closing_cta")}
               className="mt-9 inline-flex items-center justify-center gap-2 rounded-lg bg-fg px-8 py-4 text-base font-medium text-ink transition hover:-translate-y-0.5 hover:opacity-90"
             >
               Get started
@@ -530,8 +544,16 @@ export function LandingPage() {
             <Link href="/docs" className="transition-colors hover:text-fg">
               Docs
             </Link>
+            <a
+              href="https://forms.gle/rbLCRSNM2qAanjfA9"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-fg"
+            >
+              Report a bug
+            </a>
             <button
-              onClick={() => setView("login")}
+              onClick={() => signIn("footer")}
               className="transition-colors hover:text-fg"
             >
               Sign in

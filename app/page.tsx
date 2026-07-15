@@ -12,6 +12,7 @@ import { useDesignSystem } from "@/store/useDesignSystem";
 import { AuthProvider } from "@/components/ui/AuthProvider";
 import { LandingPage } from "@/components/marketing/LandingPage";
 import { AuthAndSurvey } from "@/components/marketing/AuthAndSurvey";
+import { BetaGate, isBetaGateUnlocked } from "@/components/ui/BetaGate";
 import { ProjectDashboard } from "@/components/dashboard/ProjectDashboard";
 import { Welcome } from "@/components/steps/Welcome";
 import { TopBar } from "@/components/shell/TopBar";
@@ -88,7 +89,11 @@ export default function ArkitypePage() {
   // Gate on client mount so the persisted chrome prefs hydrate before first
   // paint (avoids an SSR/localStorage class mismatch on <html>).
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const [betaUnlocked, setBetaUnlocked] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    setBetaUnlocked(isBetaGateUnlocked());
+  }, []);
 
   const view = useDesignSystem((s) => s.view);
   const recovery = useDesignSystem((s) => s.recovery);
@@ -109,7 +114,11 @@ export default function ArkitypePage() {
       ) : view === "landing" ? (
         <LandingPage />
       ) : view === "login" || view === "survey" ? (
-        <AuthAndSurvey />
+        betaUnlocked ? (
+          <AuthAndSurvey />
+        ) : (
+          <BetaGate onUnlock={() => setBetaUnlocked(true)} />
+        )
       ) : view === "dashboard" ? (
         <ProjectDashboard />
       ) : (

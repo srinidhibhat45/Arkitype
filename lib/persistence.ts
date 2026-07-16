@@ -71,8 +71,15 @@ export async function createProject(name: string, state: ProjectState): Promise<
 /** Persist the working copy of an existing project (autosave + explicit saves). */
 export async function saveProject(id: string, name: string, state: ProjectState): Promise<void> {
   if (!isSupabaseConfigured) return;
-  const { error } = await supabase.from("projects").update({ name, state }).eq("id", id);
+  const { data, error } = await supabase
+    .from("projects")
+    .update({ name, state })
+    .eq("id", id)
+    .select("id");
   if (error) throw error;
+  // RLS makes a non-matching update a silent 0-row no-op, not an error — e.g.
+  // an expired session. Treat that as a failed save so the UI can say so.
+  if (!data?.length) throw new Error("Save didn't reach the server — are you still signed in?");
 }
 
 export async function deleteProject(id: string): Promise<void> {

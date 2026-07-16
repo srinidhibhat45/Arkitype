@@ -1032,7 +1032,11 @@ export const useDesignSystem = create<ArkitypeState>()(
             p.components = merged.components;
             p.currentPreviewMode = merged.currentPreviewMode;
             p.canvasZoom = merged.canvasZoom;
-            merged.projects[merged.activeProjectId] = p;
+            // Must be a NEW map — writing into the existing one mutates the
+            // previous state's `projects` too (same reference when the action
+            // didn't set it), which makes prev/state look identical to
+            // subscribers and silently disables the autosave change detection.
+            merged.projects = { ...merged.projects, [merged.activeProjectId]: p };
           }
           return merged;
         }, replace);

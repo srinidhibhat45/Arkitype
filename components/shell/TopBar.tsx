@@ -1,6 +1,8 @@
-import { Moon, Sun, Folder, HelpCircle } from "lucide-react";
+import { useState } from "react";
+import { Moon, Sun, Folder, HelpCircle, AlertTriangle } from "lucide-react";
 import { Segmented } from "@/components/ui/controls";
 import { STEP_ORDER, useDesignSystem } from "@/store/useDesignSystem";
+import * as db from "@/lib/persistence";
 
 export function TopBar() {
   const name = useDesignSystem((s) => s.meta.name);
@@ -13,11 +15,30 @@ export function TopBar() {
   const goToStep = useDesignSystem((s) => s.goToStep);
   const saveStatus = useDesignSystem((s) => s.saveStatus);
   const saveError = useDesignSystem((s) => s.saveError);
+  const setSaveStatus = useDesignSystem((s) => s.setSaveStatus);
+  const activeProjectId = useDesignSystem((s) => s.activeProjectId);
+  const [retrying, setRetrying] = useState(false);
 
   const setView = useDesignSystem((s) => s.setView);
   const setTutorialStep = useDesignSystem((s) => s.setTutorialStep);
 
   const readyToShip = STEP_ORDER.slice(0, -1).every((id) => done[id]);
+
+  const retrySave = async () => {
+    if (!activeProjectId || retrying) return;
+    const cur = useDesignSystem.getState().projects[activeProjectId];
+    if (!cur) return;
+    setRetrying(true);
+    setSaveStatus("saving");
+    try {
+      await db.saveProject(activeProjectId, cur.name, cur);
+      setSaveStatus("saved");
+    } catch (e: unknown) {
+      setSaveStatus("error", e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-ink px-5">
@@ -50,18 +71,27 @@ export function TopBar() {
       />
 
       <div id="workspace-topbar-actions" className="ml-auto flex items-center gap-3">
-        <span
-          className={`hidden text-[11px] sm:block ${
-            saveStatus === "error" ? "text-rose-500" : "text-fg-mute"
-          }`}
-          title={saveStatus === "error" ? (saveError ?? "Save failed") : undefined}
-        >
-          {saveStatus === "saving"
-            ? "Saving…"
-            : saveStatus === "error"
-              ? "Save failed"
-              : "Autosaved"}
-        </span>
+        {saveStatus === "error" ? (
+          <div
+            className="flex items-center gap-1.5 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-400"
+            title={saveError ?? "Save failed"}
+          >
+            <AlertTriangle size={12} />
+            <span>Not saved</span>
+            <button
+              type="button"
+              onClick={retrySave}
+              disabled={retrying}
+              className="ml-1 rounded border border-rose-500/40 px-1.5 py-0.5 text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50"
+            >
+              {retrying ? "Retrying…" : "Retry"}
+            </button>
+          </div>
+        ) : (
+          <span className="hidden text-[11px] text-fg-mute sm:block">
+            {saveStatus === "saving" ? "Saving…" : "Autosaved"}
+          </span>
+        )}
 
         {/* Guided Tour Launcher */}
         <button

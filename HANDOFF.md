@@ -26,8 +26,8 @@ motion, roles — turns them into design tokens + semantic roles, lets them deep
 **50 live components** to those tokens through a Figma-style Component Studio, and exports
 the result (docs + a Figma variables bundle).
 
-- **Status:** alpha (`0.1.0-alpha`). Branch `feat/chrome-theming-studio-and-roles-merge`.
-  Working tree currently clean; `npx tsc --noEmit` passes (exit 0).
+- **Status:** alpha (`0.1.0-alpha`), on `main`. Don't trust a branch name or a
+  "tree is clean" claim written into a doc — check `git status` instead.
 - **Core idea — "entry-first":** no canned presets. Every value is typed/picked by the
   user; suggestions are *derived* from their own brand hex (harmony, tinted neutrals,
   status hues) and offered as chips.
@@ -45,31 +45,50 @@ npm run dev      # http://localhost:3111   (dev server, App Router)
 npm run build    # production build
 npm run start    # serve production build on :3111
 npx tsc --noEmit # typecheck — keep this at exit 0
+
+npx tsx scripts/check-contrast.ts   # WCAG AA audit of the default role maps
+npx tsx scripts/test-exporter.ts    # compiles the Figma bundle (expect 50 components)
+cd figma-plugin && npm run build    # the plugin typechecks separately from the app
 ```
 
 `.claude/launch.json` already defines an `arkitype` server on port **3111**. Verify changes
 live in the preview at `:3111` — walk the affected step, and (for component work) toggle
 states/variants + light/dark in the Component Studio and watch computed styles.
 
+⚠️ Running `npm run build` overwrites `.next` underneath a running `npm run dev`, which
+then 404s its own chunks and serves a blank page. It looks exactly like a rendering bug.
+Restart the dev server after a production build.
+
+The `figma-plugin/` directory has its own `tsconfig` and its own `node_modules`; the
+app's `tsc --noEmit` does **not** cover it. Build it separately when you touch
+`lib/figma.ts` or the plugin.
+
 ---
 
-## 3. The 9-step rail (the product's spine)
+## 3. The 8-step rail (the product's spine)
 
 A Welcome moment → an ordered `StageRail` of steps, each a focused decision with its own
-live canvas. One file per step in `components/steps/`:
+live canvas. `STEP_ORDER` in the store is the ground truth for the rail; `app/page.tsx`
+maps each step id to its surface. Note that the file names do **not** line up with the
+step names one-to-one:
 
-| # | Step | File | Produces |
-|---|------|------|----------|
-| — | Welcome | `Welcome.tsx` | name + brand hex (pure entry) |
-| 01 | Colour | `ColourStep.tsx` | colour families → generated ramps + harmony chips |
-| 02 | Type | `TypeStep.tsx` | type scale, roles, weights |
-| 03 | Space | `SpaceStep.tsx` | spacing scale + breakpoints |
-| 04 | Shape | `ShapeStep.tsx` (a.k.a. FoundationStep) | radius + elevation (per-mode shadows) |
-| 05 | Motion | `MotionStep.tsx` | durations + easing curves |
-| 06 | Roles | `RolesStep.tsx` | semantic token roles mapped onto primitives (+ overrides) |
-| 07 | Components | `ComponentsStep.tsx` | the Component Studio (see §5) |
-| 08 | Preview | `PreviewStep.tsx` | whole system on a representative dashboard |
-| 09 | Ship | `ShipStep.tsx` | export docs + Figma variables bundle |
+| # | Step id | Renders | Produces |
+|---|---------|---------|----------|
+| — | — | `Welcome.tsx` | name + brand hex (pure entry) |
+| 01 | `colour` | `FoundationStep.tsx` | primitives, roles, and component tokens |
+| 02 | `type` | `TypeStep.tsx` | type scale, roles, weights |
+| 03 | `space` | `SpaceStep.tsx` | spacing scale + breakpoints |
+| 04 | `shape` | `ShapeStep.tsx` | radius + elevation (per-mode shadows) |
+| 05 | `motion` | `MotionStep.tsx` | durations + easing curves |
+| 06 | `components` | `ComponentsStep.tsx` | the Component Studio (see §5) |
+| 07 | `preview` | `PreviewStep.tsx` | whole system on a representative dashboard |
+| 08 | `ship` | `ShipStep.tsx` | export docs + Figma variables bundle |
+
+**Colour and Roles are one step now.** `FoundationStep` is the merged surface and renders
+`ColourStep.tsx` / `RolesStep.tsx` as tabs — neither is mounted directly by `app/page.tsx`,
+so a step is not simply "one file per step" any more. The legacy `roles` step id still
+resolves (`<FoundationStep initialTab="roles">`) for deep links, but it is deliberately
+absent from `STEP_ORDER`, so it is not a stop on the rail.
 
 Shell chrome: `components/shell/` — `TopBar.tsx` (Appearance toggle + preview Light/Dark),
 `StageRail.tsx` (the step rail), `StepScaffold.tsx` (per-step layout wrapper).
@@ -146,7 +165,7 @@ button/input/textarea/select/checkbox/radio/switch; untagged parts degrade grace
 ## 6. ⚠️ Persisted store — the landmine
 
 `store/useDesignSystem.ts` is a **Zustand store persisted to localStorage** under the key
-**`arkitype-system`**, currently at **persist `version: 12`** (this number drifts —
+**`arkitype-system`**, currently at **persist `version: 13`** (this number drifts —
 grep `version:` in the `persist(...)` config for ground truth rather than trusting
 this doc).
 
@@ -168,7 +187,12 @@ appear for existing users without a hard migrate.
 - `lib/tokens.ts` — `systemCssVars` compiles the whole system into `--ark-*` vars (colour
   ramps, `--ark-<family>-<label>` primitives, per-mode shadows, weight/font-role vars, hex
   roles, dynamic step labels). This is what every component reads.
-- `lib/color.ts` — ramp generation (`generateRamp`, `familyRamp`), harmony suggestions.
+- `lib/color.ts` — ramp generation (`generateRamp`, `rampStepLabels`), harmony suggestions,
+  and hex/alpha handling (`alphaOf` / `stripAlpha` / `withAlpha`; transparency stores and
+  exports as 8-digit `#RRGGBBAA`).
+- `familyRamp` — the *canonical* "family → resolved shades" call (generated ramp, then
+  per-swatch overrides). It lives in `store/useDesignSystem.ts`, **not** `lib/color.ts`.
+  Reach for it instead of calling `generateRamp` directly, which ignores overrides.
 - `lib/typography.ts` — `generateTypeScale` (size/leading/weight/role + rounding).
 - `lib/figma.ts` — the Figma design-system bundle: variables (dynamic families,
   type/weight/font/shadow, hex-or-alias semantics) **plus** components (per-variant resolved
@@ -208,14 +232,28 @@ progress.md          the version-by-version build log (authoritative changelog)
 
 ## 9. Next steps (from progress.md, fast-follow)
 
-1. **Grow the component library** 43 → 60–70+ across all lanes.
+1. **Grow the component library** 50 → 60–70+ across all lanes.
 2. **Typography + alias parity:** per-step leading-override UI, editable type-scale steps,
    a unified TokenPicker in Roles.
-3. **Export component bindings** into the Figma/docs bundle (currently tokens-only).
-4. **Iconography foundation** (style / stroke / grid) — the one Figma foundation not yet covered.
-5. **Real per-step completion criteria** (e.g. a Roles WCAG-AA contrast gate with override).
-6. **Restart-system affordance + keyboard flow** (⌘→ to advance the rail).
-7. **Production build + deploy.**
+3. **Iconography foundation** (style / stroke / grid) — the one Figma foundation not yet covered.
+4. **Real per-step completion criteria** beyond the Colour step (which now has a live
+   WCAG-AA pairing gate).
+5. **Restart-system affordance + keyboard flow** (⌘→ to advance the rail).
+6. **Deploy.** The production build is verified green from a clean checkout; nothing is
+   hosted yet.
+7. **Decide what the alpha gate is actually for.** `BetaGate` is a client-side
+   `sessionStorage` flag, so `sessionStorage.setItem("ark_beta_gate_unlocked","true")`
+   walks past it, and `signUp` is open — an uninvited visitor can create a real account.
+   RLS still confines them to their own data, so this is a "who gets in / who burns the
+   Supabase quota" question, not a data-leak one. Close it by disabling open signup in
+   Supabase (invite-only) if that's not the intent.
+8. **Keyboard-accessible project cards.** The dashboard card is a `div` with `onClick`
+   (`ProjectDashboard.tsx`, `renderCard`), so files can't be opened from the keyboard and
+   don't appear in the a11y tree. Notably out of step with the colour swatches, which
+   expose their contrast ratios properly.
+
+*(Done since this list was written: component-binding export into the Figma bundle — the
+compiler now emits per-variant resolved bindings, which `scripts/test-exporter.ts` asserts.)*
 
 ---
 
@@ -226,6 +264,13 @@ progress.md          the version-by-version build log (authoritative changelog)
 - Any persisted-shape change ⇒ bump persist `version` + add a `migrate` branch (§6).
 - Defaults must stay pixel-identical when adding bindability (binding is additive).
 - **Update `progress.md`** after each compiled module — it's the running memory checkpoint.
+- **Scripts and docs import the shipped constants; they never restate them.** `app/docs/page.tsx`
+  pulls `PROJECT_LIMIT`/`COMPONENT_LANES` for this reason. `scripts/check-contrast.ts` did the
+  opposite for a while and drifted a full ramp step behind the product, so it spent months
+  reporting two AA failures that had already been fixed — a copied constant is a lie with a
+  delay on it.
+- **Audits fail loudly.** A resolver that returns a placeholder (`"#000000"`) for an unknown
+  token turns a stale reference into a passing check. Throw instead.
 
 ---
 

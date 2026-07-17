@@ -573,3 +573,44 @@ Skeleton (both self-heal missing ids).
   `scripts/test-exporter.ts` passes (50 components, Button 40 variants), and a
   bundle-level check confirms distinct variant/tone bindings, per-component
   pages, elevation levels, and the include filter.
+
+## Alpha Release Prep (2026-07-17)
+- **Public surfaces hardened** ahead of opening the alpha: CSP + security
+  headers on every route (`next.config.mjs`), scoped to the origins actually
+  in use (Supabase, Google Fonts, GA) with `'unsafe-eval'` dev-only for HMR;
+  `/api/scrape` pins every socket to a validated public IP through an `undici`
+  dispatcher `lookup` and re-validates each redirect hop, which is what closes
+  the DNS-rebinding gap a hostname-only pre-check leaves open; `/api/beta-gate`
+  rate-limits per IP so the one shared password can't be brute-forced.
+- **Component tokens are a third tier** under primitives → roles: a component
+  can be re-pointed without disturbing the role it descends from
+  (`TokenTiers.tsx`). Binding/token layers learn opacity (`alphaOf` /
+  `stripAlpha` / `withAlpha`), so a token carries a hex-or-alias plus alpha and
+  exports as 8-digit `#RRGGBBAA`.
+- **Library 43 → 50** across the four lanes; schema, factory, Figma bundle, and
+  docs all follow from the same specs.
+- **`saveStatus` is keyed by project id.** It was one global value, so saving
+  one file drove the indicator on every open file; `AuthProvider` now reports
+  against the id it actually saved. Persist `version` → 13 with a migrate branch.
+- **The contrast audit was auditing fiction** (`scripts/check-contrast.ts`). It
+  kept private copies of the families and role maps, and they drifted: it still
+  mapped mid foregrounds to `-400` and feedback surfaces to `-950` long after
+  the product moved to `-300` / `-900`. So it reported two AA failures the
+  product had already fixed — and worse, its resolver returned `#000000` for an
+  unknown step, so every stale `-950` silently became a black swatch that
+  *passed*. It now imports `DEFAULT_FAMILIES` / `DEFAULT_LIGHT` / `DEFAULT_DARK`
+  / `familyRamp` from the store and throws on an unresolvable token. All 34
+  default pairings pass AA (muted-on-elevated 6.01, link-on-elevated 6.04 in
+  dark — matching the values predicted in `DEFAULT_DARK`'s own comment).
+- **`HANDOFF.md` re-grounded**: the rail is 8 steps, not 9 (Colour and Roles
+  merged into `FoundationStep`; `ShapeStep` is its own file and was never an
+  alias for it); persist version 12 → 13; `familyRamp` documented where it
+  actually lives (the store, not `lib/color.ts`); the verify section now lists
+  the two `scripts/` audits and the separate `figma-plugin` build, plus the
+  `npm run build`-clobbers-a-running-`dev`-server trap.
+- Verified: `npx tsc --noEmit` exit 0; `npm run build` green from a clean
+  `git archive` checkout (this caught `TokenTiers.tsx` being imported but never
+  committed — a fresh clone would not have built); `scripts/test-exporter.ts`
+  passes (50 components, Button 40 variants); `scripts/check-contrast.ts` exit
+  0; `figma-plugin` `npm run build` exit 0; dashboard → builder → Ship walked
+  live on :3111 (five artifacts, 205 tokens, 170 Figma variables).

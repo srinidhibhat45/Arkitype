@@ -5,12 +5,25 @@
  * family, and hands them back so the init wizard can seed brand + type. Best
  * effort by nature — an empty result just means "type a hex instead".
  *
- * SSRF note: the URL is user-supplied, so we allow only http/https and refuse
- * localhost / private-range / bare hostnames. This is a local design tool, not a
- * hardened proxy, so the guard is hostname-based rather than post-DNS.
+ * SSRF hardening: this endpoint fetches a URL the client supplies, so it's a
+ * classic SSRF surface (internal network probing, cloud metadata access via
+ * DNS rebinding, use as an anonymous HTTP proxy). Three layers:
+ *  1. Auth required — only callers with a valid Supabase session may call it
+ *     at all, so it's not reachable by the open internet.
+ *  2. Per-user rate limit — bounds proxy/probing abuse even from a real account.
+ *  3. IP-level connection pinning — every real socket connection (including
+ *     each redirect hop) is resolved and validated against private/reserved
+ *     ranges via a custom `undici` dispatcher `lookup`, not just a hostname
+ *     string check before the first request. This is what actually closes the
+ *     DNS-rebinding gap: a hostname-only pre-check can't catch a domain whose
+ *     DNS answer changes between the check and the connect.
  */
 import { NextRequest, NextResponse } from "next/server";
+import dns from "node:dns";
+import net from "node:net";
+import { Agent, fetch as undiciFetch } from "undici";
 import { hexToRgb, rgbToHex, rgbToHsl } from "@/lib/color";
+import { supabase } from "@/lib/supabase/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +31,7 @@ export const dynamic = "force-dynamic";
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_BYTES = 2_000_000; // 2 MB cap per document
 const MAX_STYLESHEETS = 4;
+const MAX_REDIRECTS = 5;
 const UA =
   "Mozilla/5.0 (compatible; ArkitypeBot/1.0; +https://arkitype.app) design-token-scraper";
 
@@ -41,6 +55,36 @@ const GENERIC_FONTS = new Set([
   "math",
 ]);
 
+// ─── auth ──────────────────────────────────────────────────────────────────
+
+async function requireUserId(req: NextRequest): Promise<string | null> {
+  const auth = req.headers.get("authorization") || "";
+  const token = auth.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) return null;
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data.user) return null;
+  return data.user.id;
+}
+
+// ─── rate limit (per user, in-memory sliding window) ────────────────────────
+// Single-instance-scoped by design — fine at alpha scale. Resets on deploy;
+// doesn't share state across serverless instances. Good enough to stop casual
+// proxy/probing abuse from an authenticated account without new infra.
+
+const RATE_LIMIT_MAX = 8;
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const hits = new Map<string, number[]>();
+
+function isRateLimited(userId: string): boolean {
+  const now = Date.now();
+  const recent = (hits.get(userId) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+  recent.push(now);
+  hits.set(userId, recent);
+  return recent.length > RATE_LIMIT_MAX;
+}
+
+// ─── SSRF-safe networking ────────────────────────────────────────────────────
+
 function normalizeUrl(raw: string): URL | null {
   try {
     const withProto = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
@@ -50,33 +94,126 @@ function normalizeUrl(raw: string): URL | null {
   }
 }
 
-/** Refuse anything not clearly a public web host. */
-function isBlockedHost(hostname: string): boolean {
+/** Cheap pre-filter on the hostname string — real enforcement is the IP check below. */
+function looksBlocked(hostname: string): boolean {
   const h = hostname.toLowerCase();
   if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return true;
-  if (!h.includes(".")) return true; // bare hostnames are usually internal
-  // IPv4 private / loopback / link-local ranges.
-  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) {
-    const [a, b] = [Number(m[1]), Number(m[2])];
-    if (a === 10 || a === 127 || a === 0) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-  }
-  if (h === "::1" || h.startsWith("fe80:") || h.startsWith("fc") || h.startsWith("fd")) return true;
+  if (!h.includes(".") && h !== "::1") return true; // bare hostnames are usually internal
   return false;
 }
 
-async function fetchText(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { "user-agent": UA, accept: "text/html,text/css,*/*" },
-      redirect: "follow",
-    });
+/** The real guard: is this resolved address private, loopback, link-local, or otherwise reserved? */
+function isUnsafeAddress(address: string, family: number): boolean {
+  if (family === 4) {
+    const m = address.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!m) return true;
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    if (a === 0) return true; // 0.0.0.0/8
+    if (a === 10) return true; // 10.0.0.0/8
+    if (a === 127) return true; // loopback
+    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+    if (a === 169 && b === 254) return true; // link-local
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16
+    if (a === 192 && b === 0) return true; // 192.0.0.0/24 IETF special-purpose
+    if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking
+    if (a >= 224) return true; // multicast (224+) / reserved (240+) / broadcast
+    return false;
+  }
+  // IPv6
+  const lower = address.toLowerCase();
+  if (lower === "::1" || lower === "::") return true;
+  if (lower.startsWith("::ffff:")) {
+    const v4 = lower.slice("::ffff:".length);
+    return v4.includes(".") ? isUnsafeAddress(v4, 4) : true;
+  }
+  if (/^fe[89ab]/.test(lower)) return true; // fe80::/10 link-local
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // fc00::/7 unique local
+  return false;
+}
+
+/**
+ * True if this URL must never be connected to. Two layers, because Node's
+ * socket layer only invokes a custom DNS `lookup` when the host is an actual
+ * hostname — for a URL whose host is *already* an IP literal (e.g.
+ * `http://127.0.0.1/`), no DNS resolution ever happens, so the lookup-based
+ * guard below silently never fires for it. This layer catches that case
+ * directly; the lookup guard catches the hostname-resolves-to-private-IP case
+ * (including DNS rebinding, where the address changes between check and
+ * connect) that this layer can't.
+ */
+function isUrlUnsafe(url: URL): boolean {
+  if (looksBlocked(url.hostname)) return true;
+  const bare = url.hostname.startsWith("[") && url.hostname.endsWith("]") ? url.hostname.slice(1, -1) : url.hostname;
+  const family = net.isIP(bare);
+  if (family) return isUnsafeAddress(bare, family);
+  return false;
+}
+
+/** Dispatcher whose connect-time DNS lookup rejects any address that isn't public. */
+function createSafeAgent(): Agent {
+  return new Agent({
+    connect: {
+      lookup: (hostname, options, callback) => {
+        dns.lookup(hostname, { all: true, verbatim: true }, (err, result) => {
+          if (err) return callback(err, [] as never);
+          const addresses = Array.isArray(result) ? result : [result];
+          const safe = addresses.filter((a) => !isUnsafeAddress(a.address, a.family));
+          if (safe.length === 0) {
+            callback(new Error(`Refused: ${hostname} has no public address`), [] as never);
+            return;
+          }
+          callback(null, safe as never);
+        });
+      },
+    },
+  });
+}
+
+/**
+ * Fetches with redirects followed manually (not `redirect: "follow"`) so every
+ * hop's target — not just the first URL — passes both SSRF layers above
+ * before it's connected to.
+ */
+async function fetchText(startUrl: string, agent: Agent): Promise<string> {
+  let current = startUrl;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    let target: URL;
+    try {
+      target = new URL(current);
+    } catch {
+      return "";
+    }
+    if (target.protocol !== "http:" && target.protocol !== "https:") return "";
+    if (isUrlUnsafe(target)) return "";
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let res: Awaited<ReturnType<typeof undiciFetch>>;
+    try {
+      res = await undiciFetch(target.toString(), {
+        signal: controller.signal,
+        headers: { "user-agent": UA, accept: "text/html,text/css,*/*" },
+        redirect: "manual",
+        dispatcher: agent,
+      });
+    } catch {
+      return "";
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) return "";
+      try {
+        current = new URL(location, target).toString();
+      } catch {
+        return "";
+      }
+      continue; // re-validated at the top of the loop
+    }
+
     if (!res.ok || !res.body) return "";
     // Cap how much we read so a huge asset can't blow up memory.
     const reader = res.body.getReader();
@@ -94,15 +231,12 @@ async function fetchText(url: string): Promise<string> {
       }
     }
     return out;
-  } catch {
-    return "";
-  } finally {
-    clearTimeout(timer);
   }
+  return ""; // too many redirects
 }
 
 /** All CSS-ish text worth scanning: <style> blocks, style="" attrs, linked sheets. */
-async function gatherCss(html: string, pageUrl: URL): Promise<string> {
+async function gatherCss(html: string, pageUrl: URL, agent: Agent): Promise<string> {
   const parts: string[] = [];
 
   for (const m of Array.from(html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi))) parts.push(m[1]);
@@ -121,8 +255,8 @@ async function gatherCss(html: string, pageUrl: URL): Promise<string> {
       try {
         const abs = new URL(href, pageUrl);
         if (abs.protocol !== "http:" && abs.protocol !== "https:") return "";
-        if (isBlockedHost(abs.hostname)) return "";
-        return await fetchText(abs.toString());
+        if (isUrlUnsafe(abs)) return "";
+        return await fetchText(abs.toString(), agent);
       } catch {
         return "";
       }
@@ -204,6 +338,14 @@ function rankFonts(css: string, count: number): string[] {
 }
 
 export async function POST(req: NextRequest) {
+  const userId = await requireUserId(req);
+  if (!userId) {
+    return NextResponse.json({ error: "Sign in to import from a live site" }, { status: 401 });
+  }
+  if (isRateLimited(userId)) {
+    return NextResponse.json({ error: "Too many imports — try again in a few minutes" }, { status: 429 });
+  }
+
   let body: { url?: string };
   try {
     body = await req.json();
@@ -216,28 +358,33 @@ export async function POST(req: NextRequest) {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return NextResponse.json({ error: "Only http and https URLs are supported" }, { status: 400 });
   }
-  if (isBlockedHost(parsed.hostname)) {
+  if (isUrlUnsafe(parsed)) {
     return NextResponse.json({ error: "That host can't be reached from here" }, { status: 400 });
   }
 
-  const html = await fetchText(parsed.toString());
-  if (!html) {
-    return NextResponse.json({ error: "Couldn't load that site — try another URL" }, { status: 502 });
+  const agent = createSafeAgent();
+  try {
+    const html = await fetchText(parsed.toString(), agent);
+    if (!html) {
+      return NextResponse.json({ error: "Couldn't load that site — try another URL" }, { status: 502 });
+    }
+
+    const css = await gatherCss(html, parsed, agent);
+    const colors = rankColors(css || html, 5);
+    // Google-Fonts-linked families lead (canonical + loadable), CSS-derived ones follow.
+    const linked = googleFontFamilies(html);
+    const ranked = rankFonts(css || html, 3);
+    const fonts = Array.from(new Set([...linked, ...ranked])).slice(0, 4);
+
+    if (colors.length === 0 && fonts.length === 0) {
+      return NextResponse.json(
+        { error: "Nothing extractable found — the site may block bots or load styles dynamically" },
+        { status: 422 }
+      );
+    }
+
+    return NextResponse.json({ url: parsed.toString(), colors, fonts });
+  } finally {
+    void agent.close();
   }
-
-  const css = await gatherCss(html, parsed);
-  const colors = rankColors(css || html, 5);
-  // Google-Fonts-linked families lead (canonical + loadable), CSS-derived ones follow.
-  const linked = googleFontFamilies(html);
-  const ranked = rankFonts(css || html, 3);
-  const fonts = Array.from(new Set([...linked, ...ranked])).slice(0, 4);
-
-  if (colors.length === 0 && fonts.length === 0) {
-    return NextResponse.json(
-      { error: "Nothing extractable found — the site may block bots or load styles dynamically" },
-      { status: 422 }
-    );
-  }
-
-  return NextResponse.json({ url: parsed.toString(), colors, fonts });
 }

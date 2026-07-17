@@ -17,6 +17,7 @@ export function BetaGate({ onUnlock }: { onUnlock: () => void }) {
   const [showPassword, setShowPassword] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("Incorrect password. Please try again.");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,9 +37,11 @@ export function BetaGate({ onUnlock }: { onUnlock: () => void }) {
         onUnlock();
       } else {
         trackEvent("beta_gate_fail");
+        setErrorMessage(res.status === 429 && data.error ? data.error : "Incorrect password. Please try again.");
         setError(true);
       }
     } catch {
+      setErrorMessage("Incorrect password. Please try again.");
       setError(true);
     } finally {
       setChecking(false);
@@ -96,7 +99,7 @@ export function BetaGate({ onUnlock }: { onUnlock: () => void }) {
               </div>
               {error && (
                 <p id="beta-gate-error" role="alert" className="mt-2 text-xs font-medium text-rose-500">
-                  Incorrect password. Please try again.
+                  {errorMessage}
                 </p>
               )}
             </div>

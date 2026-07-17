@@ -13,10 +13,12 @@ export function TopBar() {
   const toggleChromeTheme = useDesignSystem((s) => s.toggleChromeTheme);
   const done = useDesignSystem((s) => s.journey.done);
   const goToStep = useDesignSystem((s) => s.goToStep);
-  const saveStatus = useDesignSystem((s) => s.saveStatus);
-  const saveError = useDesignSystem((s) => s.saveError);
-  const setSaveStatus = useDesignSystem((s) => s.setSaveStatus);
   const activeProjectId = useDesignSystem((s) => s.activeProjectId);
+  // Keyed by project id so a failed save on another file can't show — or get
+  // silently "resolved" by retrying the wrong project — on this one.
+  const saveStatus = useDesignSystem((s) => (activeProjectId ? s.saveStatus[activeProjectId] : undefined)) ?? "idle";
+  const saveError = useDesignSystem((s) => (activeProjectId ? s.saveError[activeProjectId] : undefined)) ?? null;
+  const setSaveStatus = useDesignSystem((s) => s.setSaveStatus);
   const [retrying, setRetrying] = useState(false);
 
   const setView = useDesignSystem((s) => s.setView);
@@ -24,17 +26,27 @@ export function TopBar() {
 
   const readyToShip = STEP_ORDER.slice(0, -1).every((id) => done[id]);
 
+  // A conflict means someone/something else already saved a newer version of
+  // this file — resubmitting our stale copy would just fail the same way
+  // again, so the only sound recovery is to reload and start from the
+  // current version rather than "retry" the write that lost the race.
+  const isConflict = !!saveError && saveError.startsWith("This file changed elsewhere");
+
   const retrySave = async () => {
     if (!activeProjectId || retrying) return;
+    if (isConflict) {
+      window.location.reload();
+      return;
+    }
     const cur = useDesignSystem.getState().projects[activeProjectId];
     if (!cur) return;
     setRetrying(true);
-    setSaveStatus("saving");
+    setSaveStatus(activeProjectId, "saving");
     try {
       await db.saveProject(activeProjectId, cur.name, cur);
-      setSaveStatus("saved");
+      setSaveStatus(activeProjectId, "saved");
     } catch (e: unknown) {
-      setSaveStatus("error", e instanceof Error ? e.message : "Save failed");
+      setSaveStatus(activeProjectId, "error", e instanceof Error ? e.message : "Save failed");
     } finally {
       setRetrying(false);
     }
@@ -77,14 +89,14 @@ export function TopBar() {
             title={saveError ?? "Save failed"}
           >
             <AlertTriangle size={12} />
-            <span>Not saved</span>
+            <span>{isConflict ? "Changed elsewhere" : "Not saved"}</span>
             <button
               type="button"
               onClick={retrySave}
               disabled={retrying}
               className="ml-1 rounded border border-rose-500/40 px-1.5 py-0.5 text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50"
             >
-              {retrying ? "Retrying…" : "Retry"}
+              {isConflict ? "Reload" : retrying ? "Retrying…" : "Retry"}
             </button>
           </div>
         ) : (

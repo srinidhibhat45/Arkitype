@@ -256,7 +256,7 @@ export function TokenPopover({
             </div>
           </div>
           {showClose ? (
-            <X size={14} style={{ color: r("closeIcon.color") ?? tv("text-muted"), cursor: "pointer", flexShrink: 0 }} aria-label="Close" />
+            <X size={pxNum(r("closeIcon.size"), 14)} style={{ color: r("closeIcon.color") ?? tv("text-muted"), cursor: "pointer", flexShrink: 0 }} aria-label="Close" />
           ) : null}
         </div>
         {showAction ? (

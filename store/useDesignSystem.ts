@@ -238,6 +238,10 @@ export function prevStep(step: StepId): StepId | null {
 export interface SemanticGroup {
   label: string;
   tokens: string[];
+  /** "semantic" = a role bound to a primitive; "component" = a component-level
+   *  token, typically bound to a semantic role (an "@role" reference). Absent is
+   *  treated as "semantic" for back-compat with pre-component-tier data. */
+  kind?: "semantic" | "component";
 }
 
 /** Seed groups — now stored in state (semantics.groups) so they're editable. */
@@ -313,6 +317,50 @@ export const DEFAULT_SEMANTIC_GROUPS: SemanticGroup[] = [
 export const SEMANTIC_GROUPS: ReadonlyArray<SemanticGroup> = DEFAULT_SEMANTIC_GROUPS;
 
 export const ALL_SEMANTIC_TOKENS: string[] = DEFAULT_SEMANTIC_GROUPS.flatMap(
+  (g) => g.tokens
+);
+
+/**
+ * Component-level colour tokens — the third tier below primitives and semantic
+ * roles. Each references a semantic role via an "@role" value, so a component
+ * token follows its role across light/dark automatically and stays one edit
+ * away from a raw hex or a different role. Seed set only; fully editable, and
+ * users add their own via the unified colour surface.
+ */
+export const DEFAULT_COMPONENT_GROUPS: SemanticGroup[] = [
+  {
+    label: "Button",
+    kind: "component",
+    tokens: ["button-bg", "button-text", "button-border"],
+  },
+  {
+    label: "Card",
+    kind: "component",
+    tokens: ["card-bg", "card-text", "card-border"],
+  },
+  {
+    label: "Input",
+    kind: "component",
+    tokens: ["input-bg", "input-text", "input-border"],
+  },
+];
+
+/** Component tokens are mode-agnostic by default: each is an "@role" reference,
+ *  and the role itself already resolves per mode. Same map for light and dark. */
+export const DEFAULT_COMPONENT_TOKENS: Record<string, string> = {
+  "button-bg": "@action-primary-default",
+  "button-text": "@text-on-action",
+  "button-border": "@action-primary-default",
+  "card-bg": "@surface-elevated",
+  "card-text": "@text-primary",
+  "card-border": "@border-default",
+  "input-bg": "@surface-base",
+  "input-text": "@text-primary",
+  "input-border": "@border-default",
+};
+
+/** All default token names in the component tier (for backfill/dedupe checks). */
+export const ALL_COMPONENT_TOKENS: string[] = DEFAULT_COMPONENT_GROUPS.flatMap(
   (g) => g.tokens
 );
 
@@ -643,9 +691,13 @@ export interface ArkitypeState {
   canvasZoom: number;
   /** Transient "jump here and highlight X" target — never persisted. */
   pendingFocus: { step: StepId; anchor: string } | null;
-  /** Cloud autosave status for the active file, driven by AuthProvider. Never persisted. */
-  saveStatus: "idle" | "saving" | "saved" | "error";
-  saveError: string | null;
+  /**
+   * Cloud autosave status, driven by AuthProvider — keyed by project id (not
+   * global) so switching files can't show one project's error banner over
+   * another, or let Retry silently save the wrong file. Never persisted.
+   */
+  saveStatus: Record<string, "idle" | "saving" | "saved" | "error">;
+  saveError: Record<string, string | null>;
 
   /* Transient UI state */
   activeComponentId: string | null;
@@ -758,11 +810,16 @@ export interface ArkitypeState {
   setEasing: (index: number, value: string) => void;
   setBreakpoint: (name: BreakpointName, px: number) => void;
 
-  /* roles */
+  /* roles + component tokens (both live in `semantics`) */
   setSemantic: (mode: PreviewMode, token: string, value: string) => void;
   addRole: (groupLabel: string, token: string) => void;
   removeRole: (token: string) => void;
-  addGroup: (label: string) => void;
+  /** Rename a token everywhere it's referenced: group lists, both modes,
+   *  "@token" references from other tokens, and component `role:` bindings. */
+  renameRole: (oldToken: string, newToken: string) => void;
+  addGroup: (label: string, kind?: "semantic" | "component") => void;
+  renameGroup: (oldLabel: string, newLabel: string) => void;
+  removeGroup: (label: string) => void;
 
   /* components */
   setComponentSkeleton: (componentId: string, skeletonId: string) => void;
@@ -788,7 +845,7 @@ export interface ArkitypeState {
   setCanvasZoom: (zoom: number) => void;
 
   /** Driven by AuthProvider's autosave effect — never call directly from UI. */
-  setSaveStatus: (status: "idle" | "saving" | "saved" | "error", error?: string | null) => void;
+  setSaveStatus: (id: string, status: "idle" | "saving" | "saved" | "error", error?: string | null) => void;
 }
 
 /* ────────────────────────────── defaults ────────────────────────────── */
@@ -945,6 +1002,60 @@ const DEFAULT_COMPONENTS: Record<string, ComponentConfig> = {
   datePicker: { skeletonId: "1", properties: { radiusStep: 3 } },
 };
 
+/**
+ * Defensive shape-normalizer for a `ProjectState` loaded from Supabase.
+ *
+ * The `persist` migrate chain below only ever runs against the localStorage
+ * blob — a project row loaded from `projects.state` is spread in verbatim
+ * (see `rowToState` in lib/persistence.ts) with no version tag and no
+ * backfill. A row saved under an older schema would otherwise load with
+ * whatever fields that schema lacked permanently missing. This fills in the
+ * same invariants the migrate chain's per-project loops (v9–v12) establish
+ * for localStorage users — it's intentionally unconditional (not
+ * version-gated, since cloud rows carry no version) and every branch is a
+ * `??`-guarded no-op when the field is already present, so it's safe to run
+ * on every load regardless of how old or new the row is.
+ */
+/**
+ * Seed the component-token tier for a project that doesn't have one yet (legacy
+ * / pre-v13 rows). Runs on every cloud load, so it MUST be a no-op once the tier
+ * exists: the guard below bails the moment any component-kind group is present,
+ * so a token the user renamed or deleted is never resurrected as a duplicate on
+ * the next load. A fresh v13 project already ships the tier (freshSemantics), so
+ * this only ever fires for older data.
+ */
+export function backfillComponentTier(semantics: ProjectState["semantics"]): void {
+  if (!semantics?.modes) return;
+  semantics.groups = semantics.groups ?? [];
+  // Once a project owns a component tier, it owns it — don't top up "missing"
+  // defaults (that would undo renames/removals every time the row reloads).
+  if (semantics.groups.some((g) => g.kind === "component")) return;
+  for (const group of DEFAULT_COMPONENT_GROUPS) {
+    for (const t of group.tokens) {
+      const seed = DEFAULT_COMPONENT_TOKENS[t] ?? "@surface-base";
+      if (semantics.modes.light[t] === undefined) semantics.modes.light[t] = seed;
+      if (semantics.modes.dark[t] === undefined) semantics.modes.dark[t] = seed;
+    }
+    semantics.groups.push({ label: group.label, kind: "component", tokens: [...group.tokens] });
+  }
+}
+
+export function backfillProjectState(proj: ProjectState): ProjectState {
+  if (proj.primitives) {
+    proj.primitives.density = proj.primitives.density ?? "standard";
+    proj.primitives.radiusNames = proj.primitives.radiusNames ?? [...RADII_NAMES];
+    proj.primitives.radiusSteps = proj.primitives.radiusSteps ?? [...BASE_RADII];
+  }
+  // Same self-heal the store's own actions already do for missing component
+  // ids (HANDOFF.md §6) — applied once at load time instead of ad hoc.
+  proj.components = {
+    ...(JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)) as Record<string, ComponentConfig>),
+    ...(proj.components ?? {}),
+  };
+  if (proj.semantics) backfillComponentTier(proj.semantics);
+  return proj;
+}
+
 /* ── helpers for dynamic ids / uniqueness ── */
 
 const slugify = (s: string): string =>
@@ -962,6 +1073,19 @@ function uniqueId(base: string, taken: Set<string>): string {
 }
 
 /* ────────────────────────────── store ────────────────────────────── */
+
+/** A complete fresh semantics blob: semantic roles + the component-token tier. */
+function freshSemantics(): ProjectState["semantics"] {
+  return {
+    groups: JSON.parse(
+      JSON.stringify([...DEFAULT_SEMANTIC_GROUPS, ...DEFAULT_COMPONENT_GROUPS])
+    ) as SemanticGroup[],
+    modes: {
+      light: { ...DEFAULT_LIGHT, ...DEFAULT_COMPONENT_TOKENS },
+      dark: { ...DEFAULT_DARK, ...DEFAULT_COMPONENT_TOKENS },
+    },
+  };
+}
 
 function freshPrimitives(): ArkitypeState["primitives"] {
   const families = cloneFamilies(DEFAULT_FAMILIES);
@@ -1021,8 +1145,25 @@ export const useDesignSystem = create<ArkitypeState>()(
           
           const isSelectingProject = next.activeProjectId !== undefined && next.activeProjectId !== state.activeProjectId;
           
-          if (merged.activeProjectId && merged.projects[merged.activeProjectId] && !isSelectingProject) {
-            const p = { ...merged.projects[merged.activeProjectId] };
+          const existing = merged.activeProjectId ? merged.projects[merged.activeProjectId] : undefined;
+          // Only touch the snapshot (and bump updatedAt) when one of the
+          // synced fields actually changed reference — otherwise every
+          // action, including purely transient ones (hover, canvas zoom
+          // scrubbing, active-state toggles) that never touch these fields,
+          // would still restamp "Edited just now" on the dashboard.
+          const relevantChanged =
+            !!existing &&
+            (existing.meta !== merged.meta ||
+              existing.journey !== merged.journey ||
+              existing.primitives !== merged.primitives ||
+              existing.semantics !== merged.semantics ||
+              existing.components !== merged.components ||
+              existing.currentPreviewMode !== merged.currentPreviewMode ||
+              existing.canvasZoom !== merged.canvasZoom ||
+              (!!merged.meta.name.trim() && existing.name !== merged.meta.name));
+
+          if (existing && !isSelectingProject && relevantChanged) {
+            const p = { ...existing };
             p.updatedAt = Date.now();
             if (merged.meta.name.trim()) p.name = merged.meta.name;
             p.meta = merged.meta;
@@ -1036,7 +1177,7 @@ export const useDesignSystem = create<ArkitypeState>()(
             // previous state's `projects` too (same reference when the action
             // didn't set it), which makes prev/state look identical to
             // subscribers and silently disables the autosave change detection.
-            merged.projects = { ...merged.projects, [merged.activeProjectId]: p };
+            merged.projects = { ...merged.projects, [merged.activeProjectId!]: p };
           }
           return merged;
         }, replace);
@@ -1051,13 +1192,7 @@ export const useDesignSystem = create<ArkitypeState>()(
           meta: { name, started: true },
           journey: { activeStep: "colour", done: {}, visited: { colour: true } },
           primitives: freshPrimitives(),
-          semantics: {
-            groups: JSON.parse(JSON.stringify(DEFAULT_SEMANTIC_GROUPS)) as SemanticGroup[],
-            modes: {
-              light: { ...DEFAULT_LIGHT },
-              dark: { ...DEFAULT_DARK },
-            },
-          },
+          semantics: freshSemantics(),
           components: JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)) as Record<string, ComponentConfig>,
           currentPreviewMode: "dark",
           canvasZoom: 1,
@@ -1076,13 +1211,7 @@ export const useDesignSystem = create<ArkitypeState>()(
         meta: { name: "", started: false },
         journey: { activeStep: "colour", done: {}, visited: { colour: true } },
         primitives: freshPrimitives(),
-        semantics: {
-          groups: JSON.parse(JSON.stringify(DEFAULT_SEMANTIC_GROUPS)) as SemanticGroup[],
-          modes: {
-            light: { ...DEFAULT_LIGHT },
-            dark: { ...DEFAULT_DARK },
-          },
-        },
+        semantics: freshSemantics(),
         components: JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)) as Record<
           string,
           ComponentConfig
@@ -1091,8 +1220,8 @@ export const useDesignSystem = create<ArkitypeState>()(
         chromeTheme: "light",
         canvasZoom: 1,
         pendingFocus: null,
-        saveStatus: "idle",
-        saveError: null,
+        saveStatus: {},
+        saveError: {},
 
         /* Transient UI state */
         activeComponentId: "button",
@@ -2122,13 +2251,106 @@ export const useDesignSystem = create<ArkitypeState>()(
           return { semantics: { groups, modes: { light, dark } } };
         }),
 
-      addGroup: (label) =>
+      renameRole: (oldToken, newToken) =>
         set((state) => {
-          if (state.semantics.groups.some((g) => g.label === label)) return state;
+          // No-op on empty input (slugify would otherwise coin a stray name).
+          if (!newToken.trim()) return state;
+          const next = slugify(newToken);
+          // No-op on unchanged, missing source, or a name collision.
+          if (next === oldToken) return state;
+          if (state.semantics.modes.light[oldToken] === undefined) return state;
+          if (state.semantics.modes.light[next] !== undefined) return state;
+
+          const oldAt = `@${oldToken}`;
+          // Follow the token through any "@old" / "@old/NN" reference in a value.
+          const fixRef = (val: string): string => {
+            if (val === oldAt) return `@${next}`;
+            if (val.startsWith(oldAt + "/")) return `@${next}` + val.slice(oldAt.length);
+            return val;
+          };
+          const renameMode = (m: Record<string, string>): Record<string, string> => {
+            const out: Record<string, string> = {};
+            for (const [k, v] of Object.entries(m)) out[k === oldToken ? next : k] = fixRef(v);
+            return out;
+          };
+
+          const groups = state.semantics.groups.map((g) => ({
+            ...g,
+            tokens: g.tokens.map((tk) => (tk === oldToken ? next : tk)),
+          }));
+
+          // Follow component `role:old` bindings so they don't dangle.
+          const oldBinding = `role:${oldToken}`;
+          const newBinding = `role:${next}`;
+          let componentsChanged = false;
+          const components: Record<string, ComponentConfig> = {};
+          for (const [cid, cfg] of Object.entries(state.components)) {
+            if (cfg.bindings && Object.values(cfg.bindings).includes(oldBinding)) {
+              const bindings: Record<string, string> = {};
+              for (const [k, b] of Object.entries(cfg.bindings)) {
+                bindings[k] = b === oldBinding ? newBinding : b;
+              }
+              components[cid] = { ...cfg, bindings };
+              componentsChanged = true;
+            } else {
+              components[cid] = cfg;
+            }
+          }
+
+          return {
+            semantics: {
+              groups,
+              modes: {
+                light: renameMode(state.semantics.modes.light),
+                dark: renameMode(state.semantics.modes.dark),
+              },
+            },
+            ...(componentsChanged ? { components } : {}),
+          };
+        }),
+
+      addGroup: (label, kind = "semantic") =>
+        set((state) => {
+          const l = label.trim();
+          if (!l || state.semantics.groups.some((g) => g.label === l)) return state;
           return {
             semantics: {
               ...state.semantics,
-              groups: [...state.semantics.groups, { label, tokens: [] }],
+              groups: [...state.semantics.groups, { label: l, kind, tokens: [] }],
+            },
+          };
+        }),
+
+      renameGroup: (oldLabel, newLabel) =>
+        set((state) => {
+          const nl = newLabel.trim();
+          if (!nl || nl === oldLabel) return state;
+          if (state.semantics.groups.some((g) => g.label === nl)) return state;
+          return {
+            semantics: {
+              ...state.semantics,
+              groups: state.semantics.groups.map((g) =>
+                g.label === oldLabel ? { ...g, label: nl } : g
+              ),
+            },
+          };
+        }),
+
+      removeGroup: (label) =>
+        set((state) => {
+          const group = state.semantics.groups.find((g) => g.label === label);
+          if (!group) return state;
+          const dropped = new Set(group.tokens);
+          const groups = state.semantics.groups.filter((g) => g.label !== label);
+          const strip = (m: Record<string, string>): Record<string, string> =>
+            Object.fromEntries(Object.entries(m).filter(([k]) => !dropped.has(k)));
+          return {
+            semantics: {
+              groups,
+              modes: {
+                light: strip(state.semantics.modes.light),
+                dark: strip(state.semantics.modes.dark),
+              },
             },
           };
         }),
@@ -2245,12 +2467,16 @@ export const useDesignSystem = create<ArkitypeState>()(
 
       setCanvasZoom: (zoom) => set({ canvasZoom: zoom }),
 
-      setSaveStatus: (status, error = null) => set({ saveStatus: status, saveError: error }),
+      setSaveStatus: (id, status, error = null) =>
+        set((state) => ({
+          saveStatus: { ...state.saveStatus, [id]: status },
+          saveError: { ...state.saveError, [id]: error },
+        })),
     };
   },
   {
       name: "arkitype-system",
-      version: 12,
+      version: 13,
       // v2 → v3: dynamic colour families, per-mode elevation, typography
       // weights/roles/rounding/overrides, editable spacing/radii + overrides,
       // stored semantic groups + expanded roles.
@@ -2583,6 +2809,19 @@ export const useDesignSystem = create<ArkitypeState>()(
             for (const pid of Object.keys(state.projects)) {
               const p = state.projects[pid]?.primitives;
               if (p && !p.density) p.density = "standard";
+            }
+          }
+        }
+
+        if (version < 13) {
+          // v12 -> v13: add the component-token tier (button-*/card-*/input-*),
+          // referencing existing semantic roles. Idempotent + non-destructive —
+          // only tokens the system doesn't already have are appended.
+          if (state.semantics) backfillComponentTier(state.semantics);
+          if (state.projects) {
+            for (const pid of Object.keys(state.projects)) {
+              const proj = state.projects[pid];
+              if (proj?.semantics) backfillComponentTier(proj.semantics);
             }
           }
         }

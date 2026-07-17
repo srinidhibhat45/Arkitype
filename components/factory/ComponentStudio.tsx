@@ -183,6 +183,27 @@ function isIconOption(key: string, label: string): boolean {
   );
 }
 
+/**
+ * `${componentId}:${optionKey}` pairs whose factory implementation actually
+ * reads a paired `<key>.size` property (see e.g. CoreComponents.tsx's Alert,
+ * DisplayComponents.tsx's Toast, NavPatternComponents.tsx's Card,
+ * ModalSkeletons.tsx's Modal). The inspector only shows the "Scale Step"
+ * selector for options in this set — everywhere else nothing would ever
+ * consume the value, so showing the control would be a dead one.
+ */
+const TEXT_SIZE_CONSUMERS = new Set([
+  "alert:title",
+  "alert:body",
+  "toast:title",
+  "toast:body",
+  "card:title",
+  "card:subtitle",
+  "card:bodyText",
+  "modal:title",
+  "modal:subtitle",
+  "modal:bodyText",
+]);
+
 /* ── one representative instance of a component, in one state/variant ── */
 
 type HeroCtx = {
@@ -1814,10 +1835,32 @@ export function ComponentStudioControls({
               );
             }
 
+            // Scale Step only exists for text options a component actually
+            // renders with a variable font size (see TEXT_SIZE_CONSUMERS) —
+            // showing it elsewhere would be a control that visibly does
+            // nothing, since nothing reads the value back.
+            if (!TEXT_SIZE_CONSUMERS.has(`${id}:${o.key}`)) {
+              return (
+                <div key={o.key} className="col-span-2 flex flex-col gap-1">
+                  <span className="text-[10px] text-fg-mute font-semibold uppercase tracking-wider flex items-center gap-1 truncate" title={o.label}>
+                    <Type size={10} />
+                    <span>{o.label}</span>
+                  </span>
+                  <input
+                    type="text"
+                    value={val}
+                    onChange={(e) => setProperty(id, o.key, e.target.value)}
+                    className="w-full h-7 rounded-md border border-line bg-ink px-2.5 py-1 text-[11px] text-fg focus:border-focus focus:outline-none font-mono"
+                  />
+                </div>
+              );
+            }
+
             const sizeKey = `${o.key}.size`;
             // Default size mappings depending on key name
             const defaultSize = o.key.includes("title") ? "xl" : o.key.includes("subtitle") ? "sm" : o.key.includes("body") ? "base" : "base";
-            const sizeVal = (opts[sizeKey] as string) ?? defaultSize;
+            // Not a declared OptionSpec, so resolveOptions() won't surface it — read raw.
+            const sizeVal = (properties?.[sizeKey] as string) ?? defaultSize;
 
             return (
               <div key={o.key} className="col-span-2 flex flex-col gap-1">

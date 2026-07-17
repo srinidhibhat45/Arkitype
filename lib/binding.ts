@@ -26,6 +26,7 @@ import {
   ArkitypeState,
   PreviewMode,
   RADII_NAMES,
+  DEFAULT_SPACING_MULTIPLIERS,
 } from "@/store/useDesignSystem";
 import { resolveRef, resolveToken } from "@/lib/tokens";
 import { isValidHex } from "@/lib/color";
@@ -56,7 +57,7 @@ export function parseBinding(binding: string): ParsedBinding {
 }
 
 /** Resolve a binding string to a CSS value (a var() reference or a literal). */
-export function resolveBinding(binding: string, radiusNames?: string[]): string {
+export function resolveBinding(binding: string, radiusNames?: string[], spacingSteps?: number): string {
   if (!binding) return "transparent";
   const { kind, value } = parseBinding(binding);
   switch (kind) {
@@ -65,8 +66,13 @@ export function resolveBinding(binding: string, radiusNames?: string[]): string 
       return `var(--ark-${value})`;
     case "hex":
       return value;
-    case "space":
-      return `var(--ark-space-${value})`;
+    case "space": {
+      // 1-indexed, unlike radius — clamp so a scale that's since shrunk can't
+      // reference a --ark-space-N that systemCssVars no longer emits.
+      const steps = spacingSteps ?? DEFAULT_SPACING_MULTIPLIERS.length;
+      const i = Math.min(Math.max(Number(value) || 1, 1), steps);
+      return `var(--ark-space-${i})`;
+    }
     case "radius": {
       const names = radiusNames ?? RADII_NAMES;
       const i = Math.min(Math.max(Number(value) || 0, 0), names.length - 1);

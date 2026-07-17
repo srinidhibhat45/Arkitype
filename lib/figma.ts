@@ -1,11 +1,12 @@
 import {
   ArkitypeState,
+  PreviewMode,
   RADII_NAMES,
   countTokens,
   shadowToCss,
 } from "@/store/useDesignSystem";
-import { hexToFigmaRgba, isValidHex, rampStepLabels } from "@/lib/color";
-import { resolveToken } from "@/lib/tokens";
+import { hexToFigmaRgba, rampStepLabels } from "@/lib/color";
+import { resolveToken, resolveTokenValue } from "@/lib/tokens";
 import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 import {
   COMPONENT_SPECS,
@@ -840,17 +841,29 @@ export function compileFigmaBundle(
     (token) => {
       const lightRef = semantics.modes.light[token];
       const darkRef = semantics.modes.dark[token];
-      const bind = (ref: string): FigmaVariableValue =>
-        ref && ref.startsWith("#") && isValidHex(ref)
-          ? hexToFigmaRgba(ref)
-          : { type: "VARIABLE_ALIAS", id: `color/${ref.slice(0, ref.lastIndexOf("-"))}/${ref.slice(ref.lastIndexOf("-") + 1)}` };
+      // A clean primitive ref ("brand-600") aliases to that primitive variable,
+      // keeping the live link in Figma. Everything else — a raw hex, an "@role"
+      // reference, or anything carrying a "/NN" alpha suffix — is baked to its
+      // resolved colour (Figma variable aliases can't carry per-alias alpha, and
+      // an @role/hex isn't a primitive), so the value is always correct.
+      const bind = (ref: string, mode: PreviewMode): FigmaVariableValue => {
+        const isCleanPrimitiveRef =
+          !!ref && !ref.startsWith("#") && !ref.startsWith("@") && !ref.includes("/");
+        if (isCleanPrimitiveRef) {
+          const cut = ref.lastIndexOf("-");
+          if (cut !== -1) {
+            return { type: "VARIABLE_ALIAS", id: `color/${ref.slice(0, cut)}/${ref.slice(cut + 1)}` };
+          }
+        }
+        return hexToFigmaRgba(resolveTokenValue(state, mode, ref));
+      };
       return {
         name: token.replace(/-/g, "/"),
         resolvedType: "COLOR",
         scopes: ["ALL_SCOPES"],
         valuesByMode: {
-          [LIGHT_MODE]: bind(lightRef),
-          [DARK_MODE]: bind(darkRef),
+          [LIGHT_MODE]: bind(lightRef, "light"),
+          [DARK_MODE]: bind(darkRef, "dark"),
         },
         resolvedValuesByMode: {
           [LIGHT_MODE]: resolveToken(state, "light", token),

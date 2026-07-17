@@ -14,6 +14,7 @@ import {
 import { HexInput } from "@/components/ui/controls";
 import { BetaTag } from "@/components/ui/BetaTag";
 import { matchGoogleFont } from "@/lib/googleFonts";
+import { supabase } from "@/lib/supabase/client";
 import { useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -289,9 +290,20 @@ function NewFileWizard({
     setScraping(true);
     setScrapeError("");
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        setScrapeError("Sign in to import from a live site");
+        setScraped(null);
+        return;
+      }
       const res = await fetch("/api/scrape", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({ url: scrapeUrl.trim() }),
       });
       const data = await res.json();

@@ -70,18 +70,59 @@ export function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
 
+/**
+ * Parse a hex colour to RGB, ignoring any alpha channel. Accepts 3-, 4-, 6-,
+ * and 8-digit hex (#RGB, #RGBA, #RRGGBB, #RRGGBBAA). Alpha, when present, is
+ * dropped here — use {@link alphaOf} to read it. Contrast/luminance math is
+ * therefore computed on the opaque colour, which is the correct WCAG behaviour
+ * (a translucent token is judged by its intended base colour, not composited).
+ */
 export function hexToRgb(hex: string): RGB | null {
   const raw = hex.trim().replace(/^#/, "");
   const full =
-    raw.length === 3
+    raw.length === 3 || raw.length === 4
       ? raw
           .split("")
           .map((c) => c + c)
           .join("")
       : raw;
-  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
-  const n = parseInt(full, 16);
+  if (!/^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(full)) return null;
+  const n = parseInt(full.slice(0, 6), 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+/**
+ * Alpha channel of a hex colour as a 0–100 percentage. A colour with no alpha
+ * channel (#RRGGBB) is fully opaque → 100. Malformed input also returns 100.
+ */
+export function alphaOf(hex: string): number {
+  const raw = hex.trim().replace(/^#/, "");
+  let aa: string | null = null;
+  if (raw.length === 4) aa = raw[3] + raw[3];
+  else if (raw.length === 8) aa = raw.slice(6, 8);
+  if (aa === null || !/^[0-9a-fA-F]{2}$/.test(aa)) return 100;
+  return Math.round((parseInt(aa, 16) / 255) * 100);
+}
+
+/** Drop any alpha channel, returning an opaque 6-digit #RRGGBB. */
+export function stripAlpha(hex: string): string {
+  const rgb = hexToRgb(hex);
+  return rgb ? rgbToHex(rgb) : hex;
+}
+
+/**
+ * Apply a 0–100 alpha to a hex colour. 100% returns a clean 6-digit #RRGGBB;
+ * anything less returns 8-digit #RRGGBBAA — the storage/export form chosen for
+ * transparency across Arkitype.
+ */
+export function withAlpha(hex: string, alphaPct: number): string {
+  const base = stripAlpha(hex);
+  const pct = clamp(Math.round(alphaPct), 0, 100);
+  if (pct >= 100) return base;
+  const aa = Math.round((pct / 100) * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `${base}${aa}`;
 }
 
 export function rgbToHex({ r, g, b }: RGB): string {
@@ -285,7 +326,7 @@ export function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)}, ${a})`;
 }
 
-/** Convert hex to Figma-style normalized RGBA object. */
+/** Convert hex to Figma-style normalized RGBA object, honouring any alpha channel. */
 export function hexToFigmaRgba(
   hex: string
 ): { r: number; g: number; b: number; a: number } {
@@ -294,6 +335,6 @@ export function hexToFigmaRgba(
     r: Math.round((rgb.r / 255) * 10000) / 10000,
     g: Math.round((rgb.g / 255) * 10000) / 10000,
     b: Math.round((rgb.b / 255) * 10000) / 10000,
-    a: 1,
+    a: Math.round((alphaOf(hex) / 100) * 10000) / 10000,
   };
 }

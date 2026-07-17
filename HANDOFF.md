@@ -23,7 +23,7 @@
 A **guided design-system builder** (Next.js 14 App Router + React 18 + TypeScript). It
 walks the user through an ordered rail of focused decisions — colour, type, space, shape,
 motion, roles — turns them into design tokens + semantic roles, lets them deeply re-bind
-**43 live components** to those tokens through a Figma-style Component Studio, and exports
+**50 live components** to those tokens through a Figma-style Component Studio, and exports
 the result (docs + a Figma variables bundle).
 
 - **Status:** alpha (`0.1.0-alpha`). Branch `feat/chrome-theming-studio-and-roles-merge`.
@@ -103,7 +103,7 @@ When you touch styling, be explicit about which system you mean. `--c-*` = chrom
 ### Schema-driven components
 `lib/componentSchema.ts` declares every component's styleable surface as a `ComponentSpec`
 (parts → props, each typed + optionally per-state, with a default binding; plus `options`
-and a `previewAxis` flag). **43 components across 4 lanes:**
+and a `previewAxis` flag). **50 components across 4 lanes:**
 
 - **Controls (12):** Button, Icon button, Button group, Input, Textarea, Select, Search,
   Checkbox, Radio, Switch, Slider, Stepper.
@@ -113,7 +113,9 @@ and a `previewAxis` flag). **43 components across 4 lanes:**
 - **Patterns (9):** Modal, Table, Card, List item, Feed item, Accordion, Banner, Field, Stat grid.
 
 `WIRED_COMPONENTS` gates which render live and fully-bindable. Modal / Tabs / Table are
-**skeleton + radius only** (intentionally). Factory implementations live in
+**skeleton components** — bg/border/overlay/tab-colour bindings are wired, but corner
+radius and border width on Tabs/Table are plain numeric Options (not token-bound; there's
+no `container.radius`/`container.borderWidth` prop for them). Factory implementations live in
 `components/factory/` split by lane (`CoreComponents`, `SelectionControls`,
 `FormControls`, `DisplayComponents`, `FeedbackComponents`, `NavigationComponents`,
 `PatternComponents`, `NavPatternComponents`, plus `*Skeletons.tsx` for the skeletal ones).

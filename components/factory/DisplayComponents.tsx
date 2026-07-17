@@ -608,8 +608,10 @@ export function TokenToast({
   const opts = resolveOptions("toast", cfg?.properties);
   const toastTitle = (opts.title || title) as string;
   const toastBody = (opts.body || body) as string;
-  const titleSize = (opts["title.size"] ?? "sm") as string;
-  const bodySize = (opts["body.size"] ?? "xs") as string;
+  // Scale Step is a raw property, not a declared OptionSpec — resolveOptions()
+  // only surfaces declared keys, so read it straight off the properties bag.
+  const titleSize = (cfg?.properties?.["title.size"] ?? "sm") as string;
+  const bodySize = (cfg?.properties?.["body.size"] ?? "xs") as string;
 
   return (
     <div

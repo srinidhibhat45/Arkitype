@@ -30,7 +30,7 @@ decision with its own live canvas:
 
 ## Component library
 
-43 components across four lanes — Controls, Display, Navigation, and Patterns
+50 components across four lanes — Controls, Display, Navigation, and Patterns
 (buttons, inputs, selection controls, alerts/toasts/badges/banners, tabs,
 navbar/sidebar/breadcrumbs, modals, tables, cards, feeds, and more). Each is
 schema-driven, so its editable parts and options flow from a single

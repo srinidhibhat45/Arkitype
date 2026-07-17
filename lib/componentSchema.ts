@@ -1403,9 +1403,11 @@ const OTHER_SPECS: ComponentSpec[] = [
         label: "Text",
         props: [
           prop("text.title", "Title", "color", "role:text-primary"),
-          prop("text.value", "Value", "color", "role:text-primary"),
           prop("text.body", "Body", "color", "role:text-secondary"),
-          prop("text.action", "Action link", "color", "role:action-primary-default"),
+          // No "value" element exists on this card, and the action renders
+          // as a full Button styled by Button's own bindings — neither of
+          // those props was ever resolved, so they've been dropped rather
+          // than kept as controls that visibly did nothing.
         ],
       },
     ],
@@ -1767,8 +1769,10 @@ const OTHER_SPECS: ComponentSpec[] = [
         id: "container",
         label: "Layout Properties",
         props: [
-          prop("container.radius", "Corner radius", "radius", "radius:2"),
-          prop("container.borderWidth", "Border width", "dimension", "px:1"),
+          // Corner radius / border width live under Options below (plain
+          // numeric px, not token-bound) — the factory implementation reads
+          // those, not a binding here, so this part only declares the prop
+          // that's actually resolved.
           prop("container.borderColor", "Border color", "color", "role:border-default"),
         ],
       },
@@ -1806,7 +1810,10 @@ const OTHER_SPECS: ComponentSpec[] = [
         props: [
           prop("container.bg", "Table background", "color", "role:surface-elevated"),
           prop("container.border", "Table border", "color", "role:border-muted"),
-          prop("container.radius", "Corner radius", "radius", "radius:3"),
+          // Corner radius lives under Options below (plain numeric px, not
+          // token-bound) — the factory implementation reads that, not a
+          // binding here, so this part only declares the prop that's
+          // actually resolved.
         ],
       },
       {
@@ -2316,10 +2323,11 @@ export function useComponentBindings(
 ): (key: string, state?: CState) => string | undefined {
   const bindings = useDesignSystem((s) => s.components[id]?.bindings);
   const radiusNames = useDesignSystem((s) => s.primitives.radiusNames);
+  const spacingSteps = useDesignSystem((s) => s.primitives.spacing.length);
   return (key, state) => {
     if (!bindings) return undefined;
     const b = (state ? bindings[bindingKey(key, state)] : undefined) ?? bindings[key];
-    return b ? resolveBinding(b, radiusNames) : undefined;
+    return b ? resolveBinding(b, radiusNames, spacingSteps) : undefined;
   };
 }
 
@@ -2336,6 +2344,7 @@ export function useVariantComponentBindings(
 ): (key: string, state?: CState) => string | undefined {
   const bindings = useDesignSystem((s) => s.components[id]?.bindings);
   const radiusNames = useDesignSystem((s) => s.primitives.radiusNames);
+  const spacingSteps = useDesignSystem((s) => s.primitives.spacing.length);
   const VARIANT_COLOR_KEYS = new Set([
     "container.bg",
     "container.border",
@@ -2353,13 +2362,13 @@ export function useVariantComponentBindings(
         : `${variant}.${key}`;
       const variantFallbackKey = `${variant}.${key}`;
       const vb = bindings[variantKey] ?? bindings[variantFallbackKey];
-      if (vb) return resolveBinding(vb, radiusNames);
+      if (vb) return resolveBinding(vb, radiusNames, spacingSteps);
       // Don't fall through to shared color bindings for non-filled variants
       return undefined;
     }
     // For non-color props or filled variant, use shared bindings as normal
     const b = (state ? bindings[bindingKey(key, state)] : undefined) ?? bindings[key];
-    return b ? resolveBinding(b, radiusNames) : undefined;
+    return b ? resolveBinding(b, radiusNames, spacingSteps) : undefined;
   };
 }
 

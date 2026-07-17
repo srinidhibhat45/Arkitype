@@ -327,11 +327,13 @@ export function TokenCard({
   const buttonResolve = useComponentBindings("button");
 
   const title = (opts.title ?? "Design Systems Manager") as string;
-  const titleSize = (opts["title.size"] ?? "sm") as string;
+  // Scale Step is a raw property, not a declared OptionSpec — resolveOptions()
+  // only surfaces declared keys, so read it straight off the properties bag.
+  const titleSize = (cfg?.properties?.["title.size"] ?? "sm") as string;
   const subtitle = (opts.subtitle ?? "Updated 2 hours ago") as string;
-  const subtitleSize = (opts["subtitle.size"] ?? "xs") as string;
+  const subtitleSize = (cfg?.properties?.["subtitle.size"] ?? "xs") as string;
   const bodyText = (opts.bodyText ?? "Manage tokens, balance scales, and distribute variable definitions.") as string;
-  const bodyTextSize = (opts["bodyText.size"] ?? "xs") as string;
+  const bodyTextSize = (cfg?.properties?.["bodyText.size"] ?? "xs") as string;
   const borderWidth = Number(opts.borderWidth ?? 1);
   const borderColor = (opts.borderColor ?? "#e4e4e7") as string;
   const bg = (opts.bg ?? "#ffffff") as string;

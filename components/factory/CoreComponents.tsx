@@ -504,8 +504,10 @@ export function TokenAlert({
   const opts = resolveOptions("alert", cfg?.properties);
   const alertTitle = (opts.title || title) as string;
   const alertBody = (opts.body || body) as string;
-  const titleSize = (opts["title.size"] ?? "sm") as string;
-  const bodySize = (opts["body.size"] ?? "xs") as string;
+  // Scale Step is a raw property, not a declared OptionSpec — resolveOptions()
+  // only surfaces declared keys, so read it straight off the properties bag.
+  const titleSize = (cfg?.properties?.["title.size"] ?? "sm") as string;
+  const bodySize = (cfg?.properties?.["body.size"] ?? "xs") as string;
 
   // Style resolves the surface/border/text triple; solid inverts to a filled tone.
   const surface =

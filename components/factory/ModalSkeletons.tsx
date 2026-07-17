@@ -56,12 +56,15 @@ interface ModalResolvedOpts {
 function useResolvedModalOptions(): ModalResolvedOpts {
   const cfg = useDesignSystem((s) => s.components.modal);
   const opts = resolveOptions("modal", cfg?.properties);
-  
+  // Scale Step is a raw property, not a declared OptionSpec — resolveOptions()
+  // only surfaces declared keys, so read it straight off the properties bag.
+  const props = cfg?.properties;
+
   return {
     title: (opts.title ?? "Confirm deletion") as string,
-    titleSize: (opts["title.size"] ?? "xl") as string,
+    titleSize: (props?.["title.size"] ?? "xl") as string,
     subtitle: (opts.subtitle ?? "This action cannot be undone") as string,
-    subtitleSize: (opts["subtitle.size"] ?? "sm") as string,
+    subtitleSize: (props?.["subtitle.size"] ?? "sm") as string,
     align: (opts.align ?? "left") as "left" | "center",
     showClose: opts.showClose !== false && opts.forcedAction !== true,
     forcedAction: !!opts.forcedAction,
@@ -71,7 +74,7 @@ function useResolvedModalOptions(): ModalResolvedOpts {
     shadow: (opts.shadow ?? "lg") as string,
     borderWidth: Number(opts.borderWidth ?? 1),
     bodyText: (opts.bodyText ?? "This will permanently delete the selected items from your workspace.") as string,
-    bodyTextSize: (opts["bodyText.size"] ?? "sm") as string,
+    bodyTextSize: (props?.["bodyText.size"] ?? "sm") as string,
     showSecondary: opts.showSecondary !== false,
     width: (opts.width ?? "sm") as "xs" | "sm" | "md" | "lg",
     overlayOpacity: Number(opts.overlayOpacity ?? 48),

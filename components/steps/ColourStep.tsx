@@ -17,6 +17,7 @@ import {
   useDesignSystem,
 } from "@/store/useDesignSystem";
 import {
+  alphaOf,
   bestTextOn,
   contrastRatio,
   harmonySuggestions,
@@ -24,6 +25,7 @@ import {
   rampStepLabels,
   statusSuggestion,
   tintedNeutral,
+  withAlpha,
 } from "@/lib/color";
 import {
   AsideDivider,
@@ -226,7 +228,7 @@ function RampRow({ family }: { family: ColorFamily }) {
       </div>
 
       {selected !== null && selectedIdx >= 0 ? (
-        <div className="mt-2 flex items-center gap-3 rounded-lg border border-line bg-ink-panel px-3 py-2">
+        <div className="mt-2 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-ink-panel px-3 py-2">
           <span className="font-mono text-[11px] text-fg-dim">
             {family.id}-{selected}
           </span>
@@ -238,6 +240,23 @@ function RampRow({ family }: { family: ColorFamily }) {
                 if (isValidHex(hex)) setFamilyOverride(family.id, selected, hex);
               }}
             />
+          </div>
+          <div className="flex items-center gap-1.5" title="Opacity">
+            <span className="text-[11px] text-fg-mute">Alpha</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={alphaOf(selectedHex)}
+              aria-label={`${family.id}-${selected} opacity`}
+              onChange={(e) =>
+                setFamilyOverride(family.id, selected, withAlpha(selectedHex, Number(e.target.value)))
+              }
+              className="h-1 w-16 cursor-pointer accent-fg"
+            />
+            <span className="w-7 text-right font-mono text-[10px] tabular-nums text-fg-mute">
+              {alphaOf(selectedHex)}%
+            </span>
           </div>
           {selectedOverridden ? (
             <button

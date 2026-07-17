@@ -12,7 +12,7 @@ import { useLayoutEffect, useMemo, useState, type CSSProperties, type ReactNode,
 import { createPortal } from "react-dom";
 import { ArrowUpRight, Check, Pipette, X } from "lucide-react";
 import { PreviewMode, RADII_NAMES, useDesignSystem } from "@/store/useDesignSystem";
-import { rampStepLabels } from "@/lib/color";
+import { isValidHex, rampStepLabels } from "@/lib/color";
 import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 import { resolveRef, resolveToken } from "@/lib/tokens";
 import { bindingSource, bindingSwatch, describeBinding } from "@/lib/binding";
@@ -411,13 +411,20 @@ export function ColorPicker({
               value={hex}
               spellCheck={false}
               onChange={(e) => setHex(e.target.value)}
-              className="h-9 w-full rounded-lg border border-line bg-ink px-2.5 font-mono text-[12px] uppercase text-fg focus:border-line-strong focus:outline-none"
+              aria-invalid={!isValidHex(hex)}
+              className={`h-9 w-full rounded-lg border bg-ink px-2.5 font-mono text-[12px] uppercase text-fg focus:outline-none ${
+                isValidHex(hex) ? "border-line focus:border-line-strong" : "border-red-500/70 focus:border-red-500"
+              }`}
             />
           </div>
+          {!isValidHex(hex) && (
+            <p className="text-[11px] text-red-500">Enter a valid hex colour, like #4F46E5</p>
+          )}
           <button
             type="button"
+            disabled={!isValidHex(hex)}
             onClick={() => onPick(`hex:${hex}`)}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-fg py-1.5 text-[12px] font-medium text-ink transition hover:opacity-90"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-fg py-1.5 text-[12px] font-medium text-ink transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Pipette size={12} /> Use this colour
           </button>

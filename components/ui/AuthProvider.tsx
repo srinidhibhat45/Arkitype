@@ -87,12 +87,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!pending) return;
       const { id, cur } = pending;
       pending = null;
-      useDesignSystem.getState().setSaveStatus("saving");
+      useDesignSystem.getState().setSaveStatus(id, "saving");
       db.saveProject(id, cur.name, cur)
-        .then(() => useDesignSystem.getState().setSaveStatus("saved"))
+        .then(() => useDesignSystem.getState().setSaveStatus(id, "saved"))
         .catch((e) => {
           console.error("[arkitype] autosave failed", e);
-          useDesignSystem.getState().setSaveStatus("error", e?.message ?? "Save failed");
+          useDesignSystem.getState().setSaveStatus(id, "error", e?.message ?? "Save failed");
         });
     };
 

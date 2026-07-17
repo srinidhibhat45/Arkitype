@@ -149,7 +149,7 @@ function TokenCell({ mode, token }: { mode: PreviewMode; token: string }) {
 }
 
 /** Live composed surface exercising the roles, rendered per mode. */
-function RolesInContext({ mode }: { mode: PreviewMode }) {
+export function RolesInContext({ mode }: { mode: PreviewMode }) {
   return (
     <ThemeFrame mode={mode} label={mode === "light" ? "Light" : "Dark"}>
       <div style={{ background: tv("surface-base"), padding: sv(4) }}>

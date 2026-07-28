@@ -76,6 +76,7 @@ export const COMPONENT_LANES: ComponentLane[] = [
       { id: "pagination", label: "Pagination" },
       { id: "dropdown", label: "Dropdown" },
       { id: "tree", label: "Tree view" },
+      { id: "jumplist", label: "Jumplist" },
       { id: "link", label: "Link" },
     ],
   },

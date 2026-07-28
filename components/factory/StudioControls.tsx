@@ -292,7 +292,7 @@ export function TokenSwatchCard({
         className={
           minimal
             ? "flex items-center gap-1.5 w-full h-full text-left select-none border-none bg-transparent hover:bg-transparent p-0 min-w-0"
-            : "flex items-center gap-1.5 rounded-md border border-line/50 bg-ink-panel/40 px-2 py-1 text-left transition-colors hover:bg-ink-panel/80 hover:border-line h-7 select-none"
+            : "flex w-full min-w-0 items-center gap-1.5 rounded-md border border-line/50 bg-ink-panel/40 px-2 py-1 text-left transition-colors hover:bg-ink-panel/80 hover:border-line h-7 select-none"
         }
       >
         <Swatch hex={data.swatch(binding)} size={13} />

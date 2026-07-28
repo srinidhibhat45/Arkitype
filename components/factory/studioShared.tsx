@@ -279,47 +279,46 @@ export function ColorPicker({
         </div>
       )}
 
-      <div className="mb-2 flex flex-col gap-1.5 rounded-md border border-line bg-ink px-2.5 py-2">
-        <div className="flex items-center gap-2">
-          <Swatch hex={currentSwatch} size={16} />
-          <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-fg">
-            {desc.label}
+      <div className="mb-2 flex items-center gap-2 rounded-md border border-line bg-ink px-2.5 py-2">
+        <Swatch hex={currentSwatch} size={16} />
+        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-fg">
+          {desc.label}
+        </span>
+        {desc.kind === "role" && (
+          <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-400">
+            Role
           </span>
-          {source ? (
-            <button
-              type="button"
-              title={`Open ${source.step === "roles" ? "Roles" : "Colour"} step`}
-              onClick={() => {
-                setPendingFocus({ step: source.step, anchor: source.anchor });
-                goToStep(source.step);
-                onClose();
-              }}
-              className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
-            >
-              <ArrowUpRight size={11} />
-            </button>
-          ) : null}
-        </div>
-        <div className="flex items-center justify-between border-t border-line/40 pt-1.5">
-          <span className="text-[9px] uppercase tracking-wide text-fg-mute">
-            Source: {desc.kind}
+        )}
+        {desc.kind === "primitive" && (
+          <span
+            className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-400"
+            title="Direct primitive bindings bypass semantic rules. Bind to a role instead."
+          >
+            Primitive
           </span>
-          {desc.kind === "role" && (
-            <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-bold uppercase tracking-wider">
-              Semantic (OK)
-            </span>
-          )}
-          {desc.kind === "primitive" && (
-            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[9px] font-bold uppercase tracking-wider animate-pulse" title="Direct primitive bindings bypass semantic rules. Bind to a role instead.">
-              Primitive (Direct)
-            </span>
-          )}
-          {desc.kind === "custom" && (
-            <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 text-[9px] font-bold uppercase tracking-wider" title="Static raw HEX values break system overrides.">
-              Static Value
-            </span>
-          )}
-        </div>
+        )}
+        {desc.kind === "custom" && (
+          <span
+            className="shrink-0 rounded bg-red-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-400"
+            title="Static raw HEX values break system overrides."
+          >
+            Hex
+          </span>
+        )}
+        {source ? (
+          <button
+            type="button"
+            title={`Open ${source.step === "roles" ? "Roles" : "Colour"} step`}
+            onClick={() => {
+              setPendingFocus({ step: source.step, anchor: source.anchor });
+              goToStep(source.step);
+              onClose();
+            }}
+            className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
+          >
+            <ArrowUpRight size={11} />
+          </button>
+        ) : null}
       </div>
 
       {tab === "roles" ? (

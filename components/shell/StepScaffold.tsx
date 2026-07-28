@@ -11,6 +11,10 @@ import {
   useDesignSystem,
 } from "@/store/useDesignSystem";
 
+// Below this, two-column property grids (colour swatches especially) run out
+// of room to truncate their labels and start visually colliding.
+const MIN_INSPECTOR_WIDTH = 320;
+
 export function StepScaffold({
   step,
   title,
@@ -36,7 +40,7 @@ export function StepScaffold({
     const saved = localStorage.getItem("arkitype-inspector-width");
     if (saved) {
       const parsed = parseInt(saved, 10);
-      if (!isNaN(parsed) && parsed >= 280 && parsed <= 600) {
+      if (!isNaN(parsed) && parsed >= MIN_INSPECTOR_WIDTH && parsed <= 600) {
         setInspectorWidth(parsed);
       }
     }
@@ -49,7 +53,7 @@ export function StepScaffold({
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const newWidth = startWidth - (moveEvent.clientX - startX);
-      if (newWidth >= 280 && newWidth <= 600) {
+      if (newWidth >= MIN_INSPECTOR_WIDTH && newWidth <= 600) {
         setInspectorWidth(newWidth);
         localStorage.setItem("arkitype-inspector-width", String(newWidth));
       }

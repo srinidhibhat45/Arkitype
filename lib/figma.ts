@@ -669,6 +669,7 @@ const FIGMA_PROP_DEFS: Record<
     { name: "Value", type: "TEXT", layer: "value", optionKey: "value", fallback: "$45,210.00" },
   ],
   dropdown: [{ name: "Label", type: "TEXT", layer: "text", optionKey: "label", fallback: "Dropdown Menu" }],
+  jumplist: [{ name: "Heading", type: "TEXT", layer: "heading", optionKey: "heading", fallback: "On this page" }],
   chip: [{ name: "Label", type: "TEXT", layer: "label", optionKey: "label", fallback: "Filter Chip" }],
   datePicker: [{ name: "Value", type: "TEXT", layer: "text", fallback: "12 / 07 / 2026" }],
   fileUpload: [{ name: "Prompt", type: "TEXT", layer: "title", fallback: "Drop files to upload" }],

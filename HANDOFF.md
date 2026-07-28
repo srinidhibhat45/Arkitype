@@ -23,7 +23,7 @@
 A **guided design-system builder** (Next.js 14 App Router + React 18 + TypeScript). It
 walks the user through an ordered rail of focused decisions — colour, type, space, shape,
 motion, roles — turns them into design tokens + semantic roles, lets them deeply re-bind
-**50 live components** to those tokens through a Figma-style Component Studio, and exports
+**51 live components** to those tokens through a Figma-style Component Studio, and exports
 the result (docs + a Figma variables bundle).
 
 - **Status:** alpha (`0.1.0-alpha`), on `main`. Don't trust a branch name or a
@@ -47,7 +47,7 @@ npm run start    # serve production build on :3111
 npx tsc --noEmit # typecheck — keep this at exit 0
 
 npx tsx scripts/check-contrast.ts   # WCAG AA audit of the default role maps
-npx tsx scripts/test-exporter.ts    # compiles the Figma bundle (expect 50 components)
+npx tsx scripts/test-exporter.ts    # compiles the Figma bundle (expect 51 components)
 cd figma-plugin && npm run build    # the plugin typechecks separately from the app
 ```
 
@@ -122,13 +122,13 @@ When you touch styling, be explicit about which system you mean. `--c-*` = chrom
 ### Schema-driven components
 `lib/componentSchema.ts` declares every component's styleable surface as a `ComponentSpec`
 (parts → props, each typed + optionally per-state, with a default binding; plus `options`
-and a `previewAxis` flag). **50 components across 4 lanes:**
+and a `previewAxis` flag). **51 components across 4 lanes:**
 
 - **Controls (12):** Button, Icon button, Button group, Input, Textarea, Select, Search,
   Checkbox, Radio, Switch, Slider, Stepper.
 - **Display (14):** Badge, Tag, Avatar, Tooltip, Progress, Spinner, Skeleton, Alert, Toast,
   Stat, Divider, Kbd, Empty state, Code block.
-- **Navigation (8):** Tabs, Navbar, Sidebar, Breadcrumbs, Steps, Pagination, Dropdown, Link.
+- **Navigation (9):** Tabs, Navbar, Sidebar, Breadcrumbs, Steps, Pagination, Dropdown, Jumplist, Link.
 - **Patterns (9):** Modal, Table, Card, List item, Feed item, Accordion, Banner, Field, Stat grid.
 
 `WIRED_COMPONENTS` gates which render live and fully-bindable. Modal / Tabs / Table are

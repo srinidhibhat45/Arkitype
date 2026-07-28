@@ -2119,6 +2119,44 @@ const OTHER_SPECS: ComponentSpec[] = [
     ],
   },
 
+  /* Jumplist — the docs "On this page" table of contents (scroll-spy nav). */
+  {
+    id: "jumplist",
+    tier: 2,
+    states: ["default"],
+    parts: [
+      {
+        id: "heading",
+        label: "Heading",
+        props: [prop("heading.text", "“On this page” text", "color", "role:text-muted")],
+      },
+      {
+        id: "item",
+        label: "Items",
+        props: [
+          prop("item.text", "Inactive text", "color", "role:text-secondary"),
+          prop("item.active", "Active text", "color", "role:text-primary"),
+          prop("item.radius", "Item radius", "radius", "radius:2"),
+        ],
+      },
+      {
+        id: "marker",
+        label: "Active marker",
+        props: [
+          prop("marker.track", "Track", "color", "role:border-muted"),
+          prop("marker.active", "Active indicator", "color", "role:action-primary-default"),
+        ],
+      },
+    ],
+    options: [
+      enumOpt("markerStyle", "Marker", [opt("bar", "Left bar"), opt("dot", "Leading dot")], "bar", true),
+      boolOpt("showHeading", "Show heading", true),
+      textOpt("heading", "Heading", "On this page"),
+      boolOpt("showNested", "Indent sub-sections", true),
+      numOpt("activeIndex", "Active item #", 2, 1, 6),
+    ],
+  },
+
   /* Date picker / calendar — M3, Carbon, SLDS, Atlassian, Apple. */
   {
     id: "datePicker",
@@ -2232,6 +2270,7 @@ export const WIRED_COMPONENTS = new Set<string>([
   "steps",
   "pagination",
   "dropdown",
+  "jumplist",
   "link",
   // Patterns
   "card",

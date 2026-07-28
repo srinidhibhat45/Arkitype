@@ -128,6 +128,7 @@ import {
   TokenStat,
 } from "@/components/factory/FeedbackComponents";
 import {
+  TokenJumplist,
   TokenLink,
   TokenNavbar,
   TokenSidebar,
@@ -564,6 +565,18 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
           showDivider={ob("showDivider")}
           showDanger={ob("showDanger")}
           menuWidth={on("menuWidth") ?? 180}
+          radiusStep={radiusStep}
+          resolve={resolve}
+        />
+      );
+    case "jumplist":
+      return (
+        <TokenJumplist
+          markerStyle={(os("markerStyle") as "bar" | "dot") || "bar"}
+          showHeading={ob("showHeading")}
+          heading={os("heading") || "On this page"}
+          showNested={ob("showNested")}
+          activeIndex={(on("activeIndex") ?? 2) - 1}
           radiusStep={radiusStep}
           resolve={resolve}
         />

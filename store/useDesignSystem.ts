@@ -999,6 +999,7 @@ const DEFAULT_COMPONENTS: Record<string, ComponentConfig> = {
   fileUpload: { skeletonId: "1", properties: { radiusStep: 4 } },
   timeline: { skeletonId: "1", properties: {} },
   tree: { skeletonId: "1", properties: { radiusStep: 2 } },
+  jumplist: { skeletonId: "1", properties: { radiusStep: 2 } },
   datePicker: { skeletonId: "1", properties: { radiusStep: 3 } },
 };
 
@@ -2476,7 +2477,7 @@ export const useDesignSystem = create<ArkitypeState>()(
   },
   {
       name: "arkitype-system",
-      version: 13,
+      version: 14,
       // v2 → v3: dynamic colour families, per-mode elevation, typography
       // weights/roles/rounding/overrides, editable spacing/radii + overrides,
       // stored semantic groups + expanded roles.
@@ -2822,6 +2823,25 @@ export const useDesignSystem = create<ArkitypeState>()(
             for (const pid of Object.keys(state.projects)) {
               const proj = state.projects[pid];
               if (proj?.semantics) backfillComponentTier(proj.semantics);
+            }
+          }
+        }
+
+        if (version < 14) {
+          // v13 -> v14: add the Jumplist ("On this page" docs TOC) navigation
+          // component into existing systems so it appears for returning users.
+          const backfillJumplist = (comps?: Record<string, ComponentConfig>) => {
+            if (!comps) return;
+            if (!comps.jumplist && DEFAULT_COMPONENTS.jumplist) {
+              comps.jumplist = JSON.parse(
+                JSON.stringify(DEFAULT_COMPONENTS.jumplist)
+              ) as ComponentConfig;
+            }
+          };
+          backfillJumplist(state.components);
+          if (state.projects) {
+            for (const pid of Object.keys(state.projects)) {
+              backfillJumplist(state.projects[pid]?.components);
             }
           }
         }

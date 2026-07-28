@@ -82,7 +82,7 @@ export function BetaGate({ onUnlock }: { onUnlock: () => void }) {
                     setPassword(e.target.value);
                     if (error) setError(false);
                   }}
-                  placeholder="••••••••"
+                  placeholder="Enter your access password"
                   autoFocus
                   aria-invalid={error}
                   aria-describedby={error ? "beta-gate-error" : undefined}

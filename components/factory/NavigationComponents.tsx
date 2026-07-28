@@ -2,9 +2,10 @@
 
 /**
  * Extended navigation parts: Navbar (top app bar), Sidebar (vertical nav list),
- * Steps (wizard progress) and Link (text link states). Wayfinding surfaces —
- * active state carried by the action/border-focus roles, everything structural
- * from the spacing/radius scales and type/motion vars.
+ * Steps (wizard progress), Link (text link states) and Jumplist (the docs
+ * "On this page" table of contents). Wayfinding surfaces — active state carried
+ * by the action/border-focus roles, everything structural from the
+ * spacing/radius scales and type/motion vars.
  */
 import type { CSSProperties } from "react";
 import { BarChart3, Check, CreditCard, ExternalLink, Home, Search, Settings } from "lucide-react";
@@ -403,5 +404,154 @@ export function TokenLink({
         Disabled {label}{ext}
       </span>
     </div>
+  );
+}
+
+/* ── Jumplist (docs "On this page" table of contents) ── */
+
+const JUMPLIST_SECTIONS = [
+  { label: "Overview", depth: 0 },
+  { label: "Installation", depth: 0 },
+  { label: "Requirements", depth: 1 },
+  { label: "Configuration", depth: 1 },
+  { label: "Usage", depth: 0 },
+  { label: "API reference", depth: 0 },
+];
+
+export function TokenJumplist({
+  markerStyle = "bar",
+  showHeading = true,
+  heading = "On this page",
+  showNested = true,
+  activeIndex = 1,
+  radiusStep = 2,
+  resolve = NO_BINDINGS,
+}: {
+  markerStyle?: "bar" | "dot";
+  showHeading?: boolean;
+  heading?: string;
+  showNested?: boolean;
+  activeIndex?: number;
+  radiusStep?: number;
+  resolve?: Resolver;
+}) {
+  const r = resolve;
+  const items = showNested ? JUMPLIST_SECTIONS : JUMPLIST_SECTIONS.filter((s) => s.depth === 0);
+  const active = Math.min(Math.max(activeIndex, 0), items.length - 1);
+
+  const headingColor = r("heading.text") ?? tv("text-muted");
+  const inactive = r("item.text") ?? tv("text-secondary");
+  const activeColor = r("item.active") ?? tv("text-primary");
+  const track = r("marker.track") ?? tv("border-muted");
+  const activeMark = r("marker.active") ?? tv("action-primary-default");
+  const itemRadius = r("item.radius") ?? rv(radiusStep);
+
+  return (
+    <nav
+      aria-label={heading}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: sv(2),
+        minWidth: 200,
+        fontFamily: "var(--ark-font-sans)",
+      }}
+    >
+      {showHeading ? (
+        <span
+          style={{
+            fontSize: "var(--ark-text-xs)",
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: headingColor,
+          }}
+        >
+          {heading}
+        </span>
+      ) : null}
+      <div style={{ position: "relative", display: "flex", flexDirection: "column" }}>
+        {markerStyle === "bar" ? (
+          <span
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 4,
+              bottom: 4,
+              width: 2,
+              borderRadius: rv(7),
+              background: track,
+            }}
+          />
+        ) : null}
+        {items.map((item, i) => {
+          const on = i === active;
+          const nested = item.depth > 0;
+          if (markerStyle === "dot") {
+            return (
+              <span
+                key={item.label}
+                aria-current={on ? "location" : undefined}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: sv(2),
+                  padding: `${sv(1)} 0`,
+                  paddingLeft: nested ? sv(3) : 0,
+                  fontSize: "var(--ark-text-sm)",
+                  fontWeight: on ? 600 : 500,
+                  color: on ? activeColor : inactive,
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 999,
+                    flexShrink: 0,
+                    background: on ? activeMark : track,
+                  }}
+                />
+                {item.label}
+              </span>
+            );
+          }
+          return (
+            <span
+              key={item.label}
+              aria-current={on ? "location" : undefined}
+              style={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                padding: `${sv(1)} ${sv(2)}`,
+                paddingLeft: nested ? sv(4) : sv(2),
+                borderRadius: itemRadius,
+                fontSize: "var(--ark-text-sm)",
+                fontWeight: on ? 600 : 500,
+                color: on ? activeColor : inactive,
+                cursor: "pointer",
+              }}
+            >
+              {on ? (
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 3,
+                    bottom: 3,
+                    width: 2,
+                    borderRadius: rv(7),
+                    background: activeMark,
+                  }}
+                />
+              ) : null}
+              {item.label}
+            </span>
+          );
+        })}
+      </div>
+    </nav>
   );
 }

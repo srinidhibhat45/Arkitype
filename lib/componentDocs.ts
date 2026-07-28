@@ -381,6 +381,14 @@ export const COMPONENT_DOCS: Record<string, ComponentDoc> = {
     donts: ["Don't auto-expand everything.", "Don't use for flat lists."],
     a11y: "role=tree with aria-expanded per branch and full arrow-key traversal.",
   },
+  jumplist: {
+    description:
+      "An “On this page” table of contents that scroll-spies the current section — the docs-sidebar wayfinder for long-form content.",
+    whenToUse: ["Long articles or reference pages with headings a reader jumps between."],
+    dos: ["Mark the section in view as active as the reader scrolls.", "Mirror the heading hierarchy with a single level of indent."],
+    donts: ["Don't list every heading — top two levels only.", "Don't use it as primary site navigation."],
+    a11y: "A nav landmark labelled “On this page”; the in-view item carries aria-current so it is announced as the current location.",
+  },
   link: {
     description:
       "Inline navigational text bound to the text-link token pair, underlined to stay recognisable without colour.",

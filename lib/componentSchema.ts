@@ -2206,6 +2206,135 @@ const OTHER_SPECS: ComponentSpec[] = [
       boolOpt("showAdjacent", "Show adjacent days", true),
     ],
   },
+
+  /* Drawer / side sheet — M3 navigation drawer, Carbon side panel, Polaris sheet,
+     Atlassian drawer. The one overlay surface the library was missing: Modal
+     covers centred dialogs, but not edge-anchored panels. */
+  {
+    id: "drawer",
+    tier: 2,
+    slots: [
+      {
+        id: "primaryAction",
+        componentId: "button",
+        label: "Primary action",
+        content: [
+          textOpt("label", "Label", "Save changes"),
+          enumOpt("variant", "Style variant", [
+            opt("filled", "Filled"),
+            opt("tonal", "Filled Tonal"),
+            opt("elevated", "Elevated"),
+            opt("outlined", "Outlined"),
+            opt("text", "Text"),
+          ], "filled"),
+          enumOpt("size", "Size", [opt("sm", "Small"), opt("md", "Medium"), opt("lg", "Large"), opt("xl", "Extra Large")], "md"),
+          textOpt("prefixIcon", "Prefix icon (Material name)", ""),
+          textOpt("suffixIcon", "Suffix icon (Material name)", ""),
+        ],
+      },
+      {
+        id: "closeButton",
+        componentId: "iconButton",
+        label: "Close button",
+        content: [
+          enumOpt("variant", "Style variant", [
+            opt("solid", "Solid"),
+            opt("outline", "Outline"),
+            opt("ghost", "Ghost"),
+          ], "ghost"),
+          textOpt("icon", "Icon (Material name)", "close"),
+        ],
+      },
+    ],
+    states: ["default"],
+    parts: [
+      containerPart({
+        bg: "role:surface-elevated",
+        border: "role:border-default",
+        radius: "radius:4",
+        padX: "4",
+        padY: "4",
+        states: ["default"],
+      }),
+      {
+        id: "overlay",
+        label: "Scrim",
+        props: [prop("overlay.bg", "Backdrop", "color", "hex:#0f172a99")],
+      },
+      labelPart("title", "Title", {
+        color: "role:text-primary",
+        font: "font:heading",
+        weight: "weight:bold",
+        size: "text:lg",
+        states: ["default"],
+        contrastAgainst: "container.bg",
+      }),
+      labelPart("body", "Body text", {
+        color: "role:text-secondary",
+        font: "font:body",
+        size: "text:sm",
+        states: ["default"],
+        contrastAgainst: "container.bg",
+      }),
+      {
+        id: "divider",
+        label: "Header / footer rule",
+        props: [prop("divider.color", "Colour", "color", "role:border-muted")],
+      },
+    ],
+    options: [
+      enumOpt("side", "Anchored to", [
+        opt("right", "Right"),
+        opt("left", "Left"),
+        opt("bottom", "Bottom"),
+      ], "right", true),
+      enumOpt("elevation", "Elevation", ELEVATION_OPTS, "high"),
+      textOpt("title", "Title text", "Ledger settings"),
+      textOpt("body", "Body text", "Adjust how this ledger reconciles, who can approve entries, and where statements are delivered."),
+      numOpt("width", "Panel width (px)", 320, 240, 560),
+      boolOpt("showOverlay", "Show scrim", true),
+      boolOpt("showClose", "Show close button", true),
+      boolOpt("showFooter", "Show footer actions", true),
+    ],
+  },
+
+  /* Avatar group — stacked, overlapping avatars with an overflow count.
+     Every major system ships one (M3, Polaris, Carbon, Atlassian, Primer);
+     Arkitype had the single Avatar but no way to express a set of people. */
+  {
+    id: "avatarGroup",
+    tier: 2,
+    states: ["default"],
+    parts: [
+      {
+        id: "avatar",
+        label: "Avatars",
+        props: [
+          prop("avatar.bg", "Background", "color", "role:surface-subtle"),
+          prop("avatar.text", "Initials", "color", "role:text-secondary", { contrastAgainst: "avatar.bg" }),
+          prop("avatar.ring", "Separator ring", "color", "role:surface-base"),
+          prop("avatar.ringWidth", "Ring width", "dimension", "px:2", { min: 0, max: 6 }),
+          prop("avatar.radius", "Corner radius", "radius", "radius:7"),
+        ],
+      },
+      {
+        id: "overflow",
+        label: "Overflow chip",
+        props: [
+          prop("overflow.bg", "Background", "color", "role:surface-sunken"),
+          prop("overflow.text", "Text", "color", "role:text-secondary", { contrastAgainst: "overflow.bg" }),
+        ],
+      },
+    ],
+    options: [
+      enumOpt("shape", "Shape", [opt("circle", "Circle"), opt("rounded", "Rounded square")], "circle", true),
+      numOpt("count", "People", 5, 1, 12),
+      numOpt("max", "Show before overflow", 4, 1, 12),
+      numOpt("size", "Avatar size (px)", 32, 16, 64),
+      numOpt("overlap", "Overlap (px)", 8, 0, 24),
+      boolOpt("showOverflow", "Show overflow count", true),
+    ],
+  },
 ];
 
 /* ────────────────────────────── registry ────────────────────────────── */
@@ -2284,6 +2413,8 @@ export const WIRED_COMPONENTS = new Set<string>([
   "field",
   "statGrid",
   // Extended library (industry-parity additions)
+  "drawer",
+  "avatarGroup",
   "chip",
   "rating",
   "popover",

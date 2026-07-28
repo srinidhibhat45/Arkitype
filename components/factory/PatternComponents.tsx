@@ -414,3 +414,147 @@ export function TokenFeedItem({
     </div>
   );
 }
+
+/* ── Drawer (edge-anchored side sheet) ── */
+
+/**
+ * The overlay surface Modal doesn't cover: a panel anchored to an edge rather
+ * than centred. Draws its own scrim so the preview reads as an overlay, and
+ * nests real Button / Icon button instances for its actions (never restyled
+ * copies — style comes from those components' own bindings).
+ */
+export function TokenDrawer({
+  side = "right",
+  elevation = "high",
+  title = "Ledger settings",
+  body = "Adjust how this ledger reconciles, who can approve entries, and where statements are delivered.",
+  width = 320,
+  showOverlay = true,
+  showClose = true,
+  showFooter = true,
+  radiusStep = 4,
+  resolve = NO_BINDINGS,
+}: {
+  side?: "left" | "right" | "bottom";
+  elevation?: string;
+  title?: string;
+  body?: string;
+  width?: number;
+  showOverlay?: boolean;
+  showClose?: boolean;
+  showFooter?: boolean;
+  radiusStep?: number;
+  resolve?: Resolver;
+}) {
+  const r = resolve;
+  const buttonResolve = useComponentBindings("button");
+  const iconButtonResolve = useComponentBindings("iconButton");
+  const horizontal = side !== "bottom";
+  const rule = r("divider.color") ?? tv("border-muted");
+
+  const panel: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    background: r("container.bg") ?? tv("surface-elevated"),
+    border: `${r("container.borderWidth") ?? "1px"} solid ${r("container.border") ?? tv("border-default")}`,
+    borderRadius: r("container.radius") ?? rv(radiusStep),
+    boxShadow: `var(--ark-shadow-${elevation})`,
+    fontFamily: "var(--ark-font-sans)",
+    width: horizontal ? width : "100%",
+    maxWidth: "100%",
+    marginLeft: side === "right" ? "auto" : undefined,
+    marginRight: side === "left" ? "auto" : undefined,
+    marginTop: side === "bottom" ? "auto" : undefined,
+    overflow: "hidden",
+  };
+
+  return (
+    <div
+      data-ark-part="overlay"
+      style={{
+        display: "flex",
+        width: "100%",
+        minHeight: 260,
+        padding: sv(2),
+        borderRadius: rv(radiusStep),
+        background: showOverlay ? (r("overlay.bg") ?? "#0f172a99") : "transparent",
+      }}
+    >
+      <div data-ark-part="container" style={panel}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: sv(2),
+            padding: `${r("container.padY") ?? sv(4)} ${r("container.padX") ?? sv(4)}`,
+            borderBottom: `1px solid ${rule}`,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              data-ark-part="title"
+              style={{
+                color: r("title.color") ?? tv("text-primary"),
+                fontFamily: r("title.font") ?? "var(--ark-font-heading)",
+                fontWeight: r("title.weight") ?? 700,
+                fontSize: r("title.size") ?? "var(--ark-text-lg)",
+              }}
+            >
+              {title}
+            </div>
+          </div>
+          {showClose ? (
+            <TokenIconButton
+              variant="ghost"
+              radiusStep={radiusStep}
+              resolve={createChildResolver("iconButton", r, iconButtonResolve)}
+            >
+              <X size={14} />
+            </TokenIconButton>
+          ) : null}
+        </div>
+
+        <div
+          data-ark-part="body"
+          style={{
+            flex: 1,
+            padding: `${r("container.padY") ?? sv(4)} ${r("container.padX") ?? sv(4)}`,
+            color: r("body.color") ?? tv("text-secondary"),
+            fontFamily: r("body.font") ?? "var(--ark-font-sans)",
+            fontSize: r("body.size") ?? "var(--ark-text-sm)",
+            lineHeight: 1.55,
+          }}
+        >
+          {body}
+        </div>
+
+        {showFooter ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: sv(2),
+              padding: `${r("container.padY") ?? sv(4)} ${r("container.padX") ?? sv(4)}`,
+              borderTop: `1px solid ${rule}`,
+            }}
+          >
+            <TokenButton
+              variant="text"
+              size="md"
+              resolve={createChildResolver("button", r, buttonResolve)}
+            >
+              Cancel
+            </TokenButton>
+            <TokenButton
+              variant="filled"
+              size="md"
+              resolve={createChildResolver("button", r, buttonResolve)}
+            >
+              Save changes
+            </TokenButton>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}

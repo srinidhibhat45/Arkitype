@@ -42,15 +42,12 @@ export const INTERACTION_STATES: InteractionState[] = [
   "disabled",
 ];
 
-export type SizeToken = "sm" | "md" | "lg" | "xl";
+// The size scale lives in lib/sizing.ts so the Figma exporter reads the exact
+// same mapping the preview renders from. Re-exported here for existing imports.
+import { SIZE_MAP as SHARED_SIZE_MAP, type SizeToken as SharedSizeToken } from "@/lib/sizing";
 
-/** size → [paddingY step, paddingX step, type step] against system scales */
-export const SIZE_MAP: Record<SizeToken, { py: number; px: number; text: string }> = {
-  sm: { py: 1, px: 2, text: "xs" },
-  md: { py: 1, px: 3, text: "sm" },
-  lg: { py: 2, px: 4, text: "base" },
-  xl: { py: 3, px: 5, text: "lg" },
-};
+export type SizeToken = SharedSizeToken;
+export const SIZE_MAP = SHARED_SIZE_MAP;
 
 export function focusRing(): CSSProperties {
   return {

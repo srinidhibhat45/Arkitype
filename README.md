@@ -43,11 +43,14 @@ overrides survive. Source lives in [`figma-plugin/`](./figma-plugin).
 
 ## Component library
 
-51 components across four lanes — Controls, Display, Navigation, and Patterns
+53 components across four lanes — Controls, Display, Navigation, and Patterns
 (buttons, inputs, selection controls, alerts/toasts/badges/banners, tabs,
-navbar/sidebar/breadcrumbs, modals, tables, cards, feeds, and more). Each is
-schema-driven, so its editable parts and options flow from a single
-`ComponentSpec`.
+navbar/sidebar/breadcrumbs, drawers, modals, tables, cards, feeds, avatar
+groups, and more). Each is schema-driven, so its editable parts and options
+flow from a single `ComponentSpec`.
+
+The inventory lives in [`lib/componentLanes.ts`](./lib/componentLanes.ts) — the
+in-app copy derives its count from there rather than restating it.
 
 ## Tech stack
 

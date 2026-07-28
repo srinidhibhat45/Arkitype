@@ -23,7 +23,7 @@
 A **guided design-system builder** (Next.js 14 App Router + React 18 + TypeScript). It
 walks the user through an ordered rail of focused decisions — colour, type, space, shape,
 motion, roles — turns them into design tokens + semantic roles, lets them deeply re-bind
-**51 live components** to those tokens through a Figma-style Component Studio, and exports
+**53 live components** to those tokens through a Figma-style Component Studio, and exports
 the result (docs + a Figma variables bundle).
 
 - **Status:** alpha (`0.1.0-alpha`), on `main`. Don't trust a branch name or a
@@ -46,9 +46,10 @@ npm run build    # production build
 npm run start    # serve production build on :3111
 npx tsc --noEmit # typecheck — keep this at exit 0
 
-npx tsx scripts/check-contrast.ts   # WCAG AA audit of the default role maps
-npx tsx scripts/test-exporter.ts    # compiles the Figma bundle (expect 51 components)
-cd figma-plugin && npm run build    # the plugin typechecks separately from the app
+npx tsx scripts/check-contrast.ts     # WCAG AA audit of the default role maps
+npx tsx scripts/check-figma-props.ts  # every Figma property binds to a layer the plugin draws
+npx tsx scripts/test-exporter.ts      # compiles the Figma bundle (smoke test — it only fails on a throw)
+cd figma-plugin && npm run build      # the plugin typechecks separately from the app
 ```
 
 `.claude/launch.json` already defines an `arkitype` server on port **3111**. Verify changes
@@ -122,14 +123,12 @@ When you touch styling, be explicit about which system you mean. `--c-*` = chrom
 ### Schema-driven components
 `lib/componentSchema.ts` declares every component's styleable surface as a `ComponentSpec`
 (parts → props, each typed + optionally per-state, with a default binding; plus `options`
-and a `previewAxis` flag). **51 components across 4 lanes:**
+and a `previewAxis` flag). **53 components across 4 lanes.**
 
-- **Controls (12):** Button, Icon button, Button group, Input, Textarea, Select, Search,
-  Checkbox, Radio, Switch, Slider, Stepper.
-- **Display (14):** Badge, Tag, Avatar, Tooltip, Progress, Spinner, Skeleton, Alert, Toast,
-  Stat, Divider, Kbd, Empty state, Code block.
-- **Navigation (9):** Tabs, Navbar, Sidebar, Breadcrumbs, Steps, Pagination, Dropdown, Jumplist, Link.
-- **Patterns (9):** Modal, Table, Card, List item, Feed item, Accordion, Banner, Field, Stat grid.
+⚠️ Don't restate the inventory here — it drifts. `lib/componentLanes.ts` is the single
+source of truth for which components exist and which lane they sit in (Controls · Display ·
+Navigation · Patterns), and `WIRED_COMPONENTS` gates which render live. `app/docs/page.tsx`
+and the landing hero both *derive* their count from it; do the same in any new surface.
 
 `WIRED_COMPONENTS` gates which render live and fully-bindable. Modal / Tabs / Table are
 **skeleton components** — bg/border/overlay/tab-colour bindings are wired, but corner
@@ -165,9 +164,15 @@ button/input/textarea/select/checkbox/radio/switch; untagged parts degrade grace
 ## 6. ⚠️ Persisted store — the landmine
 
 `store/useDesignSystem.ts` is a **Zustand store persisted to localStorage** under the key
-**`arkitype-system`**, currently at **persist `version: 13`** (this number drifts —
+**`arkitype-system`**, currently at **persist `version: 14`** (this number drifts —
 grep `version:` in the `persist(...)` config for ground truth rather than trusting
 this doc).
+
+**What actually persists is now tiny.** `partialize` keeps only `currentPreviewMode` and
+`chromeTheme` — the design itself lives in Supabase (`projects.state`), not localStorage.
+So the migrate chain below is *not* what protects a returning user's work; `backfillProjectState`
+is, and it runs on every cloud load. Bump + migrate anyway if you change the shape of the two
+persisted prefs, but don't assume localStorage holds the system.
 
 **If you change the shape of anything that gets persisted, you MUST bump `version` and add a
 `migrate` branch** (the `migrate: (persisted, version) => …` block, ~line 1437). Otherwise a
@@ -175,10 +180,11 @@ returning user's stale localStorage deserializes into a broken state. The existi
 chain backfills across every prior version (motion/layout, generated+override foundations,
 new component ids, etc.) — follow that pattern.
 
-`partialize` (~line 1564) controls *what* persists (e.g. it persists `chromeTheme`). The
-`highlight`/"jump here" target is deliberately **not** persisted (transient). Store actions
-self-heal missing component ids (`{...DEFAULT_COMPONENTS, ...saved}`) so new components
-appear for existing users without a hard migrate.
+The `highlight`/"jump here" target is deliberately **not** persisted (transient). Store
+actions — and `backfillProjectState` at load time — self-heal missing component ids
+(`{...DEFAULT_COMPONENTS, ...saved}`), so **adding a component needs no migrate**: add it to
+`DEFAULT_COMPONENTS`, `COMPONENT_SPECS`, `WIRED_COMPONENTS` and `COMPONENT_LANES` and existing
+projects pick it up on next load.
 
 ---
 
@@ -206,6 +212,26 @@ appear for existing users without a hard migrate.
   Getting started, Foundations, one page per lane, Changelog). Idempotent via plugin-data
   tags (`ark:pageId`/`ark:sectionId`/`ark:componentId`): re-syncs update variables and
   redraw variants in place, so instances never break.
+
+### ⚠️ The app and the plugin ship separately — and the bundle is the contract
+
+`figma-plugin/dist/` is **gitignored**, and the plugin users actually run is the one
+**published to the Figma Community**, not the one in this repo. Deploying the web app does
+*not* update it. That makes two failure modes real:
+
+1. **New component, old plugin.** `drawComponentNode`'s switch has no case for it, so it
+   falls through to `drawFallback` and exports as a grey placeholder box. This is exactly
+   how Jumplist shipped — it was in the bundle for a full release with no renderer.
+2. **New component *property*, old plugin.** `applyComponentProperties` binds by
+   `findAll(n => n.name === p.layer)`. No matching layer means the property appears in
+   Figma's panel and silently controls nothing.
+
+So: **whenever you add a component or a `FIGMA_PROP_DEFS` entry, rebuild and republish the
+plugin in the same release.** `npx tsx scripts/check-figma-props.ts` catches both cases
+against the local plugin source (it fails on a property whose layer is never drawn, and on
+a wired component with no renderer case) — but it can only check the source in this repo,
+not whatever version is live in the Community. Layer names are load-bearing API; renaming
+one without updating `FIGMA_PROP_DEFS` breaks a property silently.
 - `lib/docs.ts` — the exported docs; §6 lists "Configured components" (resolved options +
   override counts). Token count is ~187.
 
@@ -232,7 +258,7 @@ progress.md          the version-by-version build log (authoritative changelog)
 
 ## 9. Next steps (from progress.md, fast-follow)
 
-1. **Grow the component library** 50 → 60–70+ across all lanes.
+1. **Grow the component library** 53 → 60–70+ across all lanes.
 2. **Typography + alias parity:** per-step leading-override UI, editable type-scale steps,
    a unified TokenPicker in Roles.
 3. **Iconography foundation** (style / stroke / grid) — the one Figma foundation not yet covered.
@@ -246,14 +272,22 @@ progress.md          the version-by-version build log (authoritative changelog)
    walks past it, and `signUp` is open — an uninvited visitor can create a real account.
    RLS still confines them to their own data, so this is a "who gets in / who burns the
    Supabase quota" question, not a data-leak one. Close it by disabling open signup in
-   Supabase (invite-only) if that's not the intent.
-8. **Keyboard-accessible project cards.** The dashboard card is a `div` with `onClick`
-   (`ProjectDashboard.tsx`, `renderCard`), so files can't be opened from the keyboard and
-   don't appear in the a11y tree. Notably out of step with the colour swatches, which
-   expose their contrast ratios properly.
+   Supabase (invite-only) if that's not the intent. *(Kept deliberately as-is for the
+   first alpha — access is invite-only by email.)*
+8. **Finish the size axis.** Button and Icon button expose a Size control in the studio but
+   are deliberately **not** size-variant in Figma yet (`SIZE_VARIANT_COMPONENTS` in
+   `lib/sizing.ts`) — Button is already 40 variants and ×4 sizes would put 160 in one set.
+   Decide whether that's worth it, or narrow the size list for Button.
+9. **Options the Figma renderers still ignore.** The audit in §7 covers *properties*, not
+   options. Remaining known gaps: date-picker `mode`/`firstDay`/`showAdjacent`, file-upload
+   options, tabs `showIcons`, empty-state copy, table `rowHeight`. Each is a small
+   `optText`/`optBool`/`optNum` read in the matching `draw*` function.
 
-*(Done since this list was written: component-binding export into the Figma bundle — the
-compiler now emits per-variant resolved bindings, which `scripts/test-exporter.ts` asserts.)*
+*(Done since this list was written: component-binding export into the Figma bundle; Figma
+component properties for 49 of 53 components — up from 28 — with `scripts/check-figma-props.ts`
+guarding them; the Figma renderers now honour the studio's content options instead of drawing
+hardcoded sample copy; `size` is a real Figma variant axis for the four form controls; Jumplist
+got the renderer it never had; Drawer and Avatar group added; keyboard-accessible project cards.)*
 
 ---
 
@@ -270,7 +304,22 @@ compiler now emits per-variant resolved bindings, which `scripts/test-exporter.t
   reporting two AA failures that had already been fixed — a copied constant is a lie with a
   delay on it.
 - **Audits fail loudly.** A resolver that returns a placeholder (`"#000000"`) for an unknown
-  token turns a stale reference into a passing check. Throw instead.
+  token turns a stale reference into a passing check. Throw instead. `check-figma-props.ts`
+  follows the same rule: if it can't locate the plugin's dispatch switch it throws rather
+  than reporting a clean run against nothing.
+- **The exported kit must match the preview the designer approved.** If the studio exposes an
+  option, the matching `draw*` in the plugin has to read it. Renderers that drew their own
+  sample copy meant a designer could set a navbar brand, export, and find "✦ Arkitype" in
+  Figma. Default fallbacks in the plugin mirror the live component's defaults for the same
+  reason.
+- **Figma layer names are API.** `FIGMA_PROP_DEFS` binds properties to layers by name, and
+  duplicate names inside one variant bind a single property to *all* of them (one "Column 1"
+  used to rewrite the table header and both body rows). Keep names unique per variant, and
+  pass them as literals/templates at the `createTextHelper` call — a name routed through a
+  variable can't be verified by the audit.
+- **Booleans need a layer to toggle.** Draw the layer unconditionally and set `.visible`,
+  the way `drawButton` does for its icon slots; a layer that isn't drawn gives Figma a dead
+  boolean property.
 
 ---
 

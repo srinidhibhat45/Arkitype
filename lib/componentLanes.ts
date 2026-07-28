@@ -56,6 +56,7 @@ export const COMPONENT_LANES: ComponentLane[] = [
       { id: "toast", label: "Toast" },
       { id: "stat", label: "Stat" },
       { id: "rating", label: "Rating" },
+      { id: "avatarGroup", label: "Avatar group" },
       { id: "divider", label: "Divider" },
       { id: "kbd", label: "Keyboard" },
       { id: "popover", label: "Popover" },
@@ -95,6 +96,7 @@ export const COMPONENT_LANES: ComponentLane[] = [
       { id: "field", label: "Field" },
       { id: "statGrid", label: "Stat grid" },
       { id: "timeline", label: "Timeline" },
+      { id: "drawer", label: "Drawer" },
     ],
   },
 ];

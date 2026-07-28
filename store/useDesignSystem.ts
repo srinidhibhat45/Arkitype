@@ -1001,6 +1001,8 @@ const DEFAULT_COMPONENTS: Record<string, ComponentConfig> = {
   tree: { skeletonId: "1", properties: { radiusStep: 2 } },
   jumplist: { skeletonId: "1", properties: { radiusStep: 2 } },
   datePicker: { skeletonId: "1", properties: { radiusStep: 3 } },
+  drawer: { skeletonId: "1", properties: { radiusStep: 4 } },
+  avatarGroup: { skeletonId: "1", properties: { radiusStep: 7 } },
 };
 
 /**

@@ -703,3 +703,94 @@ export function TokenToast({
     </div>
   );
 }
+
+/* ── Avatar group (stacked people with an overflow count) ── */
+
+const AVATAR_GROUP_INITIALS = ["AR", "MK", "JD", "SB", "TL", "PN", "CV", "RS", "EO", "DW", "FH", "GK"];
+
+/**
+ * A set of overlapping avatars capped at `max`, with a "+N" chip for the rest.
+ * Draws its own circles rather than nesting TokenAvatar, because the group owns
+ * the separator ring (`avatar.ring`) that makes the stack legible — that ring
+ * is a property of the *group*, not of a lone avatar.
+ */
+export function TokenAvatarGroup({
+  shape = "circle",
+  count = 5,
+  max = 4,
+  size = 32,
+  overlap = 8,
+  showOverflow = true,
+  radiusStep = 7,
+  resolve = NO_BINDINGS,
+}: {
+  shape?: "circle" | "rounded";
+  count?: number;
+  max?: number;
+  size?: number;
+  overlap?: number;
+  showOverflow?: boolean;
+  radiusStep?: number;
+  resolve?: Resolver;
+}) {
+  const r = resolve;
+  const total = Math.max(1, Math.min(count, AVATAR_GROUP_INITIALS.length));
+  const cap = Math.max(1, Math.min(max, total));
+  const shown = AVATAR_GROUP_INITIALS.slice(0, cap);
+  const remainder = total - cap;
+
+  const radius = shape === "circle" ? "50%" : (r("avatar.radius") ?? rv(radiusStep));
+  const ringWidth = r("avatar.ringWidth") ?? "2px";
+  const ring = r("avatar.ring") ?? tv("surface-base");
+
+  const cell = (bg: string, color: string, label: string, key: string, z: number) => (
+    <span
+      key={key}
+      data-ark-part="avatar"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: size,
+        height: size,
+        marginLeft: key === "a0" ? 0 : -overlap,
+        borderRadius: radius,
+        background: bg,
+        color,
+        border: `${ringWidth} solid ${ring}`,
+        boxSizing: "border-box",
+        fontFamily: "var(--ark-font-sans)",
+        fontSize: Math.max(9, Math.round(size * 0.36)),
+        fontWeight: 600,
+        letterSpacing: "0.01em",
+        position: "relative",
+        zIndex: z,
+      }}
+    >
+      {label}
+    </span>
+  );
+
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center" }}>
+      {shown.map((initials, i) =>
+        cell(
+          r("avatar.bg") ?? tv("surface-subtle"),
+          r("avatar.text") ?? tv("text-secondary"),
+          initials,
+          `a${i}`,
+          shown.length - i
+        )
+      )}
+      {showOverflow && remainder > 0
+        ? cell(
+            r("overflow.bg") ?? tv("surface-sunken"),
+            r("overflow.text") ?? tv("text-secondary"),
+            `+${remainder}`,
+            "overflow",
+            0
+          )
+        : null}
+    </div>
+  );
+}

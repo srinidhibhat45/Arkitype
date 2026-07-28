@@ -61,6 +61,7 @@ import {
   resolveOptions,
   useComponentBindings,
 } from "@/lib/componentSchema";
+import { SIZABLE_COMPONENTS, SIZE_ORDER } from "@/lib/sizing";
 import { useInspectorData } from "@/components/factory/studioShared";
 import { IconField } from "@/components/factory/IconPicker";
 import { PartHighlight, usePartBox } from "@/components/factory/useHighlight";
@@ -103,6 +104,7 @@ import {
   TokenTag,
   TokenToast,
   TokenTooltip,
+  TokenAvatarGroup,
 } from "@/components/factory/DisplayComponents";
 import {
   TokenAccordion,
@@ -140,6 +142,7 @@ import {
   TokenField,
   TokenListItem,
   TokenStatGrid,
+  TokenDrawer,
 } from "@/components/factory/PatternComponents";
 import { ModalScene } from "@/components/factory/ModalSkeletons";
 import { TabsSkeleton } from "@/components/factory/TabsSkeletons";
@@ -156,22 +159,14 @@ import { TokenDatePicker } from "@/components/factory/CalendarComponents";
 
 /* ── which controls expose a Size card ── */
 
-const SIZABLE = new Set([
-  "button",
-  "input",
-  "textarea",
-  "select",
-  "iconButton",
-  "searchField",
-  "stepper",
-]);
+// Shared with the Figma exporter (lib/sizing.ts) so a size picked here is the
+// same size that lands in the exported component set.
+const SIZABLE = SIZABLE_COMPONENTS;
 
-const SIZE_OPTIONS = [
-  { label: "Sm", value: "sm" },
-  { label: "Md", value: "md" },
-  { label: "Lg", value: "lg" },
-  { label: "Xl", value: "xl" },
-];
+const SIZE_OPTIONS = SIZE_ORDER.map((v) => ({
+  label: v.charAt(0).toUpperCase() + v.slice(1),
+  value: v,
+}));
 
 /** A text option that names a Material Icons ligature (prefixIcon, suffixIcon…),
  *  so the inspector renders the visual IconField picker instead of a raw input. */
@@ -777,6 +772,36 @@ function renderHero(id: string, ctx: HeroCtx): ReactNode {
           radiusStep={radiusStep}
           firstDay={os("firstDay") as any}
           showAdjacent={ob("showAdjacent")}
+          resolve={resolve}
+        />
+      );
+    case "drawer":
+      return (
+        <div className="w-full max-w-[520px]">
+          <TokenDrawer
+            side={os("side") as any}
+            elevation={os("elevation")}
+            title={os("title") || "Ledger settings"}
+            body={os("body") || ""}
+            width={on("width") ?? 320}
+            showOverlay={ob("showOverlay")}
+            showClose={ob("showClose")}
+            showFooter={ob("showFooter")}
+            radiusStep={radiusStep}
+            resolve={resolve}
+          />
+        </div>
+      );
+    case "avatarGroup":
+      return (
+        <TokenAvatarGroup
+          shape={os("shape") as any}
+          count={on("count") ?? 5}
+          max={on("max") ?? 4}
+          size={on("size") ?? 32}
+          overlap={on("overlap") ?? 10}
+          showOverflow={ob("showOverflow")}
+          radiusStep={radiusStep}
           resolve={resolve}
         />
       );

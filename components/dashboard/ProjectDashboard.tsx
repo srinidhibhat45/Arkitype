@@ -740,8 +740,24 @@ export function ProjectDashboard() {
     return (
       <div
         key={p.id}
+        // A card is a real button: reachable by Tab, activated by Enter/Space, and
+        // announced as "Open <name>". It can't be a <button> element — the rename
+        // form and the four action buttons live inside it, and nesting interactive
+        // controls inside a button is invalid HTML that breaks keyboard order.
+        role="button"
+        tabIndex={isRenaming ? -1 : 0}
+        aria-label={`Open ${p.name}`}
         onClick={() => selectProject(p.id)}
-        className="group relative cursor-pointer overflow-hidden rounded-xl border border-line bg-ink-panel transition-colors hover:border-line-strong"
+        onKeyDown={(e) => {
+          // Only self-activate — let Enter/Space inside the rename input or an
+          // action button behave normally.
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            selectProject(p.id);
+          }
+        }}
+        className="group relative cursor-pointer overflow-hidden rounded-xl border border-line bg-ink-panel transition-colors hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-offset-2 focus-visible:ring-offset-ink"
       >
         {/* Palette preview — the file's actual colours */}
         <div className="relative flex h-28 overflow-hidden">
@@ -749,45 +765,50 @@ export function ProjectDashboard() {
             <span key={idx} className="flex-1" style={{ backgroundColor: color }} />
           ))}
 
-          {/* Hover actions */}
-          <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+          {/* Hover actions — also revealed on keyboard focus, otherwise Tab lands
+              on controls that are invisible (opacity-0 still takes focus). */}
+          <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <button
               title="Move to client"
+              aria-label={`Move "${p.name}" to a client folder`}
               onClick={(e) => {
                 e.stopPropagation();
                 setMoveMenuId(isMoving ? null : p.id);
               }}
-              className="rounded-md border border-line bg-ink-raised p-1.5 text-fg-dim transition-colors hover:text-fg"
+              className="rounded-md border border-line bg-ink-raised p-1.5 text-fg-dim transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg"
             >
               <FolderInput size={14} />
             </button>
             <button
               title="Duplicate"
+              aria-label={`Duplicate "${p.name}"`}
               onClick={(e) => handleDuplicate(p.id, e)}
-              className="rounded-md border border-line bg-ink-raised p-1.5 text-fg-dim transition-colors hover:text-fg"
+              className="rounded-md border border-line bg-ink-raised p-1.5 text-fg-dim transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg"
             >
               <Copy size={14} />
             </button>
             <button
               title="Rename"
+              aria-label={`Rename "${p.name}"`}
               onClick={(e) => {
                 e.stopPropagation();
                 setIsRenameId(p.id);
                 setRenameValue(p.name);
               }}
-              className="rounded-md border border-line bg-ink-raised p-1.5 text-fg-dim transition-colors hover:text-fg"
+              className="rounded-md border border-line bg-ink-raised p-1.5 text-fg-dim transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg"
             >
               <Pencil size={14} />
             </button>
             <button
               title="Delete"
+              aria-label={`Delete "${p.name}"`}
               onClick={(e) => {
                 e.stopPropagation();
                 if (confirm(`Delete "${p.name}"? This can't be undone.`)) {
                   deleteProject(p.id);
                 }
               }}
-              className="rounded-md border border-line bg-ink-raised p-1.5 text-fg-dim transition-colors hover:border-red-500/50 hover:text-red-500 dark:hover:text-red-400"
+              className="rounded-md border border-line bg-ink-raised p-1.5 text-fg-dim transition-colors hover:border-red-500/50 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg dark:hover:text-red-400"
             >
               <Trash2 size={14} />
             </button>

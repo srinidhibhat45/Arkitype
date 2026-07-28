@@ -2,6 +2,72 @@
 
 > Compressed memory checkpoint. Update after every compiled module.
 
+## Status: ✅ FIGMA EXPORT FIDELITY + PROPERTY COVERAGE + 2 COMPONENTS — implemented
+Alpha-launch pass. **No persist bump** — two component ids added, which
+`backfillProjectState` self-heals (HANDOFF §6). `npx tsc --noEmit` clean, production
+build green, `check-contrast` / `check-figma-props` / `test-exporter` all pass, plugin
+typechecks. New components verified live on :3111 in both preview modes via a temporary
+route (removed after).
+
+⚠️ **Requires a Figma Community plugin republish to land for users** — see HANDOFF §7.
+The bundle now carries two components and 87 new properties the published plugin
+doesn't know about; against the old plugin, Drawer/Avatar group export as grey
+`drawFallback` placeholders.
+
+### change (export fidelity)
+- **The Figma renderers ignored the studio's options.** ~16 components drew hardcoded
+  sample copy regardless of what the designer configured: Navbar exported "✦ Arkitype /
+  Home / Docs" when the studio said "Ledgerly / Overview, Ledgers, Reports"; Steps drew
+  bare numbered circles and dropped step labels entirely; Divider, Spinner, Progress and
+  Switch all have `showLabel`+`label` options whose labels were never drawn at all.
+  `drawNavbarSidebar`, `drawNavigationLanes`, `drawStats`, `drawComplexDisplays`,
+  `drawDivider`, `drawProgressSlider`, `drawStatusIndicators`, `drawSwitchControl`,
+  `drawAdvancedControls`, `drawRating`, `drawTimeline`, `drawTree`, `drawTable` now read
+  their options via `optText`/`optBool`/`optNum`/`optList`, with fallbacks mirroring the
+  live component's own defaults.
+- **Jumplist had no renderer.** Shipped in the previous release with no `case` in
+  `drawComponentNode`, so it exported as a grey `drawFallback` box. Added `drawJumplist`
+  (heading, marker rail/dot, nested indent, active item) mirroring `TokenJumplist`.
+- **Figma component properties: 28 → 49 of 53 components** (107 → 115 properties).
+  Tabs, Table, Navbar, Sidebar, Breadcrumbs, Steps, Field, Progress, Spinner, Divider,
+  Switch, Rating, Popover, Timeline, Tree, Stat grid, Code block, Button group, Stepper
+  had none — a designer couldn't edit an instance from Figma's properties panel at all.
+  The four without properties (Slider, Icon button, Skeleton, Pagination) have nothing
+  text-bearing to expose.
+- **Unique layer names.** Duplicate names inside one variant made a single property
+  rewrite every match — one "Column 1" hit the table header *and* both body rows; one
+  segment label hit all three button-group segments. Renamed to `headerCol1`/`row1Col1`,
+  `segment1..3`, `item1..4`, `crumbN`, `tabActive`/`tabInactive`, `label1`/`value1`, etc.
+- **`scripts/check-figma-props.ts`** (new) — cross-references `FIGMA_PROP_DEFS` against
+  the layer names the plugin source can actually produce, and flags any wired component
+  with no renderer case. Both bugs above would have been caught by it. Throws (rather
+  than passing) if it can't locate the dispatch switch.
+- **Boolean properties now have layers to toggle** — spinner/switch/divider labels,
+  field's required mark and help line are drawn unconditionally with `.visible` set,
+  following `drawButton`'s icon-slot rule.
+
+### change (size axis)
+- **`lib/sizing.ts`** (new) — `SIZE_MAP` moved out of `CoreComponents.tsx` so the studio,
+  the live components and the exporter share one definition. The studio has always let a
+  designer pick a size; it never reached Figma, so every exported Input was medium.
+- **`size` is a real Figma variant property** for Input / Textarea / Select / Search
+  (`SIZE_VARIANT_COMPONENTS`) — 5 → 20 variants each, bundle total 229 → 289. Padding and
+  type step resolve per size to the user's own `space/*` and `type/size/*` aliases, never
+  hardcoded numbers. Button/Icon button held back deliberately (40 × 4 = 160 variants).
+
+### change (components + a11y)
+- **Drawer** (Patterns) — edge-anchored side sheet, the one overlay shape Modal doesn't
+  cover. Left/right/bottom, scrim, nested Button + Icon button slot instances.
+- **Avatar group** (Display) — capped overlapping stack with a "+N" overflow chip.
+  Default overlap 8px (10px put the separator ring on top of the initials).
+- **Keyboard-accessible project cards** — `renderCard` was a `div` with `onClick`, so
+  files couldn't be opened from the keyboard and weren't in the a11y tree; its four
+  hover actions were `opacity-0`, so keyboard focus landed on invisible controls. Now
+  `role="button"` + Enter/Space (ignoring events from the nested controls), a focus ring,
+  `focus-within:opacity-100` on the action row, and per-card `aria-label`s.
+- **Counts derive from `COMPONENT_LANES`** in `app/docs/page.tsx` and the landing hero —
+  they said "50" and "fifty" while the product shipped 51.
+
 ## Status: ✅ INIT WIZARD (scrape + framework twins + targets) — implemented
 Phase 2 of `MAJOR_OVERHAUL_PLAN.md`. **No persist bump** — only optional `meta`
 fields added. `npx tsc --noEmit` clean; verified live on :3111 (temporary store hook,

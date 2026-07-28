@@ -6,6 +6,7 @@ import { useDesignSystem, STEP_META, STEP_ORDER } from "@/store/useDesignSystem"
 import { BetaTag } from "@/components/ui/BetaTag";
 import { trackEvent } from "@/lib/analytics";
 import { BUG_REPORT_URL, FIGMA_PLUGIN_NAME, FIGMA_PLUGIN_URL } from "@/lib/links";
+import { COMPONENT_LANES } from "@/lib/componentLanes";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -29,6 +30,9 @@ import {
   FileText,
   type LucideIcon,
 } from "lucide-react";
+
+/** Derived from the shipped inventory so the hero can't advertise a stale number. */
+const COMPONENT_COUNT = COMPONENT_LANES.reduce((n, lane) => n + lane.items.length, 0);
 
 /** Fade-and-rise once the element scrolls into view. Quiet on purpose. */
 function Reveal({
@@ -137,7 +141,7 @@ const HIGHLIGHTS = [
     icon: ShieldCheck,
   },
   {
-    title: "Fifty components, all re-bindable",
+    title: `${COMPONENT_COUNT} components, all re-bindable`,
     body: "Each component reads from your tokens with full modifier parity — variants, sizes, and states included.",
     icon: Component,
   },
@@ -352,7 +356,7 @@ export function LandingPage() {
           <div>
             <Reveal>
               <p className="mb-7 text-sm font-medium uppercase tracking-[0.2em] text-fg-mute">
-                Design-system builder · Public alpha
+                Design-system builder · Invite-only alpha
               </p>
             </Reveal>
             <Reveal delay={90}>
@@ -363,8 +367,8 @@ export function LandingPage() {
             <Reveal delay={180}>
               <p className="mt-9 max-w-xl text-xl leading-relaxed text-fg-dim">
                 A guided builder that turns a single brand colour into a complete,
-                accessible design system — tokens, fifty components, and a Figma
-                bundle — across eight ordered steps.
+                accessible design system — tokens, {COMPONENT_COUNT} components, and a
+                Figma bundle — across eight ordered steps.
               </p>
             </Reveal>
 
@@ -384,6 +388,18 @@ export function LandingPage() {
                   See how it works
                 </button>
               </div>
+            </Reveal>
+            <Reveal delay={330}>
+              <p className="mt-5 text-sm text-fg-mute">
+                Alpha access is invite-only —{" "}
+                <a
+                  href="mailto:srinidhibhat45@gmail.com?subject=Arkitype%20alpha%20access"
+                  className="text-fg-dim underline underline-offset-2 transition-colors hover:text-fg"
+                >
+                  request a password
+                </a>{" "}
+                and we&apos;ll send one over.
+              </p>
             </Reveal>
           </div>
 
@@ -560,7 +576,7 @@ export function LandingPage() {
             Arkitype
             <BetaTag />
           </span>
-          <span>© {new Date().getFullYear()} Arkitype · Public alpha</span>
+          <span>© {new Date().getFullYear()} Arkitype · Invite-only alpha</span>
           <div className="flex items-center gap-5">
             <Link href="/docs" className="transition-colors hover:text-fg">
               Docs

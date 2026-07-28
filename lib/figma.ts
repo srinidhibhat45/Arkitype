@@ -16,6 +16,7 @@ import {
   WIRED_COMPONENTS,
 } from "@/lib/componentSchema";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
+import { SIZE_ORDER, SIZE_VARIANT_COMPONENTS, sizeBindingFor } from "@/lib/sizing";
 import { ComponentDoc, componentDoc } from "@/lib/componentDocs";
 import { ALL_MATERIAL_ICONS } from "@/lib/materialSymbols";
 import { collectUsedIcons, ICON_LIBRARY } from "@/lib/icons";
@@ -152,13 +153,19 @@ const DARK_MODE = "mode:dark";
 
 function getVariantDimensions(spec: ComponentSpec): Record<string, string[]> {
   const dims: Record<string, string[]> = {};
-  
+
   if (spec.states && spec.states.length > 0) {
     dims["state"] = spec.states.map(s => s.toString());
   } else {
     dims["state"] = ["default"];
   }
-  
+
+  // Size is a first-class variant property for the form controls — the studio
+  // has always let a designer pick one, but it never reached the exported set.
+  if (SIZE_VARIANT_COMPONENTS.has(spec.id)) {
+    dims["size"] = [...SIZE_ORDER];
+  }
+
   const pAxis = spec.options?.find(o => o.previewAxis && o.type === "enum");
   if (pAxis && pAxis.options) {
     dims[pAxis.key] = pAxis.options.map(o => o.value);
@@ -598,7 +605,7 @@ function injectVariantExtras(
  * from the user's stored Component Studio options; `fallback` is used when the
  * option isn't set. Layer names must match the plugin's renderers.
  */
-const FIGMA_PROP_DEFS: Record<
+export const FIGMA_PROP_DEFS: Record<
   string,
   Array<{
     name: string;
@@ -673,6 +680,124 @@ const FIGMA_PROP_DEFS: Record<
   chip: [{ name: "Label", type: "TEXT", layer: "label", optionKey: "label", fallback: "Filter Chip" }],
   datePicker: [{ name: "Value", type: "TEXT", layer: "text", fallback: "12 / 07 / 2026" }],
   fileUpload: [{ name: "Prompt", type: "TEXT", layer: "title", fallback: "Drop files to upload" }],
+
+  /* ── Controls ── */
+  switch: [
+    { name: "Label", type: "TEXT", layer: "label", optionKey: "label", fallback: "Auto-approve under $100" },
+    { name: "Show label", type: "BOOLEAN", layer: "label", optionKey: "showLabel", fallback: true },
+  ],
+  stepper: [{ name: "Value", type: "TEXT", layer: "value", fallback: "01" }],
+  buttonGroup: [
+    { name: "Segment 1", type: "TEXT", layer: "segment1", fallback: "Left" },
+    { name: "Segment 2", type: "TEXT", layer: "segment2", fallback: "Center" },
+    { name: "Segment 3", type: "TEXT", layer: "segment3", fallback: "Right" },
+  ],
+
+  /* ── Display ── */
+  progress: [
+    { name: "Label", type: "TEXT", layer: "label", optionKey: "label", fallback: "Budget used" },
+    { name: "Value", type: "TEXT", layer: "value", fallback: "64%" },
+  ],
+  spinner: [
+    { name: "Label", type: "TEXT", layer: "label", optionKey: "label", fallback: "Loading…" },
+    { name: "Show label", type: "BOOLEAN", layer: "label", optionKey: "showLabel", fallback: false },
+  ],
+  divider: [
+    { name: "Label", type: "TEXT", layer: "label", optionKey: "label", fallback: "Yesterday" },
+    { name: "Show label", type: "BOOLEAN", layer: "label", optionKey: "showLabel", fallback: true },
+  ],
+  rating: [{ name: "Value", type: "TEXT", layer: "value", fallback: "3.0" }],
+  codeBlock: [
+    { name: "Filename", type: "TEXT", layer: "filename", optionKey: "filename", fallback: "tokens.ts" },
+    { name: "Line 1", type: "TEXT", layer: "line1", fallback: "const sync = new Arkitype();" },
+    { name: "Line 2", type: "TEXT", layer: "line2", fallback: "sync.variables.apply();" },
+  ],
+  popover: [
+    { name: "Title", type: "TEXT", layer: "title", optionKey: "title", fallback: "Popover Title" },
+    { name: "Body", type: "TEXT", layer: "body", optionKey: "body", fallback: "Anchored contextual content with room for a quick action." },
+  ],
+  timeline: [
+    { name: "Event 1", type: "TEXT", layer: "title1", fallback: "Order placed" },
+    { name: "Time 1", type: "TEXT", layer: "time1", fallback: "09:12" },
+    { name: "Event 2", type: "TEXT", layer: "title2", fallback: "Payment confirmed" },
+    { name: "Time 2", type: "TEXT", layer: "time2", fallback: "09:14" },
+    { name: "Event 3", type: "TEXT", layer: "title3", fallback: "Shipped" },
+    { name: "Time 3", type: "TEXT", layer: "time3", fallback: "—" },
+  ],
+  statGrid: [
+    { name: "Label 1", type: "TEXT", layer: "label1", fallback: "Subscribers" },
+    { name: "Value 1", type: "TEXT", layer: "value1", fallback: "12.8K" },
+    { name: "Label 2", type: "TEXT", layer: "label2", fallback: "Bounce Rate" },
+    { name: "Value 2", type: "TEXT", layer: "value2", fallback: "42.1%" },
+    { name: "Label 3", type: "TEXT", layer: "label3", fallback: "Sessions" },
+    { name: "Value 3", type: "TEXT", layer: "value3", fallback: "88.3K" },
+  ],
+
+  /* ── Navigation ── */
+  navbar: [
+    { name: "Brand", type: "TEXT", layer: "logo", optionKey: "brandText", fallback: "Ledgerly" },
+    { name: "Link 1", type: "TEXT", layer: "link1", fallback: "Overview" },
+    { name: "Link 2", type: "TEXT", layer: "link2", fallback: "Ledgers" },
+    { name: "Link 3", type: "TEXT", layer: "link3", fallback: "Reports" },
+  ],
+  sidebar: [
+    { name: "Header", type: "TEXT", layer: "logo", optionKey: "header", fallback: "Workspace" },
+    { name: "Item 1", type: "TEXT", layer: "item1", fallback: "Dashboard" },
+    { name: "Item 2", type: "TEXT", layer: "item2", fallback: "Transactions" },
+    { name: "Item 3", type: "TEXT", layer: "item3", fallback: "Reports" },
+    { name: "Item 4", type: "TEXT", layer: "item4", fallback: "Settings" },
+  ],
+  breadcrumbs: [
+    { name: "Crumb 1", type: "TEXT", layer: "crumb1", fallback: "Finance" },
+    { name: "Crumb 2", type: "TEXT", layer: "crumb2", fallback: "Ledgers" },
+    { name: "Crumb 3", type: "TEXT", layer: "crumb3", fallback: "Operating" },
+  ],
+  steps: [
+    { name: "Step 1", type: "TEXT", layer: "label1", fallback: "Account" },
+    { name: "Step 2", type: "TEXT", layer: "label2", fallback: "Details" },
+    { name: "Step 3", type: "TEXT", layer: "label3", fallback: "Review" },
+  ],
+  tabs: [
+    { name: "Active tab", type: "TEXT", layer: "tabActive", fallback: "Active Tab" },
+    { name: "Inactive tab", type: "TEXT", layer: "tabInactive", fallback: "Inactive Tab" },
+  ],
+  tree: [
+    { name: "Item 1", type: "TEXT", layer: "item1", fallback: "src" },
+    { name: "Item 2", type: "TEXT", layer: "item2", fallback: "components" },
+    { name: "Item 3", type: "TEXT", layer: "item3", fallback: "Button.tsx" },
+    { name: "Item 4", type: "TEXT", layer: "item4", fallback: "Input.tsx" },
+    { name: "Item 5", type: "TEXT", layer: "item5", fallback: "lib" },
+  ],
+
+  /* ── Patterns ── */
+  table: [
+    { name: "Column 1", type: "TEXT", layer: "headerCol1", fallback: "Item ID" },
+    { name: "Column 2", type: "TEXT", layer: "headerCol2", fallback: "Name" },
+    { name: "Column 3", type: "TEXT", layer: "headerCol3", fallback: "Status" },
+    { name: "Row 1 · cell 1", type: "TEXT", layer: "row1Col1", fallback: "#01" },
+    { name: "Row 1 · cell 2", type: "TEXT", layer: "row1Col2", fallback: "Workspace Sync" },
+    { name: "Row 1 · cell 3", type: "TEXT", layer: "row1Col3", fallback: "Active" },
+    { name: "Row 2 · cell 1", type: "TEXT", layer: "row2Col1", fallback: "#02" },
+    { name: "Row 2 · cell 2", type: "TEXT", layer: "row2Col2", fallback: "Tokens Engine" },
+    { name: "Row 2 · cell 3", type: "TEXT", layer: "row2Col3", fallback: "Pending" },
+  ],
+  field: [
+    { name: "Label", type: "TEXT", layer: "label", optionKey: "label", fallback: "Account email" },
+    { name: "Help text", type: "TEXT", layer: "helpText", optionKey: "help", fallback: "We’ll send receipts and statements here." },
+    { name: "Required", type: "BOOLEAN", layer: "requiredMark", optionKey: "required", fallback: true },
+  ],
+  drawer: [
+    { name: "Title", type: "TEXT", layer: "title", optionKey: "title", fallback: "Ledger settings" },
+    { name: "Body", type: "TEXT", layer: "bodyText", optionKey: "body", fallback: "Adjust how this ledger reconciles, who can approve entries, and where statements are delivered." },
+    { name: "Show footer", type: "BOOLEAN", layer: "footer", optionKey: "showFooter", fallback: true },
+  ],
+  avatarGroup: [
+    { name: "Person 1", type: "TEXT", layer: "avatarText1", fallback: "AR" },
+    { name: "Person 2", type: "TEXT", layer: "avatarText2", fallback: "MK" },
+    { name: "Person 3", type: "TEXT", layer: "avatarText3", fallback: "JD" },
+    { name: "Person 4", type: "TEXT", layer: "avatarText4", fallback: "SB" },
+    { name: "Overflow", type: "TEXT", layer: "overflowText", fallback: "+1" },
+  ],
 };
 
 /** Compile the component-property definitions for one component. */
@@ -892,6 +1017,12 @@ export function compileFigmaBundle(
         for (const prop of part.props) {
           const override = getBindingForVariant(state, cid, prop.key, combo, prop.stateful);
           let bindingString = override !== null ? override : defBinding(prop, combo["state"] as any);
+          if (override === null && combo["size"]) {
+            // Padding and type step follow the size axis (the same SIZE_MAP the
+            // live component renders from) unless the user has bound them.
+            const sized = sizeBindingFor(prop.key, combo["size"]);
+            if (sized) bindingString = sized;
+          }
           if (override === null && cid === "button") {
             // The schema default only describes the "filled" variant — swap in
             // the variant's own recipe (mirrors TokenButton) when unoverridden.

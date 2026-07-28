@@ -17,6 +17,9 @@ import {
   PROJECT_LIMIT,
 } from "@/store/useDesignSystem";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
+
+/** Derived, never restated — a copied count is a lie with a delay on it. */
+const COMPONENT_COUNT = COMPONENT_LANES.reduce((n, lane) => n + lane.items.length, 0);
 import { BetaTag } from "@/components/ui/BetaTag";
 import { FIGMA_PLUGIN_NAME, FIGMA_PLUGIN_URL } from "@/lib/links";
 import { ArrowLeft, ArrowUpRight, Moon, Sun } from "lucide-react";
@@ -426,9 +429,9 @@ export default function DocsPage() {
           {/* ── 06 Components ───────────────────────────────────── */}
           <Section id="step-components" eyebrow={`Step ${STEP_META.components.n}`} title={STEP_META.components.label}>
             <p>
-              50 components across four lanes, all reading roles, scales, and motion
-              tokens exclusively — remap a role in step one and every component that
-              uses it follows, with nothing to update by hand.
+              {COMPONENT_COUNT} components across four lanes, all reading roles, scales, and
+              motion tokens exclusively — remap a role in step one and every component
+              that uses it follows, with nothing to update by hand.
             </p>
             <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
               {COMPONENT_LANES.map((lane) => (
@@ -497,7 +500,7 @@ export default function DocsPage() {
             </p>
             <p>
               For the Figma bundle specifically, a component picker lets you tick or
-              untick which of the 50 components are included (grouped by lane, with a
+              untick which of the {COMPONENT_COUNT} components are included (grouped by lane, with a
               per-lane select-all), and a bundle-trace panel reports the system name,
               token count, Figma variable and collection counts, included component
               count, generated page count, both modes, and the final payload size —

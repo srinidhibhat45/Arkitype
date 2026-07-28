@@ -2085,7 +2085,7 @@ async function drawComponentNode(
       await drawProgressSlider(node, styles, options, componentId, figmaVarsMap);
       break;
     case "divider":
-      await drawDivider(node, styles, figmaVarsMap);
+      await drawDivider(node, styles, options, figmaVarsMap);
       break;
     case "alert":
     case "toast":
@@ -2156,12 +2156,44 @@ async function drawComponentNode(
     case "tree":
       await drawTree(node, styles, options, figmaVarsMap);
       break;
+    case "jumplist":
+      await drawJumplist(node, styles, options, figmaVarsMap);
+      break;
+    case "drawer":
+      await drawDrawer(node, styles, options, figmaVarsMap);
+      break;
+    case "avatarGroup":
+      await drawAvatarGroup(node, styles, options, figmaVarsMap);
+      break;
     case "datePicker":
       await drawDatePicker(node, styles, options, figmaVarsMap);
       break;
     default:
       await drawFallback(node, componentId);
   }
+}
+
+/* ── Option readers ──────────────────────────────────────────────────────
+ * The bundle always ships a complete `options` map (every OptionSpec resolved
+ * to the user's stored value or its schema default), so these only guard
+ * against a stale bundle from an older Arkitype build. The fallbacks mirror the
+ * live component's own defaults — a renderer that invents different copy makes
+ * the exported kit disagree with the preview the designer just signed off.
+ */
+function optText(value: any, fallback: string): string {
+  return typeof value === "string" && value.trim() !== "" ? value : fallback;
+}
+function optBool(value: any, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+function optNum(value: any, fallback: number): number {
+  return typeof value === "number" && isFinite(value) ? value : fallback;
+}
+/** Comma-separated option → trimmed list (the studio's own parsing). */
+function optList(value: any, fallback: string[]): string[] {
+  if (typeof value !== "string") return fallback;
+  const parts = value.split(",").map(s => s.trim()).filter(Boolean);
+  return parts.length ? parts : fallback;
 }
 
 /* ── Extended-library renderers (industry-parity additions) ── */
@@ -2192,17 +2224,19 @@ async function drawRating(node: ComponentNode, styles: any, options: any, figmaV
   node.layoutMode = "HORIZONTAL";
   node.itemSpacing = 4;
   const starPath = "M 7 0 L 9 4.6 L 14 5.2 L 10.4 8.6 L 11.4 13.6 L 7 11.2 L 2.6 13.6 L 3.6 8.6 L 0 5.2 L 5 4.6 Z";
-  for (let i = 0; i < 5; i++) {
+  const max = Math.min(Math.max(optNum(options.max, 5), 1), 10);
+  const filled = Math.min(Math.max(optNum(options.value, 3), 0), max);
+  for (let i = 0; i < max; i++) {
     const star = figma.createVector();
-    star.name = i < 4 ? "starFilled" : "starEmpty";
+    star.name = i < filled ? "starFilled" : "starEmpty";
     star.vectorPaths = [{ windingRule: "NONZERO", data: starPath }];
     star.strokes = [];
-    star.fills = i < 4
+    star.fills = i < filled
       ? semPaint(figmaVarsMap, "feedback/warning/text", { r: 0.95, g: 0.7, b: 0.15 })
       : semPaint(figmaVarsMap, "border/default", { r: 0.85, g: 0.85, b: 0.88 });
     node.appendChild(star);
   }
-  await createTextHelper(node, "value", "4.0", 11.5, sem("text/muted"), "Inter", "Medium", figmaVarsMap);
+  await createTextHelper(node, "value", filled.toFixed(1), 11.5, sem("text/muted"), "Inter", "Medium", figmaVarsMap);
 }
 
 async function drawPopover(node: ComponentNode, styles: any, options: any, figmaVarsMap: Map<string, Variable>) {
@@ -2276,11 +2310,15 @@ async function drawTimeline(node: ComponentNode, styles: any, options: any, figm
   node.primaryAxisAlignItems = "MIN";
   node.counterAxisAlignItems = "MIN";
 
-  const events = [
+  const allEvents = [
     { title: "Order placed", time: "09:12", active: true },
     { title: "Payment confirmed", time: "09:14", active: true },
     { title: "Shipped", time: "—", active: false },
+    { title: "Out for delivery", time: "—", active: false },
+    { title: "Delivered", time: "—", active: false },
   ];
+  const events = allEvents.slice(0, Math.min(Math.max(optNum(options.entries, 3), 1), allEvents.length));
+  const dashed = options.connector === "dashed";
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
     const row = figma.createFrame();
@@ -2309,8 +2347,10 @@ async function drawTimeline(node: ComponentNode, styles: any, options: any, figm
     railCol.appendChild(dot);
     if (i < events.length - 1) {
       const rail = figma.createFrame();
+      rail.name = "connector";
       rail.resize(2, 34);
       rail.fills = semPaint(figmaVarsMap, "border/muted", { r: 0.9, g: 0.9, b: 0.92 });
+      if (dashed) rail.dashPattern = [3, 3];
       railCol.appendChild(rail);
     }
     row.appendChild(railCol);
@@ -2322,8 +2362,8 @@ async function drawTimeline(node: ComponentNode, styles: any, options: any, figm
     textCol.fills = [];
     textCol.primaryAxisSizingMode = "AUTO";
     textCol.counterAxisSizingMode = "AUTO";
-    await createTextHelper(textCol, "title", ev.title, 12, ev.active ? styles["text.color"] : sem("text/muted"), "Inter", ev.active ? "Semi Bold" : "Regular", figmaVarsMap);
-    await createTextHelper(textCol, "time", ev.time, 10.5, sem("text/muted"), "Inter", "Regular", figmaVarsMap);
+    await createTextHelper(textCol, `title${i + 1}`, ev.title, 12, ev.active ? styles["text.color"] : sem("text/muted"), "Inter", ev.active ? "Semi Bold" : "Regular", figmaVarsMap);
+    await createTextHelper(textCol, `time${i + 1}`, ev.time, 10.5, sem("text/muted"), "Inter", "Regular", figmaVarsMap);
     row.appendChild(textCol);
 
     node.appendChild(row);
@@ -2344,7 +2384,9 @@ async function drawTree(node: ComponentNode, styles: any, options: any, figmaVar
     { label: "Input.tsx", depth: 2 },
     { label: "lib", depth: 1 },
   ];
+  let treeIndex = 0;
   for (const r of rows) {
+    treeIndex++;
     const row = figma.createFrame();
     row.name = r.active ? "treeItemActive" : "treeItem";
     row.layoutMode = "HORIZONTAL";
@@ -2358,7 +2400,7 @@ async function drawTree(node: ComponentNode, styles: any, options: any, figmaVar
     row.counterAxisSizingMode = "AUTO";
     row.fills = r.active ? semPaint(figmaVarsMap, "surface/subtle", { r: 0.93, g: 0.93, b: 0.95 }) : [];
 
-    if (r.open !== undefined) {
+    if (r.open !== undefined && optBool(options.showIcons, true)) {
       const chev = figma.createVector();
       chev.name = "chevron";
       chev.vectorPaths = [{ windingRule: "NONZERO", data: r.open ? "M 2 4 L 6 8 L 10 4" : "M 4 2 L 8 6 L 4 10" }];
@@ -2366,9 +2408,271 @@ async function drawTree(node: ComponentNode, styles: any, options: any, figmaVar
       chev.strokeWeight = 1.4;
       row.appendChild(chev);
     }
-    await createTextHelper(row, "label", r.label, 11.5, r.active ? styles["text.color"] : sem("text/muted"), "Inter", r.active ? "Semi Bold" : "Regular", figmaVarsMap);
+    await createTextHelper(row, `item${treeIndex}`, r.label, 11.5, r.active ? styles["text.color"] : sem("text/muted"), "Inter", r.active ? "Semi Bold" : "Regular", figmaVarsMap);
     node.appendChild(row);
   }
+}
+
+/** Drawer — edge-anchored side sheet. Mirrors TokenDrawer. */
+async function drawDrawer(node: ComponentNode, styles: any, options: any, figmaVarsMap: Map<string, Variable>) {
+  options = options || {};
+  const side = options.side === "left" ? "left" : options.side === "bottom" ? "bottom" : "right";
+  const width = side === "bottom" ? 380 : Math.min(Math.max(optNum(options.width, 320), 240), 560);
+
+  node.layoutMode = "VERTICAL";
+  node.itemSpacing = 0;
+  node.primaryAxisSizingMode = "FIXED";
+  node.counterAxisSizingMode = "FIXED";
+  node.resize(width, side === "bottom" ? 220 : 300);
+  node.paddingLeft = 0; node.paddingRight = 0; node.paddingTop = 0; node.paddingBottom = 0;
+  node.clipsContent = true;
+
+  const rule = styles["divider.color"] || { type: "ALIAS", collection: "Semantics", path: "border/muted" };
+
+  /* Header — title + a real Icon button instance from the closeButton slot. */
+  const header = figma.createFrame();
+  header.name = "header";
+  header.layoutMode = "HORIZONTAL";
+  header.itemSpacing = 8;
+  header.layoutAlign = "STRETCH";
+  header.counterAxisAlignItems = "CENTER";
+  header.primaryAxisSizingMode = "FIXED";
+  header.counterAxisSizingMode = "AUTO";
+  header.paddingLeft = 16; header.paddingRight = 16;
+  header.paddingTop = 14; header.paddingBottom = 14;
+  header.fills = [];
+
+  const title = await createTextHelper(header, "title", optText(options.title, "Ledger settings"), 14, styles["title.color"], "Inter", "Bold", figmaVarsMap);
+  title.layoutGrow = 1;
+
+  const close = makeSlotInstance("closeButton");
+  if (close) {
+    close.visible = optBool(options.showClose, true);
+    header.appendChild(close);
+  }
+  node.appendChild(header);
+
+  const headerRule = await createFrameHelper(node, "headerRule", "NONE", 0, 0, 0, rule, null, 0, null, figmaVarsMap);
+  headerRule.layoutAlign = "STRETCH";
+  headerRule.resize(width, 1);
+
+  /* Body */
+  const bodyWrap = figma.createFrame();
+  bodyWrap.name = "body";
+  bodyWrap.layoutMode = "VERTICAL";
+  bodyWrap.layoutAlign = "STRETCH";
+  bodyWrap.layoutGrow = 1;
+  bodyWrap.primaryAxisSizingMode = "FIXED";
+  bodyWrap.counterAxisSizingMode = "FIXED";
+  bodyWrap.paddingLeft = 16; bodyWrap.paddingRight = 16;
+  bodyWrap.paddingTop = 14; bodyWrap.paddingBottom = 14;
+  bodyWrap.fills = [];
+
+  const bodyText = await createTextHelper(
+    bodyWrap,
+    "bodyText",
+    optText(options.body, "Adjust how this ledger reconciles, who can approve entries, and where statements are delivered."),
+    11.5,
+    styles["body.color"] || sem("text/secondary"),
+    "Inter",
+    "Regular",
+    figmaVarsMap
+  );
+  bodyText.layoutAlign = "STRETCH";
+  bodyText.textAutoResize = "HEIGHT";
+  node.appendChild(bodyWrap);
+
+  /* Footer — a real Button instance from the primaryAction slot. */
+  const footerRule = await createFrameHelper(node, "footerRule", "NONE", 0, 0, 0, rule, null, 0, null, figmaVarsMap);
+  footerRule.layoutAlign = "STRETCH";
+  footerRule.resize(width, 1);
+
+  const footer = figma.createFrame();
+  footer.name = "footer";
+  footer.layoutMode = "HORIZONTAL";
+  footer.itemSpacing = 8;
+  footer.layoutAlign = "STRETCH";
+  footer.primaryAxisAlignItems = "MAX";
+  footer.counterAxisAlignItems = "CENTER";
+  footer.primaryAxisSizingMode = "FIXED";
+  footer.counterAxisSizingMode = "AUTO";
+  footer.paddingLeft = 16; footer.paddingRight = 16;
+  footer.paddingTop = 12; footer.paddingBottom = 12;
+  footer.fills = [];
+
+  const primary = makeSlotInstance("primaryAction");
+  if (primary) footer.appendChild(primary);
+  else await createTextHelper(footer, "actionLabel", "Save changes", 11.5, sem("text/link"), "Inter", "Semi Bold", figmaVarsMap);
+
+  footer.visible = optBool(options.showFooter, true);
+  footerRule.visible = footer.visible;
+  node.appendChild(footer);
+}
+
+/** Avatar group — overlapping avatars with an overflow chip. Mirrors TokenAvatarGroup. */
+async function drawAvatarGroup(node: ComponentNode, styles: any, options: any, figmaVarsMap: Map<string, Variable>) {
+  options = options || {};
+  const initials = ["AR", "MK", "JD", "SB", "TL", "PN", "CV", "RS", "EO", "DW", "FH", "GK"];
+  const total = Math.min(Math.max(optNum(options.count, 5), 1), initials.length);
+  const cap = Math.min(Math.max(optNum(options.max, 4), 1), total);
+  const size = Math.min(Math.max(optNum(options.size, 32), 16), 64);
+  const overlap = Math.min(Math.max(optNum(options.overlap, 8), 0), 24);
+  const remainder = total - cap;
+  const circle = options.shape !== "rounded";
+
+  node.layoutMode = "HORIZONTAL";
+  node.itemSpacing = -overlap; // negative spacing is how Figma stacks avatars
+  node.counterAxisAlignItems = "CENTER";
+  node.primaryAxisSizingMode = "AUTO";
+  node.counterAxisSizingMode = "AUTO";
+  node.fills = [];
+
+  const ringWidth = styles["avatar.ringWidth"] ? Number(styles["avatar.ringWidth"].value) || 2 : 2;
+
+  const makeCell = (name: string, bgKey: string): FrameNode => {
+    const cell = figma.createFrame();
+    cell.name = name;
+    cell.primaryAxisSizingMode = "FIXED";
+    cell.counterAxisSizingMode = "FIXED";
+    cell.resize(size, size);
+    cell.layoutMode = "HORIZONTAL";
+    cell.primaryAxisAlignItems = "CENTER";
+    cell.counterAxisAlignItems = "CENTER";
+    cell.cornerRadius = circle ? size / 2 : Math.round(size * 0.25);
+
+    const bg = styles[bgKey];
+    if (bg && bg.type === "ALIAS") {
+      const fVar = figmaVarsMap.get(`${bg.collection}/${bg.path}`);
+      if (fVar) cell.fills = [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", fVar)];
+    } else {
+      cell.fills = semPaint(figmaVarsMap, "surface/subtle", { r: 0.9, g: 0.9, b: 0.93 });
+    }
+
+    const ring = styles["avatar.ring"];
+    if (ring && ring.type === "ALIAS") {
+      const fVar = figmaVarsMap.get(`${ring.collection}/${ring.path}`);
+      if (fVar) {
+        cell.strokes = [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 1, g: 1, b: 1 } }, "color", fVar)];
+      }
+    } else {
+      cell.strokes = semPaint(figmaVarsMap, "surface/base", { r: 1, g: 1, b: 1 });
+    }
+    cell.strokeWeight = ringWidth;
+    cell.strokeAlign = "INSIDE";
+
+    node.appendChild(cell);
+    return cell;
+  };
+
+  const glyphSize = Math.max(9, Math.round(size * 0.36));
+
+  for (let i = 0; i < cap; i++) {
+    const cell = makeCell(`avatar${i + 1}`, "avatar.bg");
+    await createTextHelper(cell, `avatarText${i + 1}`, initials[i], glyphSize, styles["avatar.text"] || sem("text/secondary"), "Inter", "Semi Bold", figmaVarsMap);
+  }
+  if (optBool(options.showOverflow, true) && remainder > 0) {
+    const cell = makeCell("overflow", "overflow.bg");
+    await createTextHelper(cell, "overflowText", `+${remainder}`, glyphSize, styles["overflow.text"] || sem("text/secondary"), "Inter", "Semi Bold", figmaVarsMap);
+  }
+}
+
+/** Jumplist — the docs "On this page" table of contents. Mirrors TokenJumplist. */
+async function drawJumplist(node: ComponentNode, styles: any, options: any, figmaVarsMap: Map<string, Variable>) {
+  options = options || {};
+  node.layoutMode = "VERTICAL";
+  node.itemSpacing = 8;
+  node.primaryAxisAlignItems = "MIN";
+  node.counterAxisAlignItems = "MIN";
+  node.primaryAxisSizingMode = "AUTO";
+  node.counterAxisSizingMode = "FIXED";
+  node.resize(200, node.height);
+
+  const sections = [
+    { label: "Overview", depth: 0 },
+    { label: "Installation", depth: 0 },
+    { label: "Requirements", depth: 1 },
+    { label: "Configuration", depth: 1 },
+    { label: "Usage", depth: 0 },
+    { label: "API reference", depth: 0 },
+  ];
+  const items = optBool(options.showNested, true) ? sections : sections.filter(s => s.depth === 0);
+  const activeIdx = Math.min(Math.max(optNum(options.activeIndex, 2) - 1, 0), items.length - 1);
+  const dotMarker = options.markerStyle === "dot";
+
+  const heading = await createTextHelper(
+    node,
+    "heading",
+    optText(options.heading, "On this page"),
+    10,
+    styles["heading.text"] || sem("text/muted"),
+    "Inter",
+    "Bold",
+    figmaVarsMap
+  );
+  heading.visible = optBool(options.showHeading, true);
+
+  const list = figma.createFrame();
+  list.name = "items";
+  list.layoutMode = "VERTICAL";
+  list.itemSpacing = 2;
+  list.fills = [];
+  list.layoutAlign = "STRETCH";
+  list.primaryAxisSizingMode = "AUTO";
+  list.counterAxisSizingMode = "FIXED";
+
+  for (let i = 0; i < items.length; i++) {
+    const active = i === activeIdx;
+
+    const row = figma.createFrame();
+    row.name = active ? "itemActive" : "item";
+    row.layoutMode = "HORIZONTAL";
+    row.itemSpacing = 8;
+    row.counterAxisAlignItems = "CENTER";
+    row.paddingTop = 4; row.paddingBottom = 4;
+    row.paddingLeft = 8 + items[i].depth * 12;
+    row.paddingRight = 8;
+    row.fills = [];
+    row.layoutAlign = "STRETCH";
+    row.primaryAxisSizingMode = "FIXED";
+    row.counterAxisSizingMode = "AUTO";
+
+    // Marker: a left rail segment, or a leading dot.
+    const marker = figma.createFrame();
+    marker.name = "marker";
+    marker.primaryAxisSizingMode = "FIXED";
+    marker.counterAxisSizingMode = "FIXED";
+    if (dotMarker) {
+      marker.resize(5, 5);
+      marker.cornerRadius = 99;
+    } else {
+      marker.resize(2, 16);
+    }
+    const markerBinding = active ? styles["marker.active"] : styles["marker.track"];
+    if (markerBinding && markerBinding.type === "ALIAS") {
+      const fVar = figmaVarsMap.get(`${markerBinding.collection}/${markerBinding.path}`);
+      if (fVar) {
+        marker.fills = [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", fVar)];
+      }
+    } else {
+      marker.fills = active
+        ? semPaint(figmaVarsMap, "action/primary/default", { r: 0.38, g: 0.4, b: 0.95 })
+        : semPaint(figmaVarsMap, "border/muted", { r: 0.9, g: 0.9, b: 0.92 });
+    }
+    row.appendChild(marker);
+
+    await createTextHelper(
+      row,
+      `item${i + 1}`,
+      items[i].label,
+      11.5,
+      active ? (styles["item.active"] || sem("text/primary")) : (styles["item.text"] || sem("text/secondary")),
+      "Inter",
+      active ? "Semi Bold" : "Regular",
+      figmaVarsMap
+    );
+    list.appendChild(row);
+  }
+  node.appendChild(list);
 }
 
 async function drawDatePicker(node: ComponentNode, styles: any, options: any, figmaVarsMap: Map<string, Variable>) {
@@ -2556,6 +2860,22 @@ async function drawSwitchControl(
   
   track.appendChild(thumb);
   node.appendChild(track);
+
+  // Switch ships with a label on by default in the studio; drawing only the
+  // track left every exported Switch unlabelled.
+  node.itemSpacing = 8;
+  node.counterAxisAlignItems = "CENTER";
+  const switchLabel = await createTextHelper(
+    node,
+    "label",
+    optText(options.label, "Auto-approve under $100"),
+    13,
+    styles["label.color"] || styles["text.color"],
+    "Inter",
+    "Regular",
+    figmaVarsMap
+  );
+  switchLabel.visible = optBool(options.showLabel, true);
 }
 
 async function drawFormControl(node: ComponentNode, styles: any, options: any, componentId: string, state: string, figmaVarsMap: Map<string, Variable>) {
@@ -2708,14 +3028,38 @@ async function drawProgressSlider(node: ComponentNode, styles: any, options: any
   node.primaryAxisSizingMode = "FIXED";
   node.resize(160, node.height);
   
+  // Progress carries a label + percentage in the studio (both on by default);
+  // neither was drawn before, and the fill was always frozen at 60%.
+  const pct = componentId === "progress" ? Math.min(Math.max(optNum(options.value, 64), 0), 100) : 60;
+  const thickness =
+    componentId === "progress"
+      ? (options.thickness === "thin" ? 4 : options.thickness === "thick" ? 10 : 6)
+      : 6;
+
+  if (componentId === "progress" && optBool(options.showLabel, true)) {
+    const labelRow = figma.createFrame();
+    labelRow.name = "labelRow";
+    labelRow.layoutMode = "HORIZONTAL";
+    labelRow.fills = [];
+    labelRow.layoutAlign = "STRETCH";
+    labelRow.primaryAxisSizingMode = "FIXED";
+    labelRow.counterAxisSizingMode = "AUTO";
+    labelRow.resize(160, 14);
+
+    const lbl = await createTextHelper(labelRow, "label", optText(options.label, "Budget used"), 10.5, sem("text/muted"), "Inter", "Medium", figmaVarsMap);
+    lbl.layoutGrow = 1;
+    await createTextHelper(labelRow, "value", optBool(options.indeterminate, false) ? "—" : `${Math.round(pct)}%`, 10.5, styles["text.color"], "Inter", "Semi Bold", figmaVarsMap);
+    node.appendChild(labelRow);
+  }
+
   const track = await createFrameHelper(node, "track", "HORIZONTAL", 0, 0, 0, styles["track.bg"], null, 0, styles["track.radius"], figmaVarsMap);
   track.primaryAxisSizingMode = "FIXED";
   track.counterAxisSizingMode = "FIXED";
-  track.resize(160, 6);
-  
+  track.resize(160, thickness);
+
   const fill = await createFrameHelper(track, "fill", "NONE", 0, 0, 0, styles["fill.bg"], null, 0, null, figmaVarsMap);
-  fill.resize(96, 6);
-  
+  fill.resize(Math.max(2, Math.round(160 * (pct / 100))), thickness);
+
   if (componentId === "slider") {
     const thumb = await createFrameHelper(track, "thumb", "NONE", 0, 0, 0, styles["thumb.bg"], styles["thumb.border"], 1.5, null, figmaVarsMap);
     thumb.primaryAxisSizingMode = "FIXED";
@@ -2742,18 +3086,64 @@ async function appendDividerLine(
   return line;
 }
 
-async function drawDivider(node: ComponentNode, styles: any, figmaVarsMap: Map<string, Variable>) {
+async function drawDivider(node: ComponentNode, styles: any, options: any, figmaVarsMap: Map<string, Variable>) {
+  options = options || {};
+  const border = styles["container.border"] || styles["divider.color"] || { type: "ALIAS", collection: "Semantics", path: "border/default" };
+  const thickness = Math.max(1, optNum(options.thickness, 1));
+  const showLabel = optBool(options.showLabel, true);
+  const label = optText(options.label, "Yesterday");
+
+  node.fills = [];
+
+  // A labelled divider is the studio default, but the old renderer drew a bare
+  // rule — so every exported Divider lost its label.
+  if (options.orientation !== "vertical") {
+    node.layoutMode = "HORIZONTAL";
+    node.itemSpacing = 8;
+    node.counterAxisAlignItems = "CENTER";
+    node.primaryAxisSizingMode = "FIXED";
+    node.counterAxisSizingMode = "AUTO";
+    node.resize(180, node.height);
+
+    const position = options.labelPosition === "start" ? "start" : options.labelPosition === "end" ? "end" : "center";
+
+    const rule = async (name: string) => {
+      const l = await createFrameHelper(node, name, "NONE", 0, 0, 0, border, null, 0, null, figmaVarsMap);
+      l.primaryAxisSizingMode = "FIXED";
+      l.counterAxisSizingMode = "FIXED";
+      l.resize(20, thickness);
+      l.layoutGrow = 1;
+      return l;
+    };
+
+    if (position !== "start") await rule("lineStart");
+    const dividerLabel = await createTextHelper(node, "label", label, 10.5, sem("text/muted"), "Inter", "Medium", figmaVarsMap);
+    dividerLabel.visible = showLabel;
+    if (position !== "end") await rule("lineEnd");
+    return;
+  }
+
+  if (options.orientation === "vertical") {
+    node.layoutMode = "VERTICAL";
+    node.primaryAxisSizingMode = "FIXED";
+    node.counterAxisSizingMode = "FIXED";
+    node.resize(thickness, 100);
+    const line = await createFrameHelper(node, "line", "NONE", 0, 0, 0, border, null, 0, null, figmaVarsMap);
+    line.layoutAlign = "STRETCH";
+    line.layoutGrow = 1;
+    line.resize(thickness, 100);
+    return;
+  }
+
   node.layoutMode = "HORIZONTAL";
   node.primaryAxisSizingMode = "FIXED";
   node.counterAxisSizingMode = "FIXED";
-  node.resize(180, 1);
-  node.fills = [];
-  
-  const border = styles["container.border"] || styles["divider.color"] || { type: "ALIAS", collection: "Semantics", path: "border/default" };
+  node.resize(180, thickness);
+
   const line = await createFrameHelper(node, "line", "NONE", 0, 0, 0, border, null, 0, null, figmaVarsMap);
   line.layoutAlign = "STRETCH";
   line.layoutGrow = 1;
-  line.resize(line.width, 1);
+  line.resize(line.width, thickness);
 }
 
 async function drawAlertToastBanner(node: ComponentNode, styles: any, options: any, componentId: string, figmaVarsMap: Map<string, Variable>) {
@@ -2966,7 +3356,7 @@ async function drawInteractiveNavigation(node: ComponentNode, styles: any, optio
     }
     tab1.strokeWeight = 2.5;
     
-    await createTextHelper(tab1, "label", "Active Tab", 12.5, styles["text.color"], "Inter", "Semi Bold", figmaVarsMap);
+    await createTextHelper(tab1, "tabActive", "Active Tab", 12.5, styles["text.color"], "Inter", "Semi Bold", figmaVarsMap);
     node.appendChild(tab1);
 
     const tab2 = figma.createFrame();
@@ -2974,7 +3364,7 @@ async function drawInteractiveNavigation(node: ComponentNode, styles: any, optio
     tab2.layoutMode = "VERTICAL";
     tab2.paddingBottom = 6;
     tab2.fills = [];
-    await createTextHelper(tab2, "label", "Inactive Tab", 12.5, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
+    await createTextHelper(tab2, "tabInactive", "Inactive Tab", 12.5, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
     node.appendChild(tab2);
 
     // Panel action — a REAL Button instance from the "panelAction" slot,
@@ -3027,23 +3417,26 @@ async function drawTable(node: ComponentNode, styles: any, options: any, figmaVa
   node.counterAxisSizingMode = "FIXED";
   node.resize(320, 160);
 
-  const header = figma.createFrame();
-  header.name = "tableHeader";
-  header.layoutMode = "HORIZONTAL";
-  header.layoutAlign = "STRETCH"; // Stretches header row to fill 320px
-  header.paddingTop = 8; header.paddingBottom = 8;
-  header.paddingLeft = 12; header.paddingRight = 12;
-  header.fills = semPaint(figmaVarsMap, "surface/subtle", { r: 0.95, g: 0.95, b: 0.96 });
-  header.strokes = semPaint(figmaVarsMap, "border/muted", { r: 0.88, g: 0.88, b: 0.9 });
-  header.strokeWeight = 1;
-  
-  const col1 = await createTextHelper(header, "col1", "Item ID", 11, null, "Inter", "Bold", figmaVarsMap);
-  col1.layoutGrow = 1;
-  const col2 = await createTextHelper(header, "col2", "Name", 11, null, "Inter", "Bold", figmaVarsMap);
-  col2.layoutGrow = 2;
-  const col3 = await createTextHelper(header, "col3", "Status", 11, null, "Inter", "Bold", figmaVarsMap);
-  col3.layoutGrow = 1;
-  node.appendChild(header);
+  // "Show table header" is a studio toggle that the renderer used to ignore.
+  if (optBool(options.showHeader, true)) {
+    const header = figma.createFrame();
+    header.name = "tableHeader";
+    header.layoutMode = "HORIZONTAL";
+    header.layoutAlign = "STRETCH"; // Stretches header row to fill 320px
+    header.paddingTop = 8; header.paddingBottom = 8;
+    header.paddingLeft = 12; header.paddingRight = 12;
+    header.fills = semPaint(figmaVarsMap, "surface/subtle", { r: 0.95, g: 0.95, b: 0.96 });
+    header.strokes = semPaint(figmaVarsMap, "border/muted", { r: 0.88, g: 0.88, b: 0.9 });
+    header.strokeWeight = 1;
+
+    const col1 = await createTextHelper(header, "headerCol1", "Item ID", 11, null, "Inter", "Bold", figmaVarsMap);
+    col1.layoutGrow = 1;
+    const col2 = await createTextHelper(header, "headerCol2", "Name", 11, null, "Inter", "Bold", figmaVarsMap);
+    col2.layoutGrow = 2;
+    const col3 = await createTextHelper(header, "headerCol3", "Status", 11, null, "Inter", "Bold", figmaVarsMap);
+    col3.layoutGrow = 1;
+    node.appendChild(header);
+  }
 
   const row1 = figma.createFrame();
   row1.name = "tableRow1";
@@ -3055,11 +3448,11 @@ async function drawTable(node: ComponentNode, styles: any, options: any, figmaVa
   row1.strokes = semPaint(figmaVarsMap, "border/muted", { r: 0.9, g: 0.9, b: 0.92 });
   row1.strokeWeight = 1;
   
-  const col1_1 = await createTextHelper(row1, "col1", "#01", 11, null, "Inter", "Regular", figmaVarsMap);
+  const col1_1 = await createTextHelper(row1, "row1Col1", "#01", 11, null, "Inter", "Regular", figmaVarsMap);
   col1_1.layoutGrow = 1;
-  const col1_2 = await createTextHelper(row1, "col2", "Workspace Sync", 11, null, "Inter", "Regular", figmaVarsMap);
+  const col1_2 = await createTextHelper(row1, "row1Col2", "Workspace Sync", 11, null, "Inter", "Regular", figmaVarsMap);
   col1_2.layoutGrow = 2;
-  const col1_3 = await createTextHelper(row1, "col3", "Active", 11, sem("feedback/success/text"), "Inter", "Medium", figmaVarsMap);
+  const col1_3 = await createTextHelper(row1, "row1Col3", "Active", 11, sem("feedback/success/text"), "Inter", "Medium", figmaVarsMap);
   col1_3.layoutGrow = 1;
   node.appendChild(row1);
 
@@ -3073,11 +3466,11 @@ async function drawTable(node: ComponentNode, styles: any, options: any, figmaVa
   row2.strokes = semPaint(figmaVarsMap, "border/muted", { r: 0.9, g: 0.9, b: 0.92 });
   row2.strokeWeight = 1;
   
-  const col2_1 = await createTextHelper(row2, "col1", "#02", 11, null, "Inter", "Regular", figmaVarsMap);
+  const col2_1 = await createTextHelper(row2, "row2Col1", "#02", 11, null, "Inter", "Regular", figmaVarsMap);
   col2_1.layoutGrow = 1;
-  const col2_2 = await createTextHelper(row2, "col2", "Tokens Engine", 11, null, "Inter", "Regular", figmaVarsMap);
+  const col2_2 = await createTextHelper(row2, "row2Col2", "Tokens Engine", 11, null, "Inter", "Regular", figmaVarsMap);
   col2_2.layoutGrow = 2;
-  const col2_3 = await createTextHelper(row2, "col3", "Pending", 11, sem("feedback/warning/text"), "Inter", "Medium", figmaVarsMap);
+  const col2_3 = await createTextHelper(row2, "row2Col3", "Pending", 11, sem("feedback/warning/text"), "Inter", "Medium", figmaVarsMap);
   col2_3.layoutGrow = 1;
   node.appendChild(row2);
 }
@@ -3092,40 +3485,75 @@ async function drawNavbarSidebar(node: ComponentNode, styles: any, options: any,
   node.counterAxisSizingMode = "FIXED";
 
   if (componentId === "navbar") {
-    node.resize(340, 42);
-    await createTextHelper(node, "logo", "✦ Arkitype", 13.5, styles["text.color"], "Inter", "Bold", figmaVarsMap);
-    
+    // Brand + links come from the studio (TokenNavbar's own defaults), not from
+    // hardcoded sample copy — `activeLink` is 1-based in the option.
+    const links = optList(options.links, ["Overview", "Ledgers", "Reports"]);
+    const activeIdx = Math.min(Math.max(optNum(options.activeLink, 2) - 1, 0), links.length - 1);
+    const compact = options.density === "compact";
+
+    node.resize(340, compact ? 36 : 42);
+    await createTextHelper(node, "logo", optText(options.brandText, "Ledgerly"), 13.5, styles["text.color"], "Inter", "Bold", figmaVarsMap);
+
     const spacer = figma.createFrame();
     spacer.fills = [];
     spacer.layoutGrow = 1;
     spacer.resize(10, 10);
     node.appendChild(spacer);
-    
-    await createTextHelper(node, "link1", "Home", 11.5, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Medium", figmaVarsMap);
-    await createTextHelper(node, "link2", "Docs", 11.5, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Medium", figmaVarsMap);
+
+    for (let i = 0; i < links.length; i++) {
+      const active = i === activeIdx;
+      await createTextHelper(
+        node,
+        `link${i + 1}`,
+        links[i],
+        11.5,
+        active ? styles["text.color"] : { type: "ALIAS", collection: "Semantics", path: "text/muted" },
+        "Inter",
+        active ? "Semi Bold" : "Medium",
+        figmaVarsMap
+      );
+    }
   } else {
-    node.resize(140, 240);
+    // Sidebar item labels are fixed in TokenSidebar too — only the header,
+    // active row, and width are configurable, so mirror exactly those.
+    const items = ["Dashboard", "Transactions", "Reports", "Settings"];
+    const activeIdx = Math.min(Math.max(optNum(options.activeIndex, 2) - 1, 0), items.length - 1);
+    const collapsed = options.layout === "collapsed";
+    const width = collapsed ? 56 : optNum(options.width, 220);
+
+    node.resize(width, 240);
     node.paddingTop = 16; node.paddingLeft = 12; node.paddingRight = 12;
     node.counterAxisAlignItems = "MIN";
 
-    await createTextHelper(node, "logo", "✦ Navigation", 13, styles["text.color"], "Inter", "Bold", figmaVarsMap);
-    
-    const spacer = figma.createFrame();
-    spacer.fills = [];
-    spacer.resize(10, 12);
-    node.appendChild(spacer);
+    if (optBool(options.showHeader, true) && !collapsed) {
+      await createTextHelper(node, "logo", optText(options.header, "Workspace"), 13, styles["text.color"], "Inter", "Bold", figmaVarsMap);
 
-    for (const text of ["Dashboard", "Tokens", "Components", "Settings"]) {
+      const spacer = figma.createFrame();
+      spacer.fills = [];
+      spacer.resize(10, 12);
+      node.appendChild(spacer);
+    }
+
+    for (let i = 0; i < items.length; i++) {
       const item = figma.createFrame();
       item.layoutMode = "HORIZONTAL";
       item.paddingLeft = 8; item.paddingRight = 8;
       item.paddingTop = 6; item.paddingBottom = 6;
       item.cornerRadius = 4;
-      
-      const active = text === "Components";
+
+      const active = i === activeIdx;
       item.fills = active ? semPaint(figmaVarsMap, "surface/subtle", { r: 0.93, g: 0.93, b: 0.95 }) : [];
-      
-      await createTextHelper(item, "text", text, 11.5, active ? styles["text.color"] : { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", active ? "Semi Bold" : "Regular", figmaVarsMap);
+
+      await createTextHelper(
+        item,
+        `item${i + 1}`,
+        collapsed ? items[i].charAt(0) : items[i],
+        11.5,
+        active ? styles["text.color"] : { type: "ALIAS", collection: "Semantics", path: "text/muted" },
+        "Inter",
+        active ? "Semi Bold" : "Regular",
+        figmaVarsMap
+      );
       node.appendChild(item);
     }
   }
@@ -3137,14 +3565,60 @@ async function drawNavigationLanes(node: ComponentNode, styles: any, options: an
   node.itemSpacing = 8;
 
   if (componentId === "breadcrumbs") {
-    await createTextHelper(node, "home", "Home", 11.5, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
-    await createTextHelper(node, "sep1", "/", 11.5, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
-    await createTextHelper(node, "step", "Library", 11.5, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
-    await createTextHelper(node, "sep2", "/", 11.5, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
-    await createTextHelper(node, "profile", "Profile", 11.5, styles["text.color"], "Inter", "Medium", figmaVarsMap);
+    // Trail, separator glyph, and the home crumb all come from the studio.
+    const trail = optList(options.items, ["Finance", "Ledgers", "Operating"]);
+    const sepGlyph =
+      options.separator === "slash" ? "/" : options.separator === "dot" ? "•" : "›";
+
+    if (optBool(options.showHome, false)) {
+      await createTextHelper(node, "home", "Home", 11.5, sem("text/muted"), "Inter", "Regular", figmaVarsMap);
+      await createTextHelper(node, "sepHome", sepGlyph, 11.5, sem("text/muted"), "Inter", "Regular", figmaVarsMap);
+    }
+
+    for (let i = 0; i < trail.length; i++) {
+      const last = i === trail.length - 1;
+      await createTextHelper(
+        node,
+        `crumb${i + 1}`,
+        trail[i],
+        11.5,
+        last ? styles["text.color"] : sem("text/muted"),
+        "Inter",
+        last ? "Medium" : "Regular",
+        figmaVarsMap
+      );
+      if (!last) {
+        await createTextHelper(node, `sep${i + 1}`, sepGlyph, 11.5, sem("text/muted"), "Inter", "Regular", figmaVarsMap);
+      }
+    }
 
   } else if (componentId === "steps") {
-    for (const stepNum of [1, 2, 3]) {
+    // Labels are configurable and were never drawn at all before, so a designer
+    // who named their steps saw bare numbered circles in the exported kit.
+    const stepLabels = optList(options.labels, ["Account", "Details", "Review"]);
+    const current = Math.min(Math.max(optNum(options.current, 2), 1), stepLabels.length);
+    const showLabels = optBool(options.showLabels, true);
+    const vertical = options.orientation === "vertical";
+
+    if (vertical) {
+      node.layoutMode = "VERTICAL";
+      node.counterAxisAlignItems = "MIN";
+    }
+    node.counterAxisAlignItems = vertical ? "MIN" : "CENTER";
+
+    for (let i = 0; i < stepLabels.length; i++) {
+      const stepNum = i + 1;
+      const active = stepNum === current;
+
+      const row = figma.createFrame();
+      row.name = `step${stepNum}`;
+      row.layoutMode = "HORIZONTAL";
+      row.itemSpacing = 6;
+      row.fills = [];
+      row.primaryAxisSizingMode = "AUTO";
+      row.counterAxisSizingMode = "AUTO";
+      row.counterAxisAlignItems = "CENTER";
+
       const circle = figma.createFrame();
       circle.primaryAxisSizingMode = "FIXED";
       circle.counterAxisSizingMode = "FIXED";
@@ -3153,15 +3627,27 @@ async function drawNavigationLanes(node: ComponentNode, styles: any, options: an
       circle.layoutMode = "HORIZONTAL";
       circle.primaryAxisAlignItems = "CENTER";
       circle.counterAxisAlignItems = "CENTER";
-      
-      const active = stepNum === 2;
       circle.fills = active
         ? semPaint(figmaVarsMap, "action/primary/default", { r: 0.38, g: 0.4, b: 0.95 })
         : semPaint(figmaVarsMap, "surface/subtle", { r: 0.92, g: 0.92, b: 0.94 });
-      await createTextHelper(circle, "num", stepNum.toString(), 10, active ? sem("text/on/action") : sem("text/muted"), "Inter", "Bold", figmaVarsMap);
-      node.appendChild(circle);
+      await createTextHelper(circle, `num${stepNum}`, stepNum.toString(), 10, active ? sem("text/on/action") : sem("text/muted"), "Inter", "Bold", figmaVarsMap);
+      row.appendChild(circle);
 
-      if (stepNum < 3) {
+      if (showLabels) {
+        await createTextHelper(
+          row,
+          `label${stepNum}`,
+          stepLabels[i],
+          11.5,
+          active ? styles["text.color"] : sem("text/muted"),
+          "Inter",
+          active ? "Semi Bold" : "Regular",
+          figmaVarsMap
+        );
+      }
+      node.appendChild(row);
+
+      if (stepNum < stepLabels.length && !vertical) {
         const line = figma.createFrame();
         line.primaryAxisSizingMode = "FIXED";
         line.counterAxisSizingMode = "FIXED";
@@ -3172,7 +3658,22 @@ async function drawNavigationLanes(node: ComponentNode, styles: any, options: an
     }
 
   } else if (componentId === "pagination") {
-    for (const label of ["⟨", "1", "2", "3", "⟩"]) {
+    // Page count and arrow visibility are configurable; the window shown mirrors
+    // TokenPagination (first pages, then an ellipsis when there are more).
+    const total = Math.max(1, optNum(options.totalPages, 8));
+    const showArrows = optBool(options.showArrows, true);
+    const shown = Math.min(total, 3);
+
+    const cells: Array<{ layer: string; text: string; active: boolean }> = [];
+    if (showArrows) cells.push({ layer: "pagePrev", text: "⟨", active: false });
+    for (let i = 1; i <= shown; i++) cells.push({ layer: `page${i}`, text: String(i), active: i === 2 && shown >= 2 });
+    if (total > shown) {
+      cells.push({ layer: "pageEllipsis", text: "…", active: false });
+      cells.push({ layer: "pageLast", text: String(total), active: false });
+    }
+    if (showArrows) cells.push({ layer: "pageNext", text: "⟩", active: false });
+
+    for (const cell of cells) {
       const btn = figma.createFrame();
       btn.primaryAxisSizingMode = "FIXED";
       btn.counterAxisSizingMode = "FIXED";
@@ -3181,13 +3682,12 @@ async function drawNavigationLanes(node: ComponentNode, styles: any, options: an
       btn.layoutMode = "HORIZONTAL";
       btn.primaryAxisAlignItems = "CENTER";
       btn.counterAxisAlignItems = "CENTER";
-      
-      const active = label === "2";
-      btn.fills = active ? semPaint(figmaVarsMap, "action/primary/default", { r: 0.38, g: 0.4, b: 0.95 }) : [];
+
+      btn.fills = cell.active ? semPaint(figmaVarsMap, "action/primary/default", { r: 0.38, g: 0.4, b: 0.95 }) : [];
       btn.strokes = semPaint(figmaVarsMap, "border/default", { r: 0.87, g: 0.87, b: 0.9 });
       btn.strokeWeight = 1;
 
-      await createTextHelper(btn, "label", label, 11, active ? sem("text/on/action") : sem("text/muted"), "Inter", active ? "Bold" : "Regular", figmaVarsMap);
+      await createTextHelper(btn, cell.layer, cell.text, 11, cell.active ? sem("text/on/action") : sem("text/muted"), "Inter", cell.active ? "Bold" : "Regular", figmaVarsMap);
       node.appendChild(btn);
     }
   }
@@ -3286,8 +3786,33 @@ async function drawComplexDisplays(node: ComponentNode, styles: any, options: an
     node.cornerRadius = 6;
     node.fills = semPaint(figmaVarsMap, "surface/sunken", { r: 0.09, g: 0.09, b: 0.11 });
 
-    await createTextHelper(node, "line1", "const sync = new Arkitype();", 11, { type: "LITERAL", value: "#c084fc" }, "Courier New", "Regular", figmaVarsMap);
-    await createTextHelper(node, "line2", "sync.variables.apply();", 11, { type: "LITERAL", value: "#818cf8" }, "Courier New", "Regular", figmaVarsMap);
+    // The filename header is on by default in the studio but was never drawn.
+    if (optBool(options.showHeader, true)) {
+      const header = figma.createFrame();
+      header.name = "codeHeader";
+      header.layoutMode = "HORIZONTAL";
+      header.itemSpacing = 6;
+      header.fills = [];
+      header.primaryAxisSizingMode = "AUTO";
+      header.counterAxisSizingMode = "AUTO";
+      header.counterAxisAlignItems = "CENTER";
+
+      if (optBool(options.showDots, true)) {
+        for (const tint of [{ r: 1, g: 0.37, b: 0.33 }, { r: 1, g: 0.74, b: 0.18 }, { r: 0.16, g: 0.79, b: 0.25 }]) {
+          const dot = figma.createEllipse();
+          dot.name = "trafficDot";
+          dot.resize(7, 7);
+          dot.fills = [{ type: "SOLID", color: tint }];
+          header.appendChild(dot);
+        }
+      }
+      await createTextHelper(header, "filename", optText(options.filename, "tokens.ts"), 10.5, { type: "LITERAL", value: "#94a3b8" }, "Courier New", "Regular", figmaVarsMap);
+      node.appendChild(header);
+    }
+
+    const numbered = optBool(options.showLineNumbers, false);
+    await createTextHelper(node, "line1", `${numbered ? "1  " : ""}const sync = new Arkitype();`, 11, { type: "LITERAL", value: "#c084fc" }, "Courier New", "Regular", figmaVarsMap);
+    await createTextHelper(node, "line2", `${numbered ? "2  " : ""}sync.variables.apply();`, 11, { type: "LITERAL", value: "#818cf8" }, "Courier New", "Regular", figmaVarsMap);
   }
 }
 
@@ -3300,37 +3825,49 @@ async function drawStats(node: ComponentNode, styles: any, options: any, compone
 
   if (componentId === "stat") {
     await createTextHelper(node, "label", "Monthly Revenue", 11, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Medium", figmaVarsMap);
-    
+
     const valueRow = figma.createFrame();
     valueRow.layoutMode = "HORIZONTAL";
     valueRow.itemSpacing = 8;
     valueRow.fills = [];
     valueRow.primaryAxisSizingMode = "AUTO";
     valueRow.counterAxisSizingMode = "AUTO";
-    
+
     await createTextHelper(valueRow, "value", "$45,210.00", 20, styles["text.color"], "Inter", "Bold", figmaVarsMap);
     await createTextHelper(valueRow, "trend", "▲ 12.4%", 10, sem("feedback/success/text"), "Inter", "Bold", figmaVarsMap);
-    
+
     node.appendChild(valueRow);
   } else {
+    // Cell count and delta chips are configurable — the old renderer always drew
+    // exactly two cells and no delta, whatever the studio said.
     node.layoutMode = "HORIZONTAL";
     node.itemSpacing = 24;
-    
-    const stat1 = figma.createFrame();
-    stat1.layoutMode = "VERTICAL";
-    stat1.itemSpacing = 4;
-    stat1.fills = [];
-    await createTextHelper(stat1, "label", "Subscribers", 11, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Medium", figmaVarsMap);
-    await createTextHelper(stat1, "value", "12.8K", 18, styles["text.color"], "Inter", "Bold", figmaVarsMap);
-    node.appendChild(stat1);
 
-    const stat2 = figma.createFrame();
-    stat2.layoutMode = "VERTICAL";
-    stat2.itemSpacing = 4;
-    stat2.fills = [];
-    await createTextHelper(stat2, "label", "Bounce Rate", 11, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Medium", figmaVarsMap);
-    await createTextHelper(stat2, "value", "42.1%", 18, styles["text.color"], "Inter", "Bold", figmaVarsMap);
-    node.appendChild(stat2);
+    const samples = [
+      { label: "Subscribers", value: "12.8K", delta: "▲ 4.1%" },
+      { label: "Bounce Rate", value: "42.1%", delta: "▼ 1.2%" },
+      { label: "Sessions", value: "88.3K", delta: "▲ 9.6%" },
+      { label: "Revenue", value: "$45.2K", delta: "▲ 12.4%" },
+    ];
+    const count = Math.min(Math.max(optNum(options.cells, 3), 1), samples.length);
+    const showDelta = optBool(options.showDelta, true);
+
+    for (let i = 0; i < count; i++) {
+      const cell = figma.createFrame();
+      cell.name = `cell${i + 1}`;
+      cell.layoutMode = "VERTICAL";
+      cell.itemSpacing = 4;
+      cell.fills = [];
+      cell.primaryAxisSizingMode = "AUTO";
+      cell.counterAxisSizingMode = "AUTO";
+
+      await createTextHelper(cell, `label${i + 1}`, samples[i].label, 11, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Medium", figmaVarsMap);
+      await createTextHelper(cell, `value${i + 1}`, samples[i].value, 18, styles["text.color"], "Inter", "Bold", figmaVarsMap);
+      if (showDelta) {
+        await createTextHelper(cell, `delta${i + 1}`, samples[i].delta, 10, sem("feedback/success/text"), "Inter", "Bold", figmaVarsMap);
+      }
+      node.appendChild(cell);
+    }
   }
 }
 
@@ -3376,7 +3913,9 @@ async function drawAdvancedControls(
   } else if (componentId === "buttonGroup") {
     node.itemSpacing = 0;
     
+    let segmentIndex = 0;
     for (const label of ["Left", "Center", "Right"]) {
+      segmentIndex++;
       const btn = figma.createFrame();
       btn.layoutMode = "HORIZONTAL";
       btn.paddingLeft = 12; btn.paddingRight = 12;
@@ -3389,7 +3928,7 @@ async function drawAdvancedControls(
         btn.fills = semPaint(figmaVarsMap, "surface/subtle", { r: 0.93, g: 0.93, b: 0.95 });
       }
       
-      await createTextHelper(btn, "label", label, 11.5, active ? styles["text.color"] : { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", active ? "Bold" : "Regular", figmaVarsMap);
+      await createTextHelper(btn, `segment${segmentIndex}`, label, 11.5, active ? styles["text.color"] : { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", active ? "Bold" : "Regular", figmaVarsMap);
       node.appendChild(btn);
     }
 
@@ -3401,7 +3940,17 @@ async function drawAdvancedControls(
     node.resize(200, node.height);
     node.counterAxisAlignItems = "MIN";
 
-    await createTextHelper(node, "label", "Email Address", 11.5, styles["text.color"], "Inter", "Bold", figmaVarsMap);
+    const labelRow = figma.createFrame();
+    labelRow.name = "labelRow";
+    labelRow.layoutMode = "HORIZONTAL";
+    labelRow.itemSpacing = 3;
+    labelRow.fills = [];
+    labelRow.primaryAxisSizingMode = "AUTO";
+    labelRow.counterAxisSizingMode = "AUTO";
+    await createTextHelper(labelRow, "label", optText(options.label, "Account email"), 11.5, styles["text.color"], "Inter", "Bold", figmaVarsMap);
+    const requiredMark = await createTextHelper(labelRow, "requiredMark", "*", 11.5, sem("feedback/error/text"), "Inter", "Bold", figmaVarsMap);
+    requiredMark.visible = optBool(options.required, true);
+    node.appendChild(labelRow);
 
     // Control — a REAL Input instance from the "control" slot, stretched to the
     // field width. Falls back to a drawn input when Input isn't in this export.
@@ -3423,7 +3972,22 @@ async function drawAdvancedControls(
       node.appendChild(input);
     }
 
-    await createTextHelper(node, "helpText", "Required for notification logs.", 10, { type: "ALIAS", collection: "Semantics", path: "text/muted" }, "Inter", "Regular", figmaVarsMap);
+    // The error variant shows the error copy in the error colour — matching
+    // TokenField, whose `state` option is this component's preview axis.
+    const isError = options.state === "error";
+    const helpText = await createTextHelper(
+      node,
+      "helpText",
+      isError
+        ? optText(options.errorText, "Enter a valid work email address.")
+        : optText(options.help, "We’ll send receipts and statements here."),
+      10,
+      isError ? sem("feedback/error/text") : { type: "ALIAS", collection: "Semantics", path: "text/muted" },
+      "Inter",
+      "Regular",
+      figmaVarsMap
+    );
+    helpText.visible = isError || optBool(options.showHelp, true);
   }
 }
 
@@ -3432,27 +3996,40 @@ async function drawStatusIndicators(node: ComponentNode, styles: any, options: a
   node.layoutMode = "HORIZONTAL";
   
   if (componentId === "spinner") {
-    node.primaryAxisSizingMode = "FIXED";
-    node.counterAxisSizingMode = "FIXED";
-    node.resize(16, 16);
+    const size = Math.max(12, optNum(options.size, 30));
+    const showLabel = optBool(options.showLabel, false);
+    node.itemSpacing = 8;
+    node.counterAxisAlignItems = "CENTER";
+    node.primaryAxisSizingMode = "AUTO";
+    node.counterAxisSizingMode = "AUTO";
 
     const ring = figma.createEllipse();
     ring.name = "ring";
-    ring.resize(16, 16);
-    ring.strokes = semPaint(figmaVarsMap, "action/primary/default", { r: 0.38, g: 0.4, b: 0.95 });
+    ring.resize(size, size);
+    ring.strokes = semPaint(
+      figmaVarsMap,
+      options.tone === "muted" ? "text/muted" : "action/primary/default",
+      { r: 0.38, g: 0.4, b: 0.95 }
+    );
     ring.strokeWeight = 2;
     ring.dashPattern = [4, 4];
     node.appendChild(ring);
 
+    const spinnerLabel = await createTextHelper(node, "label", optText(options.label, "Loading…"), 11, sem("text/muted"), "Inter", "Medium", figmaVarsMap);
+    spinnerLabel.visible = showLabel;
+
   } else if (componentId === "skeleton") {
     node.layoutMode = "VERTICAL";
     node.itemSpacing = 8;
-    
-    for (const width of [140, 100, 120]) {
+
+    const lineCount = Math.min(Math.max(optNum(options.lines, 3), 1), 6);
+    const widths = [140, 100, 120, 130, 90, 110];
+    for (let i = 0; i < lineCount; i++) {
       const line = figma.createFrame();
+      line.name = `line${i + 1}`;
       line.primaryAxisSizingMode = "FIXED";
       line.counterAxisSizingMode = "FIXED";
-      line.resize(width, 10);
+      line.resize(widths[i % widths.length], 10);
       line.cornerRadius = 4;
       line.fills = semPaint(figmaVarsMap, "surface/subtle", { r: 0.92, g: 0.92, b: 0.94 });
       node.appendChild(line);
@@ -3466,7 +4043,7 @@ async function drawStatusIndicators(node: ComponentNode, styles: any, options: a
     node.strokes = semPaint(figmaVarsMap, "border/strong", { r: 0.78, g: 0.78, b: 0.82 });
     node.strokeWeight = 1;
     
-    await createTextHelper(node, "key", "Ctrl", 10.5, styles["text.color"], "Courier New", "Bold", figmaVarsMap);
+    await createTextHelper(node, "key", optText(options.label, "Ctrl"), 10.5, styles["text.color"], "Courier New", "Bold", figmaVarsMap);
   }
 }
 

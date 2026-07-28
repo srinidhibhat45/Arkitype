@@ -479,6 +479,46 @@ export const COMPONENT_DOCS: Record<string, ComponentDoc> = {
     donts: ["Don't use for parallel tracks — timelines are single-threaded."],
     a11y: "An ordered list semantically; dates precede descriptions in reading order.",
   },
+  drawer: {
+    description:
+      "A panel anchored to an edge of the viewport, over a scrim. Use it where a Modal would be the wrong shape: long forms, filter stacks, detail views and settings that want height (or full width on small screens) rather than a centred box.",
+    whenToUse: [
+      "Editing or filtering without losing sight of the list behind it.",
+      "Secondary flows too long for a dialog but not worth a full page.",
+      "Bottom-anchored on small screens, where a centred dialog is cramped.",
+    ],
+    dos: [
+      "Anchor consistently — pick one side per flow and stay there.",
+      "Keep the primary action in the footer, visible without scrolling.",
+      "Trap focus while open and return it to the trigger on close.",
+    ],
+    donts: [
+      "Don't stack drawers — a second one over the first strands the user.",
+      "Don't use one for a yes/no confirmation; that's a Modal.",
+      "Don't hide the close affordance behind a swipe gesture alone.",
+    ],
+    a11y:
+      "role=\"dialog\" with aria-modal, labelled by its title. Escape closes it, focus is trapped inside while open and restored to the trigger afterwards, and the scrim is not the only way out.",
+  },
+  avatarGroup: {
+    description:
+      "A capped stack of overlapping avatars with a “+N” chip for the remainder — the compact way to show who is on a thread, a document, or a shift.",
+    whenToUse: [
+      "Collaborators on a file, assignees on a task, attendees on an event.",
+      "Anywhere a full list of people would crowd out the actual content.",
+    ],
+    dos: [
+      "Cap the stack (four is a good default) and let the overflow chip carry the rest.",
+      "Keep the separator ring the same colour as the surface behind it.",
+      "Order deliberately — most relevant person first, not alphabetical by accident.",
+    ],
+    donts: [
+      "Don't overlap so far that initials become unreadable.",
+      "Don't rely on the stack alone to name people — pair it with a tooltip or list.",
+    ],
+    a11y:
+      "Expose the full set as a list to assistive tech, not just the visible faces: give each avatar an accessible name and make the overflow chip announce how many people it stands for.",
+  },
 };
 
 /** Docs for a component id, with a safe generic fallback. */

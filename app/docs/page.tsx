@@ -18,7 +18,8 @@ import {
 } from "@/store/useDesignSystem";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 import { BetaTag } from "@/components/ui/BetaTag";
-import { ArrowLeft, Moon, Sun } from "lucide-react";
+import { FIGMA_PLUGIN_NAME, FIGMA_PLUGIN_URL } from "@/lib/links";
+import { ArrowLeft, ArrowUpRight, Moon, Sun } from "lucide-react";
 
 /* ── small building blocks ─────────────────────────────────────── */
 
@@ -91,6 +92,7 @@ const NAV: { heading: string; items: { id: string; label: string }[] }[] = [
     items: [
       { id: "accessibility", label: "Accessibility engine" },
       { id: "export-formats", label: "Export formats" },
+      { id: "figma-plugin", label: "Figma plugin" },
       { id: "faq", label: "FAQ" },
     ],
   },
@@ -501,6 +503,23 @@ export default function DocsPage() {
               count, generated page count, both modes, and the final payload size —
               so you know what you&apos;re about to hand off before you do.
             </p>
+            <Callout title="Shipping to Figma">
+              The bundle is meant to be run through{" "}
+              <a
+                href={FIGMA_PLUGIN_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-fg underline underline-offset-2"
+              >
+                {FIGMA_PLUGIN_NAME}
+              </a>
+              , the free companion plugin — install it once and Ship becomes a
+              two-minute handoff. See{" "}
+              <a href="#figma-plugin" className="font-medium text-fg underline underline-offset-2">
+                The Figma plugin
+              </a>{" "}
+              for the full walkthrough.
+            </Callout>
           </Section>
 
           {/* ── Accessibility ────────────────────────────────────── */}
@@ -547,11 +566,16 @@ export default function DocsPage() {
                     <td className="py-3 text-fg-dim">
                       Two Figma variable collections — Primitives (single mode) and
                       Semantics (Light/Dark modes, aliased to primitives) — plus a
-                      components array and a page per included component. Feed it to
-                      the companion Arkitype Figma plugin to build a full kit: cover,
-                      foundations, and one page per component with usage docs, variant
-                      grids, and token-bound layers. Re-running it updates the file in
-                      place.
+                      components array and a page per included component. Feed it to{" "}
+                      <a
+                        href="#figma-plugin"
+                        className="font-medium text-fg underline underline-offset-2"
+                      >
+                        the companion plugin
+                      </a>{" "}
+                      to build a full kit: cover, foundations, and one page per
+                      component with usage docs, variant grids, and token-bound
+                      layers. Re-running it updates the file in place.
                     </td>
                   </tr>
                   <tr>
@@ -603,6 +627,83 @@ export default function DocsPage() {
             </Callout>
           </Section>
 
+          {/* ── Figma plugin ─────────────────────────────────────── */}
+          <Section id="figma-plugin" eyebrow="Reference" title="The Figma plugin">
+            <p>
+              The Figma bundle is JSON — <strong className="font-medium text-fg">{FIGMA_PLUGIN_NAME}</strong>{" "}
+              is what turns it into an actual Figma file. It&apos;s free on the Figma
+              Community, and it&apos;s the shortest path from a finished system to
+              something your designers can draw with.
+            </p>
+            <a
+              href={FIGMA_PLUGIN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="!mt-6 inline-flex items-center gap-2 rounded-lg bg-fg px-5 py-2.5 text-[15px] font-medium text-ink transition-opacity hover:opacity-90"
+            >
+              Install the plugin
+              <ArrowUpRight size={16} />
+            </a>
+            <SubHeading>Getting a system into Figma</SubHeading>
+            <FieldList
+              items={[
+                {
+                  label: "1 · Install once",
+                  body: (
+                    <>
+                      Open the{" "}
+                      <a
+                        href={FIGMA_PLUGIN_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-fg underline underline-offset-2"
+                      >
+                        Community listing
+                      </a>{" "}
+                      and hit Open in Figma. After that it lives in your Plugins menu
+                      for every file.
+                    </>
+                  ),
+                },
+                {
+                  label: "2 · Export the bundle",
+                  body: "In Ship, pick the Figma kit tab, tick the components you want, and download the JSON (or copy it to your clipboard).",
+                },
+                {
+                  label: "3 · Run it in your file",
+                  body: "Open the Figma file the system should live in, run the plugin, and drop the JSON into its Import tab — or paste it directly.",
+                },
+                {
+                  label: "4 · Choose how much to build",
+                  body: "“Sync Variables” writes just the two variable collections. “Generate Design System File” builds the whole kit — cover, foundations, and a page per component.",
+                },
+              ]}
+            />
+            <SubHeading>What it builds</SubHeading>
+            <FieldList
+              items={[
+                {
+                  label: "Variables",
+                  body: "Primitives (single mode) and Semantics (Light/Dark, aliased to primitives) — real Figma variables, so a mode swap on a frame reskins everything bound to them.",
+                },
+                {
+                  label: "A page per component",
+                  body: "Usage docs, variant grids, component properties, elevation effect styles, and layers bound to tokens rather than pasted hex.",
+                },
+                {
+                  label: "Cover and foundations",
+                  body: "A titled cover page plus foundations pages for colour, type, space, shape, and motion.",
+                },
+              ]}
+            />
+            <Callout title="Re-running is safe">
+              The plugin updates in place rather than rebuilding from scratch, so
+              instances and local overrides survive. Change tokens in Arkitype,
+              re-export, re-run — the file catches up and your designers keep their
+              work.
+            </Callout>
+          </Section>
+
           {/* ── FAQ ──────────────────────────────────────────────── */}
           <Section id="faq" eyebrow="Reference" title="FAQ">
             <FieldList
@@ -630,6 +731,28 @@ export default function DocsPage() {
                 {
                   label: "What can I export to?",
                   body: "A Figma bundle, a Markdown handoff doc, CSS variables, a Tailwind config, or an MUI theme — see Export formats above.",
+                },
+                {
+                  label: "How do I get the system into Figma?",
+                  body: (
+                    <>
+                      Install{" "}
+                      <a
+                        href={FIGMA_PLUGIN_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-fg underline underline-offset-2"
+                      >
+                        {FIGMA_PLUGIN_NAME}
+                      </a>{" "}
+                      from the Figma Community (free), then feed it the JSON from
+                      Ship — see{" "}
+                      <a href="#figma-plugin" className="font-medium text-fg underline underline-offset-2">
+                        The Figma plugin
+                      </a>
+                      .
+                    </>
+                  ),
                 },
               ]}
             />

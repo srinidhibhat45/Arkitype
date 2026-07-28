@@ -16,6 +16,7 @@ import { resolveToken } from "@/lib/tokens";
 import { generateTypeScale, scaleFactorLabel } from "@/lib/typography";
 import { componentOptions, optionValue } from "@/lib/componentSchema";
 import { collectUsedIcons, iconSectionMarkdown } from "@/lib/icons";
+import { FIGMA_PLUGIN_NAME, FIGMA_PLUGIN_URL } from "@/lib/links";
 
 const A11Y_PAIRS: Array<[bg: string, fg: string, context: string]> = [
   ["surface-base", "text-primary", "Body copy on app background"],
@@ -51,7 +52,9 @@ export function generateHandoffDocs(state: ArkitypeState): string {
   push("- **Arkitype / Primitives** — raw values (color ramps, spacing, radii, type, shadows). One `Value` mode.");
   push("- **Arkitype / Semantics** — role tokens aliased to primitives. Two modes: `Light` and `Dark`. UI code must only reference semantic tokens; primitives are an implementation detail.");
   push();
-  push("Import the bundle with the companion Figma plugin, or map it to CSS custom properties (snippet in §6).");
+  push(
+    `Import the bundle with the companion Figma plugin — [${FIGMA_PLUGIN_NAME}](${FIGMA_PLUGIN_URL}) — or map it to CSS custom properties (snippet in §6).`,
+  );
   push();
 
   push("## 2. Color Primitives");

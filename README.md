@@ -28,9 +28,22 @@ decision with its own live canvas:
 8. **Preview** — the whole system on a representative dashboard.
 9. **Ship** — export docs and a Figma variables bundle.
 
+## The Figma plugin
+
+The Ship step's JSON bundle is consumed by the companion plugin, live on the
+Figma Community:
+
+**[Arkitype Figma Sync (beta)](https://www.figma.com/community/plugin/1658818555967908857/arkitype-figma-sync-beta)**
+
+Install it once, paste or drop the bundle into its Import tab, then either
+sync just the variables or generate the full design-system file (cover,
+foundations, and a page per component with usage docs, variant grids, and
+token-bound layers). Re-running updates the file in place, so instances and
+overrides survive. Source lives in [`figma-plugin/`](./figma-plugin).
+
 ## Component library
 
-50 components across four lanes — Controls, Display, Navigation, and Patterns
+51 components across four lanes — Controls, Display, Navigation, and Patterns
 (buttons, inputs, selection controls, alerts/toasts/badges/banners, tabs,
 navbar/sidebar/breadcrumbs, modals, tables, cards, feeds, and more). Each is
 schema-driven, so its editable parts and options flow from a single

@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useDesignSystem, STEP_META, STEP_ORDER } from "@/store/useDesignSystem";
 import { BetaTag } from "@/components/ui/BetaTag";
 import { trackEvent } from "@/lib/analytics";
+import { BUG_REPORT_URL, FIGMA_PLUGIN_NAME, FIGMA_PLUGIN_URL } from "@/lib/links";
 import {
   ArrowRight,
+  ArrowUpRight,
   Moon,
   Sun,
   Palette,
@@ -314,7 +316,7 @@ export function LandingPage() {
               Docs
             </Link>
             <a
-              href="https://forms.gle/rbLCRSNM2qAanjfA9"
+              href={BUG_REPORT_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden rounded-lg px-4 py-2.5 text-[15px] font-medium text-fg-dim transition-colors hover:text-fg md:block"
@@ -504,6 +506,25 @@ export function LandingPage() {
                   </div>
                 ))}
               </div>
+
+              <div className="mt-7 flex flex-col gap-4 border-t border-line pt-7 sm:flex-row sm:items-center sm:justify-between">
+                <p className="max-w-xl text-[15px] leading-relaxed text-fg-dim">
+                  <span className="font-medium text-fg">Going to Figma?</span>{" "}
+                  {FIGMA_PLUGIN_NAME}, the free companion plugin, turns the export
+                  into a real file — variables in both modes, a page per component,
+                  and docs. Re-run it after any change and the file updates in
+                  place.
+                </p>
+                <a
+                  href={FIGMA_PLUGIN_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-line-strong px-5 py-3 text-[15px] font-medium text-fg-dim transition hover:-translate-y-0.5 hover:bg-ink-hover hover:text-fg"
+                >
+                  Get the plugin
+                  <ArrowUpRight size={16} />
+                </a>
+              </div>
             </div>
           </Reveal>
         </div>
@@ -545,7 +566,15 @@ export function LandingPage() {
               Docs
             </Link>
             <a
-              href="https://forms.gle/rbLCRSNM2qAanjfA9"
+              href={FIGMA_PLUGIN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-fg"
+            >
+              Figma plugin
+            </a>
+            <a
+              href={BUG_REPORT_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="transition-colors hover:text-fg"

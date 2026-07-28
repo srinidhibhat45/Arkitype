@@ -5,13 +5,14 @@
  * and the engineering handoff docs. Copy or download either artifact.
  */
 import { useMemo, useState } from "react";
-import { Check, Copy, Download } from "lucide-react";
+import { ArrowUpRight, Check, Copy, Download } from "lucide-react";
 import { countTokens, useDesignSystem } from "@/store/useDesignSystem";
 import { compileFigmaBundle } from "@/lib/figma";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 import { WIRED_COMPONENTS } from "@/lib/componentSchema";
 import { generateHandoffDocs } from "@/lib/docs";
 import { compileCssVariables, compileMuiTheme, compileTailwindConfig } from "@/lib/adapters";
+import { FIGMA_PLUGIN_NAME, FIGMA_PLUGIN_URL } from "@/lib/links";
 import {
   AsideDivider,
   AsideNote,
@@ -291,22 +292,51 @@ export function ShipStep() {
                 </p>
                 <ol className="space-y-3">
                   {[
-                    "Download the file below, or copy it to your clipboard.",
-                    "Open Figma and run the “Arkitype Design System Sync” plugin.",
-                    "Drop the file into its Import tab — or paste the JSON.",
-                    "Click “Sync Variables” for tokens only, or “Generate Design System File” for the full kit.",
+                    {
+                      key: "install",
+                      body: (
+                        <>
+                          Install the{" "}
+                          <a
+                            href={FIGMA_PLUGIN_URL}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-fg-dim underline underline-offset-2 transition-colors hover:text-fg"
+                          >
+                            {FIGMA_PLUGIN_NAME}
+                          </a>{" "}
+                          plugin — free, one click, from the Figma Community.
+                        </>
+                      ),
+                    },
+                    { key: "download", body: "Download the file below, or copy it to your clipboard." },
+                    { key: "run", body: "Open your Figma file and run the plugin." },
+                    { key: "import", body: "Drop the file into its Import tab — or paste the JSON." },
+                    {
+                      key: "generate",
+                      body: "Click “Sync Variables” for tokens only, or “Generate Design System File” for the full kit.",
+                    },
                   ].map((step, i) => (
                     <li
-                      key={step}
+                      key={step.key}
                       className="flex gap-2.5 text-[12px] leading-relaxed text-fg-mute"
                     >
                       <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-line-strong text-[10px] font-bold text-fg-dim">
                         {i + 1}
                       </span>
-                      {step}
+                      <span>{step.body}</span>
                     </li>
                   ))}
                 </ol>
+                <a
+                  href={FIGMA_PLUGIN_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 flex items-center justify-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 text-[12px] font-medium text-fg-dim transition-colors hover:bg-ink-hover hover:text-fg"
+                >
+                  Get the plugin
+                  <ArrowUpRight size={13} />
+                </a>
               </div>
             </>
           )}

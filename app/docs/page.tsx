@@ -95,6 +95,7 @@ const NAV: { heading: string; items: { id: string; label: string }[] }[] = [
     items: [
       { id: "accessibility", label: "Accessibility engine" },
       { id: "export-formats", label: "Export formats" },
+      { id: "publishing", label: "Publishing & sharing" },
       { id: "figma-plugin", label: "Figma plugin" },
       { id: "faq", label: "FAQ" },
     ],
@@ -210,9 +211,10 @@ export default function DocsPage() {
               it walks you through eight ordered steps — <strong className="font-medium text-fg">Colour,
               Typography, Spacing, Shape, Motion, Components, Preview, Ship</strong> — where
               each step&apos;s output becomes the next step&apos;s input. By the end you have a
-              complete token system, a 50-component library built entirely from those
-              tokens, a real mock product to stress-test them in, and five export
-              formats ready to hand off.
+              complete token system, a {COMPONENT_COUNT}-component library built entirely
+              from those tokens, real product screens to stress-test them in, five export
+              formats to hand off — and a link you can send to anyone who needs to read
+              the system without installing a thing.
             </p>
             <p>
               The core idea: <strong className="font-medium text-fg">nothing is a magic number.</strong> A
@@ -461,6 +463,13 @@ export default function DocsPage() {
               token, which is the mechanism that makes &ldquo;every state, every
               variant&rdquo; actually hold together.
             </p>
+            <p>
+              Each component also carries a <strong className="font-medium text-fg">Lifecycle</strong>{" "}
+              setting — Ready, Beta, or Deprecated. It changes nothing about how the
+              component looks; it&apos;s a note to whoever picks the system up, and it
+              shows as a badge on the published styleguide so a teammate can tell
+              &ldquo;use this&rdquo; from &ldquo;we&apos;re replacing this&rdquo; without asking.
+            </p>
             <Callout title="The 4-skeleton rule">
               Three components — <strong className="font-medium text-fg">Modal, Tabs,</strong> and{" "}
               <strong className="font-medium text-fg">Table</strong> — carry four predefined
@@ -473,18 +482,43 @@ export default function DocsPage() {
           {/* ── 07 Preview ───────────────────────────────────────── */}
           <Section id="step-preview" eyebrow={`Step ${STEP_META.preview.n}`} title={STEP_META.preview.label}>
             <p>
-              The reward moment: a complete fictional product — <strong className="font-medium text-fg">
-              BudgetOps</strong>, a budget-management dashboard with sidebar navigation,
-              a stat deck, a data table, and tabs — rendered entirely from your live
-              token state. Nothing in the frame is hardcoded.
+              The reward moment — and the stress test. Preview renders a complete,
+              realistic product entirely from your live tokens; nothing in the frame is
+              hardcoded. Change a colour or a spacing step and the whole product
+              redraws.
             </p>
             <p>
-              You can swap the Table, Tabs, or Modal skeleton right from this step
-              and watch the whole dashboard reflow instantly, open a real modal
-              overlay (a &ldquo;New transaction&rdquo; flow) on top of the product frame,
-              zoom the canvas, and — importantly — check both light and dark via the
-              top-bar toggle. A system that only looks considered in one theme isn&apos;t
-              finished.
+              Two dropdowns control what you&apos;re looking at, and they do different
+              jobs on purpose:
+            </p>
+            <FieldList
+              items={[
+                {
+                  label: "Form factor — changes the shape",
+                  body: "SaaS is a dense desktop console (sidebar, stat deck, data table). Mobile is a real 390px phone frame, where touch targets have to hold a 44pt minimum. Marketing is a wide editorial page that leans on the big end of your type scale. Same system, three very different pressures.",
+                },
+                {
+                  label: "Industry — changes only the words",
+                  body: "Fintech, Healthcare, or E-commerce swaps the copy, numbers, and icons — never the styling. It's there so you can show a client their own vocabulary without building them a bespoke mockup.",
+                },
+              ]}
+            />
+            <p className="!mt-6">
+              Any form factor pairs with any industry, so three layouts and three
+              content packs give you nine screens to check — all generated, none
+              hand-built. If the system holds up across all of them, it ships.
+            </p>
+            <p>
+              The same panel also lets you switch{" "}
+              <strong className="font-medium text-fg">density</strong> (Compact /
+              Standard / Spacious) to see the system tighten and loosen, flip on an{" "}
+              <strong className="font-medium text-fg">all-states strip</strong> that
+              shows every interactive state at once (default, hover, focus, active,
+              loading, disabled), swap the Table / Tabs / Modal skeleton and watch the
+              product reflow, and zoom the canvas. Check{" "}
+              <strong className="font-medium text-fg">both light and dark</strong> with
+              the top-bar toggle while you&apos;re here — a system that only looks
+              considered in one theme isn&apos;t finished.
             </p>
           </Section>
 
@@ -492,11 +526,17 @@ export default function DocsPage() {
           <Section id="step-ship" eyebrow={`Step ${STEP_META.ship.n}`} title={STEP_META.ship.label}>
             <p>
               Five export artifacts, each copyable to clipboard or downloadable as a
-              real file, switched via one tab strip. See{" "}
+              real file, switched via one tab strip — plus a sixth tab,{" "}
+              <strong className="font-medium text-fg">Publish</strong>, which puts the
+              system on the web at its own link instead of handing over a file. See{" "}
               <a href="#export-formats" className="font-medium text-fg underline underline-offset-2">
                 Export formats
               </a>{" "}
-              below for exactly what&apos;s in each one.
+              below for exactly what&apos;s in each one, and{" "}
+              <a href="#publishing" className="font-medium text-fg underline underline-offset-2">
+                Publishing &amp; sharing
+              </a>{" "}
+              for the link.
             </p>
             <p>
               For the Figma bundle specifically, a component picker lets you tick or
@@ -620,6 +660,20 @@ export default function DocsPage() {
                       is left in place rather than emitting a mismatched array.
                     </td>
                   </tr>
+                  <tr>
+                    <td className="py-3 pr-4 font-medium text-fg">Published styleguide</td>
+                    <td className="py-3 pr-4 text-fg-dim">a link, not a file</td>
+                    <td className="py-3 text-fg-dim">
+                      A read-only website of your system — foundations, every token, and
+                      a page per component with its live preview, states, variants, and
+                      usage docs. Anyone with the link can read it; no account, no
+                      install. See{" "}
+                      <a href="#publishing" className="font-medium text-fg underline underline-offset-2">
+                        Publishing &amp; sharing
+                      </a>
+                      .
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -628,6 +682,72 @@ export default function DocsPage() {
               but there&apos;s no SwiftUI code generator yet — choosing it opens the
               Markdown handoff doc at Ship instead, as the closest available fit.
             </Callout>
+          </Section>
+
+          {/* ── Publishing ───────────────────────────────────────── */}
+          <Section id="publishing" eyebrow="Reference" title="Publishing & sharing">
+            <p>
+              Every other artifact is a file someone has to receive, open, and keep
+              track of. Publishing skips all of that:{" "}
+              <strong className="font-medium text-fg">Ship → Publish → Publish</strong>{" "}
+              turns your system into a website at its own address, and you send the
+              address. Whoever opens it needs no account, no login, and no Arkitype.
+            </p>
+
+            <SubHeading>What&apos;s on the published site</SubHeading>
+            <FieldList
+              items={[
+                {
+                  label: "Foundations",
+                  body: "Your colour ramps, type scale, spacing, radius, elevation, and motion — the values themselves, laid out to be read and copied.",
+                },
+                {
+                  label: "The full token set",
+                  body: "Every primitive and every semantic role, in light and dark.",
+                },
+                {
+                  label: "A page per component",
+                  body: "The live component — not a screenshot — with every state and variant, its usage documentation (what it's for, when to use it, do / don't, and an accessibility note), and its Ready / Beta / Deprecated badge.",
+                },
+              ]}
+            />
+
+            <SubHeading>How publishing behaves</SubHeading>
+            <FieldList
+              items={[
+                {
+                  label: "It publishes a frozen copy",
+                  body: "The site shows the system exactly as it was the moment you hit Publish. Keep editing freely — your changes stay private until you press Republish. Nobody watches you work.",
+                },
+                {
+                  label: "The link never changes",
+                  body: "Republishing updates the same address, so a link you sent last month still works and now shows the current system. Renaming the file doesn't move it either.",
+                },
+                {
+                  label: "Unpublish takes it down",
+                  body: "One button, and the link stops working. You can publish again later.",
+                },
+              ]}
+            />
+
+            <Callout title="Who can see it — read this before you send it to a client">
+              A published styleguide is <strong className="font-medium text-fg">unlisted, not
+              private</strong>. There&apos;s no password: the link itself is the key, so
+              anyone you forward it to can open it, and anyone they forward it to can
+              too. Search engines are a different matter — published pages are
+              deliberately blocked from Google and left out of the sitemap, so a
+              styleguide can&apos;t turn up in a search for your client&apos;s name. Treat
+              the link the way you&apos;d treat a shared-drive link: fine for people you
+              chose, not a place for anything confidential.
+            </Callout>
+
+            <p className="!mt-6">
+              Publishing has one other job: it&apos;s what unlocks the{" "}
+              <strong className="font-medium text-fg">Figma sync link</strong>, the
+              address the plugin pulls from so your designers never have to be sent a
+              JSON file at all. Both links appear side by side in the Publish tab once
+              you&apos;ve published.
+            </p>
           </Section>
 
           {/* ── Figma plugin ─────────────────────────────────────── */}
@@ -647,7 +767,13 @@ export default function DocsPage() {
               Install the plugin
               <ArrowUpRight size={16} />
             </a>
-            <SubHeading>Getting a system into Figma</SubHeading>
+            <SubHeading>Getting a system into Figma — two ways in</SubHeading>
+            <p>
+              There are two ways to hand the plugin your bundle. <strong className="font-medium text-fg">
+              Pull</strong> is the faster one and the one worth setting up as your habit;
+              <strong className="font-medium text-fg"> paste/drop the JSON</strong> still
+              works and needs nothing published.
+            </p>
             <FieldList
               items={[
                 {
@@ -669,15 +795,27 @@ export default function DocsPage() {
                   ),
                 },
                 {
-                  label: "2 · Export the bundle",
-                  body: "In Ship, pick the Figma kit tab, tick the components you want, and download the JSON (or copy it to your clipboard).",
+                  label: "2a · Pull (recommended) — needs a published system",
+                  body: (
+                    <>
+                      Publish the system first (see{" "}
+                      <a href="#publishing" className="font-medium text-fg underline underline-offset-2">
+                        Publishing &amp; sharing
+                      </a>
+                      ), copy the <strong className="font-medium text-fg">Figma sync link</strong>{" "}
+                      from Ship&apos;s Publish tab, and paste it into the plugin&apos;s Pull field.
+                      No file to download, no re-importing — and the plugin remembers the
+                      link, so after that it&apos;s one click. Every republish, pull again to
+                      catch up.
+                    </>
+                  ),
                 },
                 {
-                  label: "3 · Run it in your file",
-                  body: "Open the Figma file the system should live in, run the plugin, and drop the JSON into its Import tab — or paste it directly.",
+                  label: "2b · Or export the JSON directly",
+                  body: "Don't want to publish? In Ship, pick the Figma kit tab, tick the components you want, and download the JSON (or copy it to your clipboard), then drop it into the plugin's Import tab.",
                 },
                 {
-                  label: "4 · Choose how much to build",
+                  label: "3 · Choose how much to build",
                   body: "“Sync Variables” writes just the two variable collections. “Generate Design System File” builds the whole kit — cover, foundations, and a page per component.",
                 },
               ]}

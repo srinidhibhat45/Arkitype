@@ -5,8 +5,8 @@
 A guided **design-system builder**. Arkitype walks you through a series of
 focused decisions — colour, type, space, shape, motion — turns them into a
 coherent set of design tokens and semantic roles, lets you deeply re-bind
-40+ live components to those tokens through a Figma-style component studio,
-and exports the result (docs + Figma variables).
+53 live components to those tokens through a Figma-style component studio,
+and exports the result (docs, Figma variables, or a hosted styleguide link).
 
 > Status: alpha (`0.1.0-alpha`). See [`progress.md`](./progress.md) for the
 > detailed build log.
@@ -35,7 +35,10 @@ decision with its own live canvas:
    sits on a dotted canvas with a docked inspector; every parameter binds to
    a design-system token (role/scale) rather than a raw value. Variant and
    state bars make every state selectable-and-viewable.
-8. **Preview** — the whole system on a representative dashboard.
+8. **Preview** — a real product rendered entirely from the live tokens, checked
+   two independent ways: **form factor** (SaaS console / Mobile / Marketing —
+   changes the layout) and **industry** (Fintech / Healthcare / E-commerce —
+   changes only the content), plus density and an all-states strip.
 9. **Ship** — export docs and a Figma variables bundle, or **publish** the system
    as a hosted styleguide.
 
@@ -56,16 +59,26 @@ republish, and the link stays stable even if you rename the file.
 
 ## The Figma plugin
 
-The Ship step's JSON bundle is consumed by the companion plugin, live on the
-Figma Community:
+A companion plugin, live on the Figma Community, turns the Ship step's export
+into an actual Figma file:
 
 **[Arkitype Figma Sync (beta)](https://www.figma.com/community/plugin/1658818555967908857/arkitype-figma-sync-beta)**
 
-Install it once, paste or drop the bundle into its Import tab, then either
-sync just the variables or generate the full design-system file (cover,
-foundations, and a page per component with usage docs, variant grids, and
-token-bound layers). Re-running updates the file in place, so instances and
-overrides survive. Source lives in [`figma-plugin/`](./figma-plugin).
+Two ways to hand it the bundle:
+
+- **Pull** (needs the system published first) — paste the Figma sync link
+  from Ship's Publish tab into the plugin's Pull field. The plugin remembers
+  the last link, so re-syncing after a republish is one click, no file to
+  download or re-import. It works by hitting `app/api/figma/[slug]`, which
+  compiles the bundle for a published system on demand.
+- **Paste/drop the JSON** — download or copy the bundle from Ship and drop it
+  into the plugin's Import tab. No publishing required.
+
+Either way, then choose how much to build: sync just the two variable
+collections, or generate the full design-system file (cover, foundations, and
+a page per component with usage docs, variant grids, and token-bound layers).
+Re-running updates the file in place, so instances and overrides survive.
+Source lives in [`figma-plugin/`](./figma-plugin).
 
 ## Component library
 
@@ -106,6 +119,7 @@ npm run start    # serve the production build on :3111
 ```
 app/                 Next.js App Router entry (page, layout, global styles)
   p/[slug]/          the public, unauthenticated published styleguide
+  api/figma/[slug]/  serves a published system's bundle to the plugin's Pull
 components/
   shell/             TopBar, StageRail, StepScaffold
   steps/             one component per step in the rail

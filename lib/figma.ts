@@ -21,6 +21,18 @@ import { ComponentDoc, componentDoc } from "@/lib/componentDocs";
 import { ALL_MATERIAL_ICONS } from "@/lib/materialSymbols";
 import { collectUsedIcons, ICON_LIBRARY } from "@/lib/icons";
 
+/**
+ * The slice of the system a bundle actually compiles from — narrower than the
+ * full store on purpose. A published snapshot (`lib/publish.ts`) carries
+ * exactly these fields, so `app/api/figma/[slug]` can hand one straight to the
+ * compiler instead of faking a whole ArkitypeState. Every in-app call site
+ * passes the full state and is unaffected.
+ */
+export type FigmaBundleSource = Pick<
+  ArkitypeState,
+  "primitives" | "semantics" | "components" | "meta"
+>;
+
 export interface FigmaRgba {
   r: number;
   g: number;
@@ -213,7 +225,7 @@ function cartesianProduct(dimensions: Record<string, string[]>): Record<string, 
 }
 
 function getBindingForVariant(
-  state: ArkitypeState,
+  state: FigmaBundleSource,
   componentId: string,
   propKey: string,
   combo: Record<string, string>,
@@ -353,7 +365,7 @@ function resolveBindingToFigma(bindingString: string, radiusNames: readonly stri
  * ──────────────────────────────────────────────────────────────────────── */
 
 /** `prim:` binding for a ramp step by index, e.g. famStep("error", 6) → error-600. */
-function famStepBinding(state: ArkitypeState, famId: string, idx: number): string | null {
+function famStepBinding(state: FigmaBundleSource, famId: string, idx: number): string | null {
   const fam = state.primitives.colorFamilies.find((f) => f.id === famId);
   if (!fam || !(state.primitives.colors[famId] ?? []).length) return null;
   const labels = rampStepLabels(fam.steps);
@@ -362,7 +374,7 @@ function famStepBinding(state: ArkitypeState, famId: string, idx: number): strin
 }
 
 /** Does a semantic role exist in this system? */
-function hasRole(state: ArkitypeState, token: string): boolean {
+function hasRole(state: FigmaBundleSource, token: string): boolean {
   return state.semantics.modes.light[token] !== undefined;
 }
 
@@ -387,7 +399,7 @@ interface ToneRecipe {
  * mode-aware `feedback-*` semantic roles (they flip in dark mode in Figma);
  * brand/no-role tones fall back to ramp steps (light-mode recipe: 50/200/800/500).
  */
-function toneRecipe(state: ArkitypeState, tone: string): ToneRecipe | null {
+function toneRecipe(state: FigmaBundleSource, tone: string): ToneRecipe | null {
   if (tone === "neutral") {
     return {
       bg: "role:surface-subtle",
@@ -421,7 +433,7 @@ function toneRecipe(state: ArkitypeState, tone: string): ToneRecipe | null {
  * Returns undefined for keys the spec default already covers (filled).
  */
 function buttonVariantDefault(
-  state: ArkitypeState,
+  state: FigmaBundleSource,
   variant: string,
   st: string,
   key: string
@@ -514,7 +526,7 @@ function normalizeElevation(value: unknown): string | null {
  * overwrites a key the user has explicitly bound.
  */
 function injectVariantExtras(
-  state: ArkitypeState,
+  state: FigmaBundleSource,
   cid: string,
   combo: Record<string, string>,
   options: Record<string, any>,
@@ -802,7 +814,7 @@ export const FIGMA_PROP_DEFS: Record<
 
 /** Compile the component-property definitions for one component. */
 function compileFigmaProps(
-  state: ArkitypeState,
+  state: FigmaBundleSource,
   cid: string
 ): FigmaComponentProperty[] {
   const defs = FIGMA_PROP_DEFS[cid] ?? [];
@@ -835,7 +847,7 @@ function laneInfoFor(cid: string): { name: string; lane: string; laneLabel: stri
 }
 
 export function compileFigmaBundle(
-  state: ArkitypeState,
+  state: FigmaBundleSource,
   opts: FigmaBundleOptions = {}
 ): FigmaBundle {
   const { primitives, semantics } = state;

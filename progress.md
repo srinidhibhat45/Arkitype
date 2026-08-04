@@ -2,6 +2,81 @@
 
 > Compressed memory checkpoint. Update after every compiled module.
 
+## Status: ✅ FIGMA PULL SYNC + FORM-FACTOR × INDUSTRY PROOFING — implemented (2026-08-04)
+
+Overhaul-plan Phases 3 and 4, closed together. Full detail in `MAJOR_OVERHAUL_PLAN.md`.
+
+- **Audit first, and it moved the goalposts.** Three of Phase 3's four items were
+  *already built* by earlier work — the plugin was never a one-shot import. `ark:pageId`
+  /`ark:sectionId`/`ark:componentId` plugin-data tags plus name-matched variables already
+  gave update-in-place re-sync (instances survive), and component bindings/options were
+  already in the bundle. Only the pull path was genuinely missing. **Don't trust a plan's
+  checkbox over the code.**
+- **`app/api/figma/[slug]`** — serves the compiled bundle for a *published* system.
+  Deliberately **reuses the publish slug instead of minting a second public surface**:
+  `published_snapshots` is already the only anon-readable table, already audited, and its
+  random slug suffix is already the access grant. Trade-off accepted and stated in the UI:
+  pulling into Figma requires publishing first.
+- **`compileFigmaBundle` narrowed to `FigmaBundleSource`** (`Pick<ArkitypeState,
+  primitives|semantics|components|meta>`) so a snapshot feeds it with no faked state.
+  Same narrowing on `countTokens` and `collectUsedIcons`. All in-app call sites unchanged.
+- **Plugin Pull field** (`figma-plugin/ui.html`) — takes the sync link or the `/p/<slug>`
+  styleguide link; remembers the last one in `figma.clientStorage` so re-pull is one
+  click. `manifest.json` needed `allowedDomains: ["*"]` because the workspace host is
+  user-chosen — **narrow it once the app is deployed**. ⚠️ The plugin ships separately:
+  no user has Pull until it's rebuilt and republished to the Community.
+- **Proofing = form factor × industry, two independent axes** (user's call). 3 layouts
+  (`components/factory/ProofingSurfaces.tsx`) × 3 content packs
+  (`lib/proofingTemplates.ts`) = 9 combinations, not 6 hand-built templates. Mobile
+  enforces a 44pt touch floor at 390pt; Marketing loads the display end of the type scale.
+  Density (real primitive, via Phase 1B's `setDensity`) and an all-six-`INTERACTION_STATES`
+  strip round out the state switcher the feedback asked for.
+- **`lib/` still doesn't import from `components/`** — `ProofingRow` is declared
+  structurally identical to `Txn` rather than imported, and icons are string keys.
+- Two defects typecheck could not catch, found by looking: **`--ark-text-md` doesn't
+  exist** (scale is xs/sm/base/lg/xl/2xl/3xl/4xl) so hero copy silently inherited its
+  size; and the mobile status bar used Apple private-use SF Symbol glyphs that render as
+  tofu off-Apple.
+- Verified: `tsc --noEmit` exit 0; `check-contrast` + `check-figma-props` + `test-exporter`
+  pass; plugin `npm run build` clean; endpoint returns a correct 404 + CORS headers on
+  `:3111`; snapshot→bundle compile proven against a **real default project state** (170
+  variables, 53 components, 294 variants, 2,523 style bindings). **Unverified:** a
+  signed-in publish → pull round-trip (no credentials this session).
+
+## Status: ✅ PUBLISHED STYLEGUIDE + COMPONENT PLAYGROUND — implemented (2026-08-04)
+
+The Zeroheight/Storybook answer, built as pure addition — the 8-step rail, the Ship
+step's five artifacts, and the authenticated Component Studio are all byte-for-byte
+unchanged. Full detail in `MAJOR_OVERHAUL_PLAN.md` Phase 6.
+
+- **Component lifecycle** — `ComponentConfig.status?` (`"ready" | "beta" | "deprecated"`),
+  read through `componentStatus(cfg)` so `undefined` ≡ `"ready"`. **No persist bump:**
+  `partialize` keeps only `currentPreviewMode`/`chromeTheme`, so components never reach
+  localStorage and a migrate branch would be dead code. Rail badge renders only for
+  non-`ready`, so the default view is untouched.
+- **`?component=` deep links** in the Components step, via `history.replaceState` (not
+  router navigation — no Suspense requirement, no full-tree re-render, no back-button
+  spam).
+- **`published_snapshots`** — the first anon-readable table in the schema
+  (`select using (true)`, owner-scoped writes). Slug carries a random suffix because with
+  that policy **the slug is the access grant**; a name-derived slug would be enumerable.
+  Slug is stable across republishes so shared links don't rot. The snapshot is a frozen
+  copy, so edits after publishing stay private until republish.
+- **Ship → Publish tab** (publish / republish / take offline / copy link) and the public
+  routes `app/p/[slug]` + `app/p/[slug]/components/[componentId]`.
+- **The published site renders only what generation already produced.** No authoring
+  surface, no editable pages, no per-component story files — that's the differentiator
+  against both competitors, and the thing to protect in review.
+- Two bugs only live verification could find: render-time store hydration 500'd every
+  component page (persist writes `localStorage` during SSR); keying that effect on the
+  snapshot object then looped infinitely. Both fixed — see the plan's Phase 6 notes.
+- Verified: `tsc --noEmit` exit 0, `check-contrast` + `check-figma-props` pass, **53/53
+  component pages 200 on an SSR sweep**, styleguide index renders 7 sections + 53 links
+  with a clean console, light/dark confirmed against computed `ThemeFrame` backgrounds.
+  ⚠️ **Not verified:** the authenticated surfaces (Publish tab, Lifecycle cluster, rail
+  badge, `?component=`) and a real Supabase publish round-trip — no login credentials
+  this session. `sql/arkitype_schema.sql` must be re-run in Supabase before Publish works.
+
 ## Status: ✅ FIGMA EXPORT FIDELITY + PROPERTY COVERAGE + 2 COMPONENTS — implemented
 Alpha-launch pass. **No persist bump** — two component ids added, which
 `backfillProjectState` self-heals (HANDOFF §6). `npx tsc --noEmit` clean, production

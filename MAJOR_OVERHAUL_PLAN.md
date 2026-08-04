@@ -21,9 +21,13 @@
 3. Check its checklist — items already ticked are verified working, not just written.
 4. `npx tsc --noEmit` must stay exit-0. Verify live on `:3111` before ticking a box.
 5. On persisted-store shape changes: bump `version` in `store/useDesignSystem.ts`
-   (`persist(...)`, currently **v12** — Phase 1 bumped 11→12 for `density`; Phase 2
-   added only *optional* `meta` fields, which need no bump) and add a `migrate`
-   branch — see HANDOFF.md §6, this is a landmine if skipped.
+   (`persist(...)`) and add a `migrate` branch — see HANDOFF.md §6. **Grep for
+   `version:` in the `persist(...)` config rather than trusting a number written
+   here** — this line said "v12" long after the code reached v14.
+   But check what actually persists first: `partialize` keeps only
+   `currentPreviewMode`/`chromeTheme`, so a change to `components`/`primitives`
+   never reaches localStorage and a migrate branch for it would be dead code
+   (Phase 6's `status` field is the worked example).
 6. Update this file's Status lines + `progress.md` after each phase.
 
 ---
@@ -131,45 +135,121 @@ bug. **Still unverified**: a real signed-in Supabase create→reload round-trip.
 
 ---
 
-## Phase 3 — Figma live sync (bidirectional "Pull Updates") ⬜ NOT STARTED
+## Phase 3 — Figma live sync (bidirectional "Pull Updates") ✅ DONE (2026-08-04)
 
 > Feedback: Q3 §4 "Figma Engine Injection" / "Pull Updates" — update variables
 > in place without breaking existing instances
 
-- [ ] Audit `figma-plugin/src/code.ts` — confirm current behavior (looks like
-  one-shot import of a pasted/uploaded JSON bundle; verify before assuming).
-- [ ] Design the "update in place" contract: Figma Variables have stable IDs
-  once created — the plugin needs to persist a mapping (token name → Figma
-  variable ID) inside the Figma file (`figma.root.setPluginData` or a plugin
-  data blob) so a second sync updates existing variables instead of creating
-  duplicates.
-- [ ] Add a "Copy sync code" or small hosted-JSON-by-id endpoint so the plugin
-  can pull directly from Arkitype instead of manual paste (needs a public
-  read endpoint per project — new RLS-safe design, e.g. a signed short-lived
-  export URL, NOT making `projects` publicly readable).
-- [ ] Component bindings/options into the bundle (currently tokens-only per
-  HANDOFF.md §7 — flagged there as a known gap independent of this feedback).
+**Audit finding (2026-08-04): three of the four items below were already built**
+— not by this phase, but as fallout from the 2026-07-13 file-export overhaul and
+the component-binding export work. Only the pull path was actually missing. The
+plan text above had gone stale; this is what the code does.
+
+- [x] **Audited** `figma-plugin/src/code.ts` — it was never a one-shot import.
+- [x] **Update-in-place contract, already shipped.** `ark:pageId` /
+  `ark:sectionId` / `ark:componentId` / `ark:owned` plugin-data tags
+  (`code.ts` §top) mark every page, sheet, and component set the plugin owns;
+  variables are matched by *name within collection* and written with
+  `setValueForMode`, so a re-sync updates the same Figma variables rather than
+  creating duplicates and instances never break. A name→id map persisted in the
+  file (the original plan's idea) turned out to be unnecessary: names are
+  already unique per collection, and a stored map would go stale on rename.
+- [x] **Pull directly from Arkitype — built this phase.**
+  `app/api/figma/[slug]/route.ts` serves the compiled bundle for a *published*
+  system. **Reuses the publish slug rather than minting a second public
+  surface**: `published_snapshots` is already the only anon-readable table,
+  already audited, and its random slug suffix is already the access grant. A
+  second table with its own RLS policy would have been a second thing to get
+  wrong. Consequence, stated plainly in the route and in Ship's copy: pulling
+  requires publishing first.
+  - `lib/figma.ts` — `compileFigmaBundle` now takes `FigmaBundleSource`
+    (`Pick<ArkitypeState, primitives|semantics|components|meta>`) instead of the
+    whole store, so a snapshot feeds it directly with no faked state. Same
+    narrowing applied to `countTokens` and `collectUsedIcons`. Every in-app call
+    site passes full state and is unaffected.
+  - `figma-plugin/ui.html` — a Pull field above the dropzone; accepts the sync
+    link *or* the `/p/<slug>` styleguide link for the same system. A bare code
+    is refused with a real message: the workspace host is user-chosen, so there
+    is no origin to assume. The last-used link is remembered in
+    `figma.clientStorage` (per user, not per file) so re-pulling is one click.
+  - `manifest.json` — `allowedDomains: ["*"]`. Unavoidable while the host is
+    undecided; **narrow it to the real origin once the app is deployed.**
+  - `ShipStep.tsx` — the Publish tab now shows both links (styleguide + Figma
+    sync), each copy-on-click.
+- [x] **Component bindings/options in the bundle, already shipped** — the
+  `FigmaBundle.components` array carries per-variant resolved bindings, options,
+  slots, and `FIGMA_PROP_DEFS`. HANDOFF §7 documents it; the HANDOFF §9 "done
+  since" note records it landing.
+
+**Verified 2026-08-04:** `npx tsc --noEmit` exit 0; `check-contrast`,
+`check-figma-props`, `test-exporter` all pass; `cd figma-plugin && npm run build`
+clean. Endpoint live on `:3111` — unknown slug returns `404 {"error":"No
+published system with that sync code"}` with `access-control-allow-origin: *`
+and `cache-control: no-store`, and it reaches Supabase (no 502/503), so the
+table and query path are real. The snapshot→bundle compile was verified against
+a **real default project state** (not the mock in `test-exporter.ts`) through the
+exact shim the route builds: 170 variables, 68 semantic→primitive aliases, 53
+components, 294 variants, 2,523 style bindings, 115 Figma properties, 16 slots,
+53 pages, 327 KB — and `meta.name` propagates. **Not verified:** a real
+signed-in publish → pull round-trip, and the plugin's Pull button against a live
+endpoint. Both need credentials this session didn't have; the plugin also can't
+reach a deployed origin until the app is hosted. Do those first next session.
 
 This phase touches a second codebase (the Figma plugin sandbox) and a public
 data-exposure decision — higher risk, do it deliberately, not "no hesitation."
+⚠️ The plugin ships separately (HANDOFF §7): **the Pull field does not exist for
+users until the plugin is rebuilt and republished to the Figma Community.**
 
 ---
 
-## Phase 4 — Live proofing dashboard: industry templates ⬜ NOT STARTED
+## Phase 4 — Live proofing dashboard: industry templates ✅ DONE (2026-08-04)
 
 > Feedback: Q3 §3 "Live Interactive Proofing Dashboard" — SaaS / Mobile / plus
 > the open question "industry-specific templates like E-Commerce, Fintech, or
 > Healthcare?" (never answered by the user — **ask before building**, this is
 > a real content/scope fork, not an implementation detail)
 
-- [ ] Resolve the open question with the user: generic universal patterns
-  (current `PreviewStep.tsx` direction) vs. industry-specific template swaps.
-  Building the wrong one wastes the whole phase.
-- [ ] `PreviewStep.tsx` currently ships one dashboard mock — extend to a
-  template switcher once the direction above is confirmed.
-- [ ] Density/State switcher on the proofing view itself (Light/Dark ×
-  Compact/Spacious × interactive-states-all-at-once) — natural pairing with
-  Phase 1B's density primitive.
+- [x] **Open question resolved by the user (2026-08-04): "both — form factor ×
+  industry skin."** So the two are built as *independent axes*, not one list of
+  six templates. Form factor decides layout; industry decides only words and
+  numbers. 3 × 3 = 9 combinations from 3 layouts + 3 content packs.
+- [x] `lib/proofingTemplates.ts` (new) — pure content packs (Fintech /
+  Healthcare / E-commerce). No React, no token reads. `ProofingRow` is declared
+  structurally identical to `Txn` rather than imported, so `lib/` never imports
+  from `components/`; icons are string keys the renderer maps to components.
+- [x] `components/factory/ProofingSurfaces.tsx` (new) — the three form factors.
+  `SaasSurface` is the previous dashboard, parameterised. `MobileSurface` is a
+  390pt device viewport with a 44pt touch-target floor — the constraint that
+  actually catches a too-tight spacing scale. `MarketingSurface` puts the
+  display end of the type scale under load (`--ark-text-3xl`, display font role)
+  where a ratio that reads fine in a console falls apart.
+- [x] Density switcher on the proofing view (reuses Phase 1B's `setDensity`) —
+  edits the real primitive, not a preview-only override, so what you prove is
+  what you ship.
+- [x] `StatesStrip` — all six `INTERACTION_STATES` for Button / Outlined /
+  Input at once. Hovering one control can't show whether focus is
+  distinguishable from hover, or whether disabled reads as disabled rather than
+  merely pale. Light/Dark stays the existing top-bar toggle rather than a fourth
+  control here.
+- [x] `TableSkeletons.tsx` gained two additive optional props (`columns`,
+  `statusLabels`) so a skin can relabel headers and the three status tones
+  without changing which tone is which. Defaults preserve today's behaviour
+  exactly — every other call site is untouched.
+
+**Verified live on `:3111` (2026-08-04)**, driven through a temporary dev-only
+`window.__ark` store hook (added, exercised, removed — `grep TEMP-VERIFY` and
+`grep __ark` both clean): all three form factors render; the Healthcare skin
+flows through end-to-end (CareChart, `MRN/PATIENT/DEPARTMENT/BILLED` headers,
+statuses relabelled Seen/Waiting/Urgent) while layout and tokens stay put;
+Compact density visibly retightens the whole console live (`spacingBase` 4→3);
+the Marketing surface renders hero/proof-strip/feature-grid; the states strip
+renders all six states across three rows with focus rings, dimmed disabled, and
+the loading spinner. Two defects found and fixed by looking rather than
+typechecking: `--ark-text-md` / `--ark-leading-md` **do not exist** (the scale is
+xs/sm/base/lg/xl/2xl/3xl/4xl — no `md`), which silently fell back to inherited
+type; and the mobile status bar used Apple private-use SF Symbol glyphs that
+render as tofu boxes off-Apple — now lucide icons. `tsc` exit 0 and all three
+guard scripts pass.
 
 ---
 
@@ -186,6 +266,92 @@ owner-only to membership-based, an invite flow. Do not start this without a
 dedicated planning pass; it's the riskiest, highest-blast-radius item in the
 whole feedback set (touches the security model — see
 [[security-hardening]]-style migration discipline from the Hued project).
+
+---
+
+## Phase 6 — Publish: hosted styleguide + component playground ✅ DONE (2026-08-04)
+
+> Positioning: compete with **Zeroheight** (hosted styleguide) and **Storybook**
+> (component playground) without adopting either one's authoring model. Arkitype
+> already *generates* what both make you hand-write — the gap was that Ship only
+> produced downloads, never a hosted surface.
+
+**The line that keeps this Arkitype:** the published site only ever *renders what
+generation already produced*. There is no authoring surface, no editable docs
+page, no per-component "story" file. That's the entire differentiator — a
+published site structurally can't drift from the system, because there's no
+second copy to maintain. Do not add freeform page editing here.
+
+### 6A. Component lifecycle status
+- [x] `ComponentConfig.status?: "ready" | "beta" | "deprecated"` + `componentStatus(cfg)`
+      reader (`undefined` ≡ `"ready"`), `COMPONENT_STATUSES`, `setComponentStatus` action
+- [x] **No persist migrate needed, deliberately** — `partialize` keeps only
+      `currentPreviewMode`/`chromeTheme`, so components never reach localStorage; a
+      migrate branch for `status` would have been dead code. The optional-field +
+      reader-function pattern is what makes existing projects load unchanged.
+- [x] "Lifecycle" cluster in `ComponentStudioControls`; rail badge renders **only** for
+      non-`ready` components so the default view is visually untouched
+
+### 6B. Deep links
+- [x] `?component=<id>` synced in `ComponentsStep.tsx` via `history.replaceState` — not
+      `useSearchParams`/router (would need a Suspense boundary on this statically-rendered
+      client page, and shallow routing re-renders the whole tree; replaceState also keeps
+      every component click out of the back-button history)
+- [x] `activeComponentVariant`/`activeComponentState` deliberately **not** synced — they
+      have setters but no consumers anywhere in the UI
+
+### 6C. Publishing
+- [x] `published_snapshots` table (`sql/arkitype_schema.sql` §3) — the **first and only**
+      anon-readable table. Owner-scoped insert/update/delete, `select using (true)`.
+- [x] Slug = readable prefix + random suffix. The suffix is load-bearing, not decoration:
+      with `using (true)` the slug *is* the access grant, so a guessable name-derived slug
+      would let anyone enumerate published systems.
+- [x] Slug minted once and held stable across republishes — a shared link must not rot
+      when the owner renames the file.
+- [x] `lib/publish.ts` mirrors `lib/persistence.ts`; snapshot is a **frozen copy**
+      (`{name, primitives, semantics, components}`), so edits after publishing stay
+      private until republish. `journey`/`folder`/session fields never leave the app.
+- [x] "Publish" tab in `ShipStep.tsx` (publish / republish / take offline / copy link)
+- [x] Deferred: publish history/versioning (v1 is upsert-only, latest wins) and
+      permissioned sharing (v1 is link-based, Figma "anyone with the link" style)
+
+### 6D. Public routes
+- [x] `app/p/[slug]` — Server Component, fully prop-driven, SSRs (SEO intact)
+- [x] `app/p/[slug]/components/[componentId]` — live component, every state and variant,
+      plus `COMPONENT_DOCS` content and the lifecycle badge
+- [x] `lib/supabase/server.ts` — anonymous client, no session persistence
+- [x] `ThemeFrame` takes optional `primitives`/`semantics` props (store fallback), so
+      every existing call site is behaviorally unchanged
+
+**Two decisions worth keeping:**
+
+1. **The authenticated Component Studio was not touched at all.** The plan called for
+   injecting optional props into `ComponentStudioPreview`; that component is all edit
+   affordances (reset, zoom, strip clicks that write to the store). Exporting the pure
+   `renderHero` and building a separate read-only page satisfies the same requirement
+   with zero regression surface on the core flow.
+2. **The public page hydrates the Zustand store from the snapshot**
+   (`components/public/SnapshotProvider.tsx`) rather than threading a snapshot through
+   50+ factory components — they read `s.primitives`/`s.components` directly. Safe
+   because `AuthProvider` (which owns the autosave subscription) mounts only on `/`, so
+   nothing on a public route can write to anyone's project.
+
+**Two bugs live verification caught that typecheck could not:**
+- Hydrating at render time 500'd every component page on first load — the persist
+  middleware writes to `localStorage` during SSR. Hydration moved into an effect, with
+  the previews gated on a `hydrated` flag.
+- Keying that effect on the `snapshot` object looped infinitely (hydrating re-renders
+  subscribers → caller rebuilds the object → effect refires). Now guarded to run once
+  per mount.
+
+**Verified 2026-08-04:** `npx tsc --noEmit` exit 0; `check-contrast.ts` and
+`check-figma-props.ts` both pass; **all 53 component pages return 200** (SSR sweep);
+styleguide index renders all 7 sections + 53 links with no console errors; light/dark
+verified against `ThemeFrame` computed backgrounds. **Not verified** — the authenticated
+surfaces (Ship's Publish tab, the Lifecycle cluster, the rail badge, `?component=` sync)
+and a real Supabase publish round-trip: the workspace is behind a real login this session
+had no credentials for. Verify those first next session, and run
+`sql/arkitype_schema.sql` in Supabase before the Publish tab will work at all.
 
 ---
 

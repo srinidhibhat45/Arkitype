@@ -4,7 +4,9 @@
 -- Safe to re-run: every statement is idempotent.
 --
 -- Security posture mirrors Hued: owner-only RLS on every table, a SECURITY
--- DEFINER signup trigger, and no anonymous access. The browser only ever holds
+-- DEFINER signup trigger, and no anonymous access — with ONE deliberate
+-- exception, `published_snapshots` (§3), which is anon-readable by design so
+-- published styleguides work without an account. The browser only ever holds
 -- the publishable key, so RLS below is the real access boundary.
 -- ════════════════════════════════════════════════════════════════════════════
 
@@ -64,7 +66,44 @@ drop policy if exists "projects_delete_own" on public.projects;
 create policy "projects_delete_own" on public.projects
   for delete using (auth.uid() = owner);
 
--- ── 3. auto-create a profile row on signup (Hued pattern) ─────────────────────
+-- ── 3. published_snapshots — the public, read-only styleguide for a project ───
+-- The ONLY anonymously-readable table in the schema. A row exists only after
+-- the owner explicitly publishes, and it holds a frozen copy of the design
+-- system (not a live view of `projects.state`), so unpublished edits stay
+-- private until the next publish.
+create table if not exists public.published_snapshots (
+  project_id   uuid primary key references public.projects (id) on delete cascade,
+  owner        uuid not null references auth.users (id) on delete cascade,
+  slug         text not null unique,
+  snapshot     jsonb not null,
+  published_at timestamptz not null default now()
+);
+
+create index if not exists published_snapshots_owner_idx
+  on public.published_snapshots (owner);
+
+alter table public.published_snapshots enable row level security;
+
+-- Anyone with the link can read. Knowing the slug IS the access grant, the way
+-- a Figma "anyone with the link" share works — there is no per-viewer identity.
+drop policy if exists "published_snapshots_select_public" on public.published_snapshots;
+create policy "published_snapshots_select_public" on public.published_snapshots
+  for select using (true);
+
+drop policy if exists "published_snapshots_insert_own" on public.published_snapshots;
+create policy "published_snapshots_insert_own" on public.published_snapshots
+  for insert with check (auth.uid() = owner);
+
+drop policy if exists "published_snapshots_update_own" on public.published_snapshots;
+create policy "published_snapshots_update_own" on public.published_snapshots
+  for update using (auth.uid() = owner) with check (auth.uid() = owner);
+
+-- Unpublish.
+drop policy if exists "published_snapshots_delete_own" on public.published_snapshots;
+create policy "published_snapshots_delete_own" on public.published_snapshots
+  for delete using (auth.uid() = owner);
+
+-- ── 4. auto-create a profile row on signup (Hued pattern) ─────────────────────
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -84,7 +123,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- ── 4. keep updated_at fresh on every write ───────────────────────────────────
+-- ── 5. keep updated_at fresh on every write ───────────────────────────────────
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql

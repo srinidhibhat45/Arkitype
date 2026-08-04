@@ -44,7 +44,13 @@ import {
   PaintBucket,
   Image as ImageIcon,
 } from "lucide-react";
-import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
+import {
+  COMPONENT_STATUSES,
+  type ComponentStatus,
+  PreviewMode,
+  componentStatus,
+  useDesignSystem,
+} from "@/store/useDesignSystem";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
 import {
   COMPONENT_SPECS,
@@ -202,7 +208,7 @@ const TEXT_SIZE_CONSUMERS = new Set([
 
 /* ── one representative instance of a component, in one state/variant ── */
 
-type HeroCtx = {
+export type HeroCtx = {
   state: CState;
   size: SizeToken;
   radiusStep: number;
@@ -211,7 +217,9 @@ type HeroCtx = {
   opts: Record<string, string | boolean | number>;
 };
 
-function renderHero(id: string, ctx: HeroCtx): ReactNode {
+/** Renders one component at a given state/variant. Pure — every store-derived
+ *  input arrives through `ctx`, so read-only surfaces can call it directly. */
+export function renderHero(id: string, ctx: HeroCtx): ReactNode {
   const { state, size, radiusStep, resolve, mode, opts } = ctx;
   const os = (k: string) => opts[k] as string;
   const ob = (k: string) => opts[k] as boolean;
@@ -857,6 +865,7 @@ function useStudioData(id: string) {
   const clearBinding = useDesignSystem((s) => s.clearComponentBinding);
   const resetAll = useDesignSystem((s) => s.resetComponentBindings);
   const setProperty = useDesignSystem((s) => s.setComponentProperty);
+  const setStatus = useDesignSystem((s) => s.setComponentStatus);
   const setSlotContent = useDesignSystem((s) => s.setSlotContent);
   const currentMode = useDesignSystem((s) => s.currentPreviewMode);
   const setPreviewMode = useDesignSystem((s) => s.setPreviewMode);
@@ -880,6 +889,7 @@ function useStudioData(id: string) {
     clearBinding,
     resetAll,
     setProperty,
+    setStatus,
     setSlotContent,
     currentMode,
     setPreviewMode,
@@ -892,6 +902,7 @@ function useStudioData(id: string) {
     overrideCount,
     canvasZoom,
     setCanvasZoom,
+    status: componentStatus(cfg),
   };
 }
 
@@ -1426,12 +1437,14 @@ export function ComponentStudioControls({
     setBinding,
     clearBinding,
     setProperty,
+    setStatus,
     setSlotContent,
     resolve,
     data,
     properties,
     instances,
     size,
+    status,
   } = useStudioData(id);
 
   const [activeState] = useState<CState>(spec?.states[0] ?? "default");
@@ -1633,6 +1646,23 @@ export function ComponentStudioControls({
 
   /* build clusters */
   const clusters: Cluster[] = [];
+
+  clusters.push({
+    key: "status",
+    title: "Lifecycle",
+    part: null,
+    content: (
+      <TokenSegmented
+        options={COMPONENT_STATUSES.map((s) => ({
+          label: s[0].toUpperCase() + s.slice(1),
+          value: s,
+        }))}
+        value={status}
+        onChange={(v) => setStatus(id, v as ComponentStatus)}
+      />
+    ),
+  });
+
   if (hasOptionsSection) {
     // split options by type for compact grouped layout
     const numOpts = options.filter((o) => o.type === "number");

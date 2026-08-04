@@ -7,7 +7,7 @@
  * variables; changing any primitive or semantic mapping re-themes instantly.
  */
 import type { CSSProperties, ReactNode } from "react";
-import { useDesignSystem } from "@/store/useDesignSystem";
+import { useDesignSystem, type ProjectState } from "@/store/useDesignSystem";
 import { systemCssVars, tv } from "@/lib/tokens";
 import type { PreviewMode } from "@/store/useDesignSystem";
 
@@ -17,15 +17,23 @@ export function ThemeFrame({
   className = "",
   style,
   label,
+  primitives: primitivesProp,
+  semantics: semanticsProp,
 }: {
   mode: PreviewMode;
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
   label?: string;
+  /** Supply both to theme from a serialized system (a published snapshot)
+   *  instead of the live store — the store is the default. */
+  primitives?: ProjectState["primitives"];
+  semantics?: ProjectState["semantics"];
 }) {
-  const primitives = useDesignSystem((s) => s.primitives);
-  const semantics = useDesignSystem((s) => s.semantics);
+  const storePrimitives = useDesignSystem((s) => s.primitives);
+  const storeSemantics = useDesignSystem((s) => s.semantics);
+  const primitives = primitivesProp ?? storePrimitives;
+  const semantics = semanticsProp ?? storeSemantics;
   const vars = systemCssVars({ primitives, semantics }, mode);
 
   return (

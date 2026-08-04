@@ -74,17 +74,20 @@ export function PrimaryButton({
 export function GhostButton({
   children,
   onClick,
+  disabled,
   full,
 }: {
   children: ReactNode;
   onClick?: () => void;
+  disabled?: boolean;
   full?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-line px-3.5 text-[13px] font-medium text-fg-dim transition-colors hover:border-line-strong hover:text-fg ${
+      disabled={disabled}
+      className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-line px-3.5 text-[13px] font-medium text-fg-dim transition-colors hover:border-line-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 ${
         full ? "w-full" : ""
       }`}
     >

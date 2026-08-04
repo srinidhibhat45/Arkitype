@@ -5,6 +5,10 @@ const DARK_MODE = "mode:dark";
 /* Plugin-data keys — the update-in-place contract. Pages, sections, and
  * component sets are tagged so a re-sync finds and updates the same nodes
  * instead of duplicating them (and never breaks existing instances). */
+/* clientStorage (per user, not per file) — the workspace sync link the plugin
+ * last pulled from, so "Pull" doesn't need re-pasting on every visit. */
+const SYNC_URL_KEY = "ark:syncUrl";
+
 const PAGE_KEY = "ark:pageId";
 const SECTION_KEY = "ark:sectionId";
 const COMP_KEY = "ark:componentId";
@@ -107,6 +111,13 @@ void updateStatusInUi();
 figma.ui.onmessage = async (msg) => {
   if (msg.type === 'check-current-file') {
     await updateStatusInUi();
+    // Restore the last sync link so a re-pull is one click. clientStorage is
+    // per-user, not per-file: the same designer syncing several files keeps
+    // one workspace link, which is the common case.
+    const savedUrl = await figma.clientStorage.getAsync(SYNC_URL_KEY);
+    if (savedUrl) figma.ui.postMessage({ type: 'sync-url', url: savedUrl });
+  } else if (msg.type === 'save-sync-url') {
+    await figma.clientStorage.setAsync(SYNC_URL_KEY, msg.url);
   } else if (msg.type === 'sync-variables') {
     try {
       await syncVariables(msg.payload);

@@ -26,7 +26,23 @@ decision with its own live canvas:
    a design-system token (role/scale) rather than a raw value. Variant and
    state bars make every state selectable-and-viewable.
 8. **Preview** — the whole system on a representative dashboard.
-9. **Ship** — export docs and a Figma variables bundle.
+9. **Ship** — export docs and a Figma variables bundle, or **publish** the system
+   as a hosted styleguide.
+
+## The published styleguide
+
+Ship's **Publish** tab mints a shareable link — `/p/<slug>` — carrying the whole
+system as a browsable site: foundations, the full token set, and a page per
+component with its live preview, every state and variant, usage documentation,
+and a lifecycle badge (ready / beta / deprecated). No account needed to read it.
+
+Every page is *compiled from the design system itself*, exactly like the Figma
+bundle and the framework exports. Nothing on it is hand-authored, so a published
+styleguide can't drift from the system it documents — there's no second copy to
+keep in sync, and no stories or doc pages to maintain.
+
+Publishing freezes a copy, so edits after publishing stay private until you
+republish, and the link stays stable even if you rename the file.
 
 ## The Figma plugin
 
@@ -79,11 +95,17 @@ npm run start    # serve the production build on :3111
 
 ```
 app/                 Next.js App Router entry (page, layout, global styles)
+  p/[slug]/          the public, unauthenticated published styleguide
 components/
   shell/             TopBar, StageRail, StepScaffold
   steps/             one component per step in the rail
   factory/           the token-bound component factory + Component Studio
+  public/            the published-styleguide renderers
   ui/                shared primitives (ThemeFrame, controls)
-lib/                 tokens, colour, typography, binding, figma export, docs
+lib/                 tokens, colour, typography, binding, figma export, docs, publish
 store/               Zustand persisted design-system store
 ```
+
+> Publishing needs the `published_snapshots` table — re-run
+> [`sql/arkitype_schema.sql`](./sql/arkitype_schema.sql) in the Supabase SQL
+> editor (every statement is idempotent, so it's safe on an existing project).

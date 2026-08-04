@@ -569,6 +569,15 @@ const cloneShadows = (defs: ShadowDef[]): ShadowDef[] =>
 
 /* ────────────────────────────── state shape ────────────────────────────── */
 
+export type ComponentStatus = "ready" | "beta" | "deprecated";
+
+export const COMPONENT_STATUSES: ComponentStatus[] = ["ready", "beta", "deprecated"];
+
+/** Undefined means "ready" — read through this rather than the raw field so an
+ *  unset status never needs backfilling into every existing project. */
+export const componentStatus = (cfg?: ComponentConfig): ComponentStatus =>
+  cfg?.status ?? "ready";
+
 export interface ComponentConfig {
   skeletonId: string;
   properties: Record<string, string | number | boolean>;
@@ -578,6 +587,8 @@ export interface ComponentConfig {
   /** Per-slot content overrides (text/icon/variant/size), keyed by SlotSpec.id.
    *  Never holds a style value — see ATOMIC_DESIGN_PLAN.md. */
   instances?: Record<string, Record<string, string | number | boolean>>;
+  /** Lifecycle badge shown in the studio and on published docs. Unset = "ready". */
+  status?: ComponentStatus;
 }
 
 export interface ProjectState {
@@ -829,6 +840,7 @@ export interface ArkitypeState {
     value: string | number | boolean
   ) => void;
   setComponentBinding: (componentId: string, key: string, binding: string) => void;
+  setComponentStatus: (componentId: string, status: ComponentStatus) => void;
   clearComponentBinding: (componentId: string, key: string) => void;
   resetComponentBindings: (componentId: string) => void;
   setSlotContent: (
@@ -2411,6 +2423,20 @@ export const useDesignSystem = create<ArkitypeState>()(
           };
         }),
 
+      setComponentStatus: (componentId, status) =>
+        set((state) => ({
+          components: {
+            ...state.components,
+            [componentId]: {
+              ...(state.components[componentId] ?? {
+                skeletonId: "1",
+                properties: {},
+              }),
+              status,
+            },
+          },
+        })),
+
       setComponentBinding: (componentId, key, binding) =>
         set((state) => {
           const cfg = state.components[componentId] ?? {
@@ -2865,7 +2891,9 @@ export const useDesignSystem = create<ArkitypeState>()(
 /* ────────────────────────────── derived helpers ────────────────────────── */
 
 /** Live count of every addressable token in the system. */
-export function countTokens(state: ArkitypeState): number {
+export function countTokens(
+  state: Pick<ArkitypeState, "primitives" | "semantics">
+): number {
   const colorCount = state.primitives.colorFamilies.reduce(
     (sum, f) => sum + f.steps,
     0

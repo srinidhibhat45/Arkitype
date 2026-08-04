@@ -9,7 +9,7 @@
  * Layout: the center canvas shows an enlarged live preview; the right inspector
  * pane hosts all configurable options, token bindings and skeleton pickers.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   RADII_NAMES,
   useDesignSystem,
@@ -181,9 +181,27 @@ function SkeletonPreview({ pattern }: { pattern: string }) {
 
 /* ── the step ── */
 
+const KNOWN_COMPONENT_IDS = new Set(LANES.flatMap((l) => l.items.map((i) => i.id)));
+
 export function ComponentsStep() {
   const activeComponentId = useDesignSystem((s) => s.activeComponentId) || "button";
   const setActiveComponentId = useDesignSystem((s) => s.setActiveComponentId);
+
+  // `?component=` makes a selection linkable (PR/Slack review). replaceState
+  // rather than router navigation: every click would otherwise push a history
+  // entry and re-render the whole tree.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("component");
+    if (wanted && KNOWN_COMPONENT_IDS.has(wanted)) setActiveComponentId(wanted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("component") === activeComponentId) return;
+    url.searchParams.set("component", activeComponentId);
+    window.history.replaceState(null, "", url);
+  }, [activeComponentId]);
 
   const lane = LANES.find((l) => l.items.some((i) => i.id === activeComponentId)) ?? LANES[0];
   const laneId = lane.id;

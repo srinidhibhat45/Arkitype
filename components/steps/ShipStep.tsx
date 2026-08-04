@@ -4,9 +4,10 @@
  * Step 07 — Ship. Compiles the live tree into the Figma-Plugin-API bundle
  * and the engineering handoff docs. Copy or download either artifact.
  */
-import { useMemo, useState } from "react";
-import { ArrowUpRight, Check, Copy, Download } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, Check, Copy, Download, Globe, Loader2 } from "lucide-react";
 import { countTokens, useDesignSystem } from "@/store/useDesignSystem";
+import { getPublication, publishSnapshot, unpublish, type PublishedRecord } from "@/lib/publish";
 import { compileFigmaBundle } from "@/lib/figma";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 import { WIRED_COMPONENTS } from "@/lib/componentSchema";
@@ -25,6 +26,9 @@ import {
 import { StepScaffold } from "@/components/shell/StepScaffold";
 
 type Artifact = "json" | "docs" | "css" | "tailwind" | "mui";
+
+/** Publish isn't a downloadable artifact — it's an action with its own surface. */
+type Tab = Artifact | "publish";
 
 const ARTIFACT_META: Record<
   Artifact,
@@ -98,10 +102,75 @@ const ALL_WIRED_IDS = PICKER_LANES.flatMap((l) => l.items.map((i) => i.id));
 
 export function ShipStep() {
   const state = useDesignSystem();
-  const [artifact, setArtifact] = useState<Artifact>(
+  const [tab, setTab] = useState<Tab>(
     () => DESTINATION_TO_ARTIFACT[state.meta.engineeringDestination ?? ""] ?? "json"
   );
   const [copied, setCopied] = useState(false);
+  const artifact: Artifact = tab === "publish" ? "json" : tab;
+
+  const activeProjectId = state.activeProjectId;
+  const project = activeProjectId ? state.projects[activeProjectId] : undefined;
+  const [publication, setPublication] = useState<PublishedRecord | null>(null);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState<"public" | "sync" | null>(null);
+
+  useEffect(() => {
+    if (!activeProjectId) return;
+    let active = true;
+    getPublication(activeProjectId)
+      .then((rec) => active && setPublication(rec))
+      .catch((e) => active && setPublishError(e?.message ?? "Couldn't check publish status"));
+    return () => {
+      active = false;
+    };
+  }, [activeProjectId]);
+
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const publicUrl = publication ? `${origin}/p/${publication.slug}` : null;
+  /* The same slug, served as a compiled Figma bundle — what the plugin's Pull
+   * field takes (app/api/figma/[slug]). Publishing is therefore the pull's
+   * prerequisite: no slug, nothing to pull. */
+  const syncUrl = publication ? `${origin}/api/figma/${publication.slug}` : null;
+
+  const doPublish = async (): Promise<void> => {
+    if (!project) return;
+    setPublishBusy(true);
+    setPublishError(null);
+    try {
+      setPublication(await publishSnapshot(project));
+    } catch (e) {
+      setPublishError((e as Error)?.message ?? "Publish failed");
+    } finally {
+      setPublishBusy(false);
+    }
+  };
+
+  const doUnpublish = async (): Promise<void> => {
+    if (!activeProjectId) return;
+    setPublishBusy(true);
+    setPublishError(null);
+    try {
+      await unpublish(activeProjectId);
+      setPublication(null);
+    } catch (e) {
+      setPublishError((e as Error)?.message ?? "Couldn't unpublish");
+    } finally {
+      setPublishBusy(false);
+    }
+  };
+
+  /** Copy one of the publish links, flagging which one so only it says "Copied". */
+  const copyLink = async (key: "public" | "sync", text: string | null): Promise<void> => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setLinkCopied(key);
+      setTimeout(() => setLinkCopied(null), 1500);
+    } catch {
+      // Clipboard unavailable — no-op.
+    }
+  };
   // Components excluded from the Figma kit export (empty = ship everything).
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
 
@@ -168,16 +237,90 @@ export function ShipStep() {
         <>
           <Field label="Artifact">
             <Segmented
-              options={(Object.keys(ARTIFACT_META) as Artifact[]).map((a) => ({
-                label: ARTIFACT_META[a].label,
-                value: a,
-              }))}
-              value={artifact}
-              onChange={setArtifact}
+              options={[
+                ...(Object.keys(ARTIFACT_META) as Artifact[]).map((a) => ({
+                  label: ARTIFACT_META[a].label,
+                  value: a as Tab,
+                })),
+                { label: "Publish", value: "publish" as Tab },
+              ]}
+              value={tab}
+              onChange={setTab}
             />
           </Field>
 
-          {artifact === "json" && (
+          {tab === "publish" && (
+            <>
+              <AsideDivider />
+              <div className="mb-6 rounded-xl border border-line p-4">
+                <p className="mb-3 text-[12px] font-medium text-fg-dim">
+                  {publication ? "Live styleguide" : "Publish a styleguide"}
+                </p>
+                <p className="mb-3 text-[11px] leading-relaxed text-fg-mute">
+                  {publication
+                    ? "Anyone with this link can read the system — foundations, tokens, and every component with its usage docs. No account needed."
+                    : "Publishes a frozen copy of this system to a shareable link. Later edits stay private until you republish."}
+                </p>
+
+                {publicUrl && (
+                  <>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-mute">
+                      Styleguide link
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => copyLink("public", publicUrl)}
+                      title="Copy link"
+                      className="mb-3 block w-full break-all rounded-lg border border-line bg-ink-panel px-2.5 py-2 text-left font-mono text-[11px] text-fg-dim transition-colors hover:border-line-strong hover:text-fg"
+                    >
+                      {linkCopied === "public" ? "Copied to clipboard" : publicUrl}
+                    </button>
+
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-mute">
+                      Figma sync link
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => copyLink("sync", syncUrl)}
+                      title="Copy sync link"
+                      className="mb-2 block w-full break-all rounded-lg border border-line bg-ink-panel px-2.5 py-2 text-left font-mono text-[11px] text-fg-dim transition-colors hover:border-line-strong hover:text-fg"
+                    >
+                      {linkCopied === "sync" ? "Copied to clipboard" : syncUrl}
+                    </button>
+                    <p className="mb-3 text-[11px] leading-relaxed text-fg-mute">
+                      Paste this into the {FIGMA_PLUGIN_NAME} plugin&apos;s{" "}
+                      <strong className="font-medium text-fg-dim">Pull</strong> field — no
+                      more downloading and re-importing a file. Re-pull after any republish.
+                    </p>
+                  </>
+                )}
+
+                {publishError && (
+                  <p className="mb-3 text-[11px] leading-relaxed text-rose-400">{publishError}</p>
+                )}
+
+                {!project && (
+                  <p className="mb-3 text-[11px] leading-relaxed text-fg-mute">
+                    Open a file from the dashboard to publish it.
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  <PrimaryButton full onClick={doPublish} disabled={publishBusy || !project}>
+                    {publishBusy ? <Loader2 size={13} className="animate-spin" /> : <Globe size={13} />}
+                    {publication ? "Republish" : "Publish"}
+                  </PrimaryButton>
+                  {publication && (
+                    <GhostButton full onClick={doUnpublish} disabled={publishBusy}>
+                      Take offline
+                    </GhostButton>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {tab === "json" && (
             <>
               <AsideDivider />
               <div className="mb-6 rounded-xl border border-line p-4">
@@ -283,7 +426,7 @@ export function ShipStep() {
             </div>
           </div>
 
-          {artifact === "json" && (
+          {tab === "json" && (
             <>
               <AsideDivider />
               <div className="mb-6 rounded-xl border border-line p-4">
@@ -311,7 +454,10 @@ export function ShipStep() {
                     },
                     { key: "download", body: "Download the file below, or copy it to your clipboard." },
                     { key: "run", body: "Open your Figma file and run the plugin." },
-                    { key: "import", body: "Drop the file into its Import tab — or paste the JSON." },
+                    {
+                      key: "import",
+                      body: "Drop the file into its Import tab — or paste the JSON. (Published this system? Skip both: copy the Figma sync link from the Publish tab and pull it straight into the plugin.)",
+                    },
                     {
                       key: "generate",
                       body: "Click “Sync Variables” for tokens only, or “Generate Design System File” for the full kit.",
@@ -341,33 +487,37 @@ export function ShipStep() {
             </>
           )}
 
-          <div className="space-y-2">
-            <GhostButton full onClick={copy}>
-              {copied ? (
-                <>
-                  <Check size={13} className="text-emerald-400" /> Copied
-                </>
-              ) : (
-                <>
-                  <Copy size={13} /> Copy to clipboard
-                </>
-              )}
-            </GhostButton>
-            <PrimaryButton
-              full
-              onClick={() =>
-                download(ARTIFACT_META[artifact].filename(fileBase), content, ARTIFACT_META[artifact].mime)
-              }
-            >
-              <Download size={13} />
-              Download {ARTIFACT_META[artifact].filename(fileBase).split(".").pop()}
-            </PrimaryButton>
-          </div>
+          {tab !== "publish" && (
+            <div className="space-y-2">
+              <GhostButton full onClick={copy}>
+                {copied ? (
+                  <>
+                    <Check size={13} className="text-emerald-400" /> Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy size={13} /> Copy to clipboard
+                  </>
+                )}
+              </GhostButton>
+              <PrimaryButton
+                full
+                onClick={() =>
+                  download(ARTIFACT_META[artifact].filename(fileBase), content, ARTIFACT_META[artifact].mime)
+                }
+              >
+                <Download size={13} />
+                Download {ARTIFACT_META[artifact].filename(fileBase).split(".").pop()}
+              </PrimaryButton>
+            </div>
+          )}
 
           <AsideDivider />
 
           <AsideNote>
-            {artifact === "json"
+            {tab === "publish"
+              ? "The published site is generated from the same token state as every other artifact here — there's no second copy to keep in sync, and nothing to hand-author."
+              : artifact === "json"
               ? "The plugin builds a complete kit — Cover, Foundations, and one page per component with usage docs, variant grids, component properties, elevation effect styles, and token-bound layers. Re-running it after edits updates everything in place, so instances and overrides survive."
               : artifact === "tailwind"
                 ? "Colours/scales reference the --ark-* CSS variables — download the CSS vars artifact too and import it once, globally."
@@ -380,11 +530,46 @@ export function ShipStep() {
         </>
       }
     >
-      <CanvasSection title={ARTIFACT_META[artifact].title} hint={ARTIFACT_META[artifact].hint}>
-        <pre className="whitespace-pre-wrap break-words rounded-xl border border-line bg-ink-panel p-6 font-mono text-[12px] leading-relaxed text-fg-dim">
-          {content}
-        </pre>
-      </CanvasSection>
+      {tab === "publish" ? (
+        <CanvasSection
+          title="Published styleguide"
+          hint={publication ? "live — anyone with the link" : "not published yet"}
+        >
+          <div className="rounded-xl border border-line bg-ink-panel p-8">
+            {publicUrl ? (
+              <div className="space-y-4">
+                <a
+                  href={publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 font-mono text-[13px] text-fg-dim underline underline-offset-4 transition-colors hover:text-fg"
+                >
+                  {publicUrl}
+                  <ArrowUpRight size={14} />
+                </a>
+                <p className="text-[12px] leading-relaxed text-fg-mute">
+                  Last published{" "}
+                  {publication ? new Date(publication.publishedAt).toLocaleString() : "—"}. The page
+                  shows the system as it was at that moment — foundations, the full token set, and
+                  every component with its usage documentation and lifecycle status.
+                </p>
+              </div>
+            ) : (
+              <p className="text-[13px] leading-relaxed text-fg-mute">
+                Nothing published yet. Publishing mints a permanent link you can hand to a client or
+                drop into a README — the same system this step exports, rendered as a browsable site
+                instead of a file to download.
+              </p>
+            )}
+          </div>
+        </CanvasSection>
+      ) : (
+        <CanvasSection title={ARTIFACT_META[artifact].title} hint={ARTIFACT_META[artifact].hint}>
+          <pre className="whitespace-pre-wrap break-words rounded-xl border border-line bg-ink-panel p-6 font-mono text-[12px] leading-relaxed text-fg-dim">
+            {content}
+          </pre>
+        </CanvasSection>
+      )}
     </StepScaffold>
   );
 }

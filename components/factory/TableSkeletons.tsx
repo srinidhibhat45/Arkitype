@@ -67,13 +67,21 @@ function useResolvedTableOptions(): TableResolvedOpts {
   };
 }
 
-function StatusBadge({ status }: { status: Txn["status"] }) {
+/** Default column headers — overridable so a proofing skin can relabel them. */
+export const TABLE_COLUMNS: TableColumns = ["ID", "Payee", "Category", "Status", "Amount"];
+
+export type TableColumns = [string, string, string, string, string];
+
+/** Relabels the three status tones without changing which tone is which. */
+export type StatusLabels = Record<Txn["status"], string>;
+
+function StatusBadge({ status, labels }: { status: Txn["status"]; labels?: StatusLabels }) {
   const mode = useDesignSystem((s) => s.currentPreviewMode);
   const badgeResolve = useComponentBindings("badge");
   const variant = status === "Cleared" ? "success" : status === "Pending" ? "neutral" : "warning";
   return (
     <TokenBadge variant={variant} mode={mode} resolve={badgeResolve}>
-      {status}
+      {labels ? labels[status] : status}
     </TokenBadge>
   );
 }
@@ -99,11 +107,16 @@ export function TableSkeleton({
   skeletonId,
   rows = TRANSACTIONS,
   maxRows,
+  columns = TABLE_COLUMNS,
+  statusLabels,
 }: {
   skeletonId: string;
   radiusStep?: number;
   rows?: Txn[];
   maxRows?: number;
+  /** Header labels for skeleton 1's five columns. */
+  columns?: TableColumns;
+  statusLabels?: StatusLabels;
 }) {
   const opts = useResolvedTableOptions();
   const data = maxRows ? rows.slice(0, maxRows) : rows;
@@ -154,7 +167,7 @@ export function TableSkeleton({
               <span style={{ fontSize: "10px", color: tv("text-muted"), fontFamily: "var(--ark-font-mono)" }}>
                 {t.id}
               </span>
-              <StatusBadge status={t.status} />
+              <StatusBadge status={t.status} labels={statusLabels} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <TokenAvatar initials={t.payee.slice(0, 2)} size="sm" resolve={avatarResolve} />
@@ -213,7 +226,7 @@ export function TableSkeleton({
                   </span>
                 </td>
                 <td style={{ padding: `0 ${opts.padding}px` }}>
-                  <StatusBadge status={t.status} />
+                  <StatusBadge status={t.status} labels={statusLabels} />
                 </td>
                 <td style={{ padding: `0 ${opts.padding}px`, textAlign: "right" }}>
                   <Amount value={t.amount} accentColor={accentColor} />
@@ -295,7 +308,7 @@ export function TableSkeleton({
               alignItems: "center",
             }}
           >
-            {["ID", "Payee", "Category", "Status", "Amount"].map((h, i) => (
+            {columns.map((h, i) => (
               <span
                 key={h}
                 style={{
@@ -352,7 +365,7 @@ export function TableSkeleton({
               {t.category}
             </span>
             <span>
-              <StatusBadge status={t.status} />
+              <StatusBadge status={t.status} labels={statusLabels} />
             </span>
             <span style={{ textAlign: "right" }}>
               <Amount value={t.amount} accentColor={accentColor} />

@@ -51,7 +51,7 @@ function isIconKey(key: string): boolean {
  * Every distinct icon ligature the system actually uses, gathered from every
  * component's stored properties and per-slot instance content. Sorted, deduped.
  */
-export function collectUsedIcons(state: ArkitypeState): string[] {
+export function collectUsedIcons(state: Pick<ArkitypeState, "components">): string[] {
   const found = new Set<string>();
   const scan = (bag: Record<string, string | number | boolean> | undefined) => {
     if (!bag) return;

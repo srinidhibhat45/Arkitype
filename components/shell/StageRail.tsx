@@ -11,6 +11,7 @@ import {
   BASE_RADII,
   RADII_NAMES,
   StepId,
+  componentStatus,
 } from "@/store/useDesignSystem";
 import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 
@@ -214,6 +215,7 @@ export function StageRail() {
                             <div className="space-y-0.5 border-l border-line/30 ml-2 pl-2">
                               {lane.items.map((item) => {
                                 const compActive = activeComponentId === item.id && activeStep === "components";
+                                const status = componentStatus(components[item.id]);
                                 return (
                                   <button
                                     key={item.id}
@@ -228,6 +230,18 @@ export function StageRail() {
                                   >
                                     <span className="opacity-40 font-mono text-[9px]">◇</span>
                                     <span className="truncate">{item.label}</span>
+                                    {status !== "ready" ? (
+                                      <span
+                                        title={status === "beta" ? "Beta" : "Deprecated"}
+                                        className={`ml-auto shrink-0 rounded px-1 py-px font-mono text-[8px] uppercase tracking-wider ${
+                                          status === "beta"
+                                            ? "bg-ink-raised text-fg-dim"
+                                            : "bg-ink-raised text-fg-mute line-through"
+                                        }`}
+                                      >
+                                        {status === "beta" ? "β" : "dep"}
+                                      </span>
+                                    ) : null}
                                   </button>
                                 );
                               })}

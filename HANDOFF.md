@@ -82,7 +82,7 @@ step names one-to-one:
 | 04 | `shape` | `ShapeStep.tsx` | radius + elevation (per-mode shadows) |
 | 05 | `motion` | `MotionStep.tsx` | durations + easing curves |
 | 06 | `components` | `ComponentsStep.tsx` | the Component Studio (see §5) |
-| 07 | `preview` | `PreviewStep.tsx` | whole system on a representative dashboard |
+| 07 | `preview` | `PreviewStep.tsx` | whole system across form factor × industry |
 | 08 | `ship` | `ShipStep.tsx` | export docs + Figma variables bundle |
 
 **Colour and Roles are one step now.** `FoundationStep` is the merged surface and renders
@@ -174,6 +174,12 @@ So the migrate chain below is *not* what protects a returning user's work; `back
 is, and it runs on every cloud load. Bump + migrate anyway if you change the shape of the two
 persisted prefs, but don't assume localStorage holds the system.
 
+**Corollary worth stating plainly:** a new field on `ComponentConfig` or `primitives` needs
+**no** persist bump, because it never reaches localStorage. Make it optional and read it
+through a helper that supplies the default (`componentStatus(cfg)` returning `"ready"` for
+`undefined` is the worked example) — then existing projects load unchanged with no migrate
+branch at all. Reserve bumps for the two persisted prefs.
+
 **If you change the shape of anything that gets persisted, you MUST bump `version` and add a
 `migrate` branch** (the `migrate: (persisted, version) => …` block, ~line 1437). Otherwise a
 returning user's stale localStorage deserializes into a broken state. The existing migrate
@@ -212,6 +218,17 @@ projects pick it up on next load.
   Getting started, Foundations, one page per lane, Changelog). Idempotent via plugin-data
   tags (`ark:pageId`/`ark:sectionId`/`ark:componentId`): re-syncs update variables and
   redraw variants in place, so instances never break.
+- `app/api/figma/[slug]` — the plugin's **Pull** endpoint: compiles the bundle for a
+  *published* system, keyed by the same slug that serves `app/p/[slug]`. It reuses
+  `published_snapshots` rather than adding a second public read path, which is why
+  **pulling into Figma requires publishing first**. `compileFigmaBundle` therefore takes
+  `FigmaBundleSource` (`Pick<ArkitypeState, primitives|semantics|components|meta>`), not
+  the whole store, so a snapshot feeds it directly — as do `countTokens` and
+  `collectUsedIcons`. It is the only route in the app that sends
+  `Access-Control-Allow-Origin: *`; that is safe *here alone* because the row is already
+  world-readable to anyone holding the slug and the request carries no credentials.
+  The plugin's manifest currently allows `*` because the workspace host is user-chosen —
+  **narrow `allowedDomains` to the real origin once the app is deployed.**
 
 ### ⚠️ The app and the plugin ship separately — and the bundle is the contract
 
@@ -235,6 +252,28 @@ one without updating `FIGMA_PROP_DEFS` breaks a property silently.
 - `lib/docs.ts` — the exported docs; §6 lists "Configured components" (resolved options +
   override counts). Token count is ~187.
 
+### The published styleguide (the sixth export target)
+
+Ship also **publishes** — `lib/publish.ts` freezes `{name, primitives, semantics,
+components}` into `public.published_snapshots` and `app/p/[slug]` renders it for anyone
+with the link. Two things to know before touching it:
+
+1. **`published_snapshots` is the only anon-readable table in the schema** (`select using
+   (true)`). Everything else is owner-scoped. The slug's random suffix is therefore
+   security, not cosmetics — knowing a slug *is* the access grant, so slugs must never
+   become guessable/name-derived.
+2. **The public component page hydrates the Zustand store from the snapshot**
+   (`components/public/SnapshotProvider.tsx`), because the factory components read
+   `s.primitives`/`s.components` directly rather than taking props. This is only safe
+   because `AuthProvider` — which owns the autosave subscription — mounts on `/` alone.
+   **If a public route ever mounts `AuthProvider`, that hydration becomes a write path
+   into the viewer's own projects.** Hydration also must stay in an effect: the persist
+   middleware writes to `localStorage`, which throws during SSR.
+
+The rule that makes this worth having: **the published site only renders what generation
+already produced.** No authored page content, no per-component story files. Add a
+freeform editing surface and it becomes Zeroheight with fewer features.
+
 ---
 
 ## 8. Project layout
@@ -242,14 +281,20 @@ one without updating `FIGMA_PROP_DEFS` breaks a property silently.
 ```
 app/
   page.tsx           App Router entry — mounts the rail, applies chromeTheme to <html>
+  p/[slug]/          PUBLIC, unauthenticated: the published styleguide (§7)
+    components/[componentId]/   one page per component — the shareable playground
   layout.tsx         root layout
   globals.css        --c-* chrome theme vars (:root / .dark) + .studio-grid container queries
 components/
   shell/             TopBar, StageRail, StepScaffold
   steps/             one file per rail step (§3)
   factory/           token-bound component factory + ComponentStudio + useHighlight + *Skeletons
+  public/            the published-site renderers (no store writes, no editing)
   ui/                ThemeFrame (preview theming), controls
 lib/                 tokens, color, typography, binding, componentSchema, figma, docs, adapters
+  publish.ts         snapshot → published_snapshots (sibling of persistence.ts)
+  proofingTemplates.ts  Preview step content packs — pure data, no React, no token reads
+  supabase/server.ts anonymous server client, public routes only
 store/               useDesignSystem.ts (persisted Zustand — §6)
 progress.md          the version-by-version build log (authoritative changelog)
 ```

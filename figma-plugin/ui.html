@@ -255,6 +255,31 @@
       color: var(--fg-mute);
     }
 
+    .sync-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .sync-row input {
+      flex-grow: 1;
+      min-width: 0;
+      background: var(--ink-panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 8px 12px;
+      box-sizing: border-box;
+      color: var(--fg);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .sync-row input::placeholder { color: var(--fg-mute); }
+    .sync-row input:focus { border-color: var(--focus); }
+    .sync-row .btn { flex-shrink: 0; }
+
     .or-divider {
       text-align: center;
       font-size: 10.5px;
@@ -593,9 +618,18 @@
     <!-- Import Panel -->
     <div class="panel active" id="panel-import">
       <p class="help-text">
-        In Arkitype, go to <strong>Ship → Figma kit</strong> and download or copy
-        the <code>*-design-system.json</code> file. Bring it in here, then pick
-        an action below.
+        In Arkitype, go to <strong>Ship → Publish</strong> and copy the
+        <strong>Figma sync link</strong>. Paste it below and pull — re-pull any
+        time to pick up a republished system.
+      </p>
+      <div class="sync-row">
+        <input type="text" id="syncUrl" placeholder="https://…/api/figma/your-system-a1b2c3">
+        <button class="btn btn-secondary" id="pullBtn" onclick="pullFromArkitype()">Pull</button>
+      </div>
+      <div class="or-divider">OR IMPORT A FILE</div>
+      <p class="help-text">
+        Not published? <strong>Ship → Figma kit</strong> still downloads the
+        <code>*-design-system.json</code> file — drop it in here instead.
       </p>
       <div class="dropzone" id="dropzone">
         <span class="dropzone-icon">📥</span>
@@ -662,6 +696,11 @@
         case 'sync-complete':
           showAlert(msg.success ? 'success' : 'error', msg.message);
           break;
+        case 'sync-url':
+          // Remembered from the last successful pull, so "Pull Updates" is one
+          // click on every later visit rather than a re-paste.
+          if (msg.url) document.getElementById('syncUrl').value = msg.url;
+          break;
       }
     });
 
@@ -696,21 +735,89 @@
       }
 
       try {
-        const parsed = JSON.parse(text);
-        if (parsed.meta && parsed.collections) {
-          activeSchema = parsed;
-          enableImportButtons();
-          populateComponentsList(parsed.components);
-          addLog(`[UI] Parsed design system: ${parsed.meta.generator} v${parsed.meta.version} (${parsed.meta.tokenCount} tokens, ${parsed.components ? parsed.components.length : 0} components)`, 'success');
-        } else {
-          throw new Error("Missing meta or collections fields in bundle.");
-        }
+        applyBundle(JSON.parse(text));
       } catch (e) {
         disableImportButtons();
         activeSchema = null;
         addLog(`[UI] Invalid JSON: ${e.message}`, 'error');
       }
     }
+
+    /* The one place a bundle becomes the active schema — pasted, dropped, or
+     * pulled. Throws on a malformed bundle so each caller can report it in the
+     * way that fits (inline log vs. pull alert). */
+    function applyBundle(parsed) {
+      if (!parsed || !parsed.meta || !parsed.collections) {
+        throw new Error("Missing meta or collections fields in bundle.");
+      }
+      activeSchema = parsed;
+      enableImportButtons();
+      populateComponentsList(parsed.components);
+      addLog(`[UI] Parsed design system: ${parsed.meta.generator} v${parsed.meta.version} (${parsed.meta.tokenCount} tokens, ${parsed.components ? parsed.components.length : 0} components)`, 'success');
+      return parsed;
+    }
+
+    /* ── Pull from Arkitype ────────────────────────────────────────────────
+     * Accepts the sync link verbatim, or the public styleguide link for the
+     * same system — /p/<slug> and /api/figma/<slug> carry the same slug, and a
+     * designer is far likelier to have the styleguide URL to hand. A bare slug
+     * can't be resolved: the workspace host is user-chosen, so there is no
+     * origin to assume. */
+    const syncUrlInput = document.getElementById('syncUrl');
+    const pullBtn = document.getElementById('pullBtn');
+
+    function toBundleUrl(raw) {
+      const text = (raw || '').trim();
+      if (!text) throw new Error("Paste the Figma sync link from Ship → Publish.");
+      if (!/^https?:\/\//i.test(text)) {
+        throw new Error("That looks like a code, not a link — copy the full Figma sync link from Ship → Publish.");
+      }
+      const url = new URL(text);
+      const slug = url.pathname.replace(/\/+$/, '').split('/').pop();
+      if (!slug) throw new Error("No sync code in that link.");
+      return `${url.origin}/api/figma/${slug}`;
+    }
+
+    async function pullFromArkitype() {
+      let endpoint;
+      try {
+        endpoint = toBundleUrl(syncUrlInput.value);
+      } catch (e) {
+        showAlert('error', e.message);
+        return;
+      }
+
+      pullBtn.disabled = true;
+      pullBtn.textContent = 'Pulling…';
+      addLog(`[UI] Pulling from ${endpoint}`, 'info');
+
+      try {
+        const res = await fetch(endpoint, { headers: { accept: 'application/json' } });
+        const payload = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error((payload && payload.error) || `Request failed (${res.status})`);
+        }
+        if (!payload || !payload.bundle) throw new Error("That link didn't return a design system.");
+
+        const bundle = applyBundle(payload.bundle);
+        jsonPaste.value = '';
+        parent.postMessage({ pluginMessage: { type: 'save-sync-url', url: syncUrlInput.value.trim() } }, '*');
+        const when = payload.publishedAt ? new Date(payload.publishedAt).toLocaleString() : 'just now';
+        showAlert('success', `Pulled “${bundle.meta.systemName}” — published ${when}. Now pick an action below.`);
+      } catch (e) {
+        disableImportButtons();
+        activeSchema = null;
+        addLog(`[UI] Pull failed: ${e.message}`, 'error');
+        showAlert('error', `Pull failed: ${e.message}`);
+      } finally {
+        pullBtn.disabled = false;
+        pullBtn.textContent = 'Pull';
+      }
+    }
+
+    syncUrlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') pullFromArkitype();
+    });
 
     function enableImportButtons() {
       syncVarsBtn.disabled = false;

@@ -1,203 +1,66 @@
 "use client";
 
 /**
- * Step 06 — Preview. The reward moment: a full budget-management product
- * rendered 100% from the system. Nothing in the frame is hardcoded — swap a
- * skeleton or reseed a colour and the product morphs live.
+ * Step 06 — Preview. The reward moment: a real product rendered 100% from the
+ * system. Nothing in the frame is hardcoded — swap a skeleton or reseed a
+ * colour and the product morphs live.
+ *
+ * Two independent axes (see lib/proofingTemplates.ts): the **form factor**
+ * decides the layout the system has to survive (dense console / 390px touch /
+ * editorial marketing page), the **industry** decides only the words and
+ * numbers. Any combination renders from one set of token decisions, which is
+ * what makes this proofing rather than a template gallery.
+ *
+ * Density and the all-states strip live here too: a system that only ever gets
+ * looked at in Standard density, in one mode, in the default state is a system
+ * whose failures are still ahead of it.
  */
 import { useState } from "react";
-import {
-  ArrowDownRight,
-  ArrowUpRight,
-  LayoutGrid,
-  PieChart,
-  Plus,
-  Receipt,
-  Settings2,
-  Wallet,
-} from "lucide-react";
-import { useDesignSystem } from "@/store/useDesignSystem";
-import { rv, sv, tv } from "@/lib/tokens";
+import { useDesignSystem, type Density } from "@/store/useDesignSystem";
 import {
   AsideDivider,
   AsideNote,
+  Field,
+  Segmented,
   SelectControl,
   SliderControl,
 } from "@/components/ui/controls";
 import { StepScaffold } from "@/components/shell/StepScaffold";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
-import { TokenButton } from "@/components/factory/CoreComponents";
 import { ZoomBox } from "@/components/factory/ZoomBox";
-import { useComponentBindings } from "@/lib/componentSchema";
-import { MODAL_SKELETONS, ModalScene } from "@/components/factory/ModalSkeletons";
-import { TABS_SKELETONS, TabsSkeleton } from "@/components/factory/TabsSkeletons";
+import { MODAL_SKELETONS } from "@/components/factory/ModalSkeletons";
+import { TABS_SKELETONS } from "@/components/factory/TabsSkeletons";
+import { TABLE_SKELETONS } from "@/components/factory/TableSkeletons";
 import {
-  TABLE_SKELETONS,
-  TableSkeleton,
-  TRANSACTIONS,
-} from "@/components/factory/TableSkeletons";
+  MarketingSurface,
+  MobileSurface,
+  SaasSurface,
+  StatesStrip,
+} from "@/components/factory/ProofingSurfaces";
+import {
+  FORM_FACTORS,
+  INDUSTRIES,
+  INDUSTRY_PACKS,
+  type FormFactor,
+  type Industry,
+} from "@/lib/proofingTemplates";
 
-const STATS = [
-  { label: "Total balance", value: "$128,404.22", delta: "+4.1%", up: true, icon: Wallet },
-  { label: "Monthly burn", value: "$33,866.25", delta: "−2.8%", up: false, icon: Receipt },
-  { label: "Runway", value: "14.2 months", delta: "+0.6", up: true, icon: PieChart },
-  { label: "Pending", value: String(TRANSACTIONS.filter((t) => t.status === "Pending").length), delta: "2 urgent", up: false, icon: LayoutGrid },
+const DENSITY_OPTIONS: Array<{ label: string; value: Density }> = [
+  { label: "Compact", value: "compact" },
+  { label: "Standard", value: "standard" },
+  { label: "Spacious", value: "spacious" },
 ];
 
-const MENU = ["Overview", "Ledger", "Budgets", "Forecast", "Approvals", "Reports"];
+const skeletonOptions = (meta: ReadonlyArray<{ id: string; name: string }>) =>
+  meta.map((m) => ({ label: `${m.id} · ${m.name}`, value: m.id }));
 
-function SidebarMenu() {
-  const [active, setActive] = useState("Ledger");
-  return (
-    <aside
-      style={{
-        width: 168,
-        flexShrink: 0,
-        borderRight: `1px solid ${tv("border-muted")}`,
-        background: tv("surface-elevated"),
-        padding: sv(3),
-        display: "flex",
-        flexDirection: "column",
-        gap: sv(1),
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: sv(2),
-          marginBottom: sv(3),
-          color: tv("text-primary"),
-          fontWeight: 800,
-          fontSize: "var(--ark-text-sm)",
-        }}
-      >
-        <span
-          style={{
-            width: 20,
-            height: 20,
-            borderRadius: rv(2),
-            background: tv("action-primary-default"),
-            color: tv("text-on-action"),
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "var(--ark-text-xs)",
-          }}
-        >
-          B
-        </span>
-        BudgetOps
-      </div>
-      {MENU.map((item) => {
-        const on = item === active;
-        return (
-          <button
-            key={item}
-            type="button"
-            onClick={() => setActive(item)}
-            style={{
-              textAlign: "left",
-              padding: `${sv(1)} ${sv(2)}`,
-              borderRadius: rv(2),
-              background: on ? tv("surface-subtle") : "transparent",
-              color: on ? tv("text-primary") : tv("text-muted"),
-              border: "none",
-              borderLeft: `2px solid ${on ? tv("action-primary-default") : "transparent"}`,
-              fontSize: "var(--ark-text-xs)",
-              fontWeight: 600,
-              cursor: "pointer",
-              fontFamily: "var(--ark-font-sans)",
-            }}
-          >
-            {item}
-          </button>
-        );
-      })}
-      <div style={{ marginTop: "auto" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: sv(2),
-            color: tv("text-muted"),
-            fontSize: "var(--ark-text-xs)",
-            padding: sv(2),
-          }}
-        >
-          <Settings2 size={13} /> Settings
-        </div>
-      </div>
-    </aside>
-  );
-}
+const SURFACES: Record<FormFactor, (props: { pack: ReturnType<typeof packFor> }) => JSX.Element> = {
+  saas: SaasSurface,
+  mobile: MobileSurface,
+  marketing: MarketingSurface,
+};
 
-function StatDeck() {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-        gap: sv(3),
-      }}
-    >
-      {STATS.map(({ label, value, delta, up, icon: Icon }) => (
-        <div
-          key={label}
-          style={{
-            background: tv("surface-elevated"),
-            border: `1px solid ${tv("border-muted")}`,
-            borderRadius: rv(3),
-            padding: sv(3),
-            boxShadow: "var(--ark-shadow-low)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              color: tv("text-muted"),
-              fontSize: "var(--ark-text-xs)",
-              marginBottom: sv(1),
-            }}
-          >
-            {label}
-            <Icon size={13} />
-          </div>
-          <div
-            style={{
-              color: tv("text-primary"),
-              fontSize: "var(--ark-text-lg)",
-              fontWeight: 800,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {value}
-          </div>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 3,
-              marginTop: sv(1),
-              color: up ? tv("action-primary-default") : tv("text-muted"),
-              fontSize: "var(--ark-text-xs)",
-              fontFamily: "var(--ark-font-mono)",
-            }}
-          >
-            {up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
-            {delta}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const skeletonOptions = (
-  meta: ReadonlyArray<{ id: string; name: string }>
-) => meta.map((m) => ({ label: `${m.id} · ${m.name}`, value: m.id }));
+const packFor = (industry: Industry) => INDUSTRY_PACKS[industry];
 
 export function PreviewStep() {
   // canvasZoom is shared with the Component Studio, whose slider goes to 2.5×;
@@ -207,21 +70,53 @@ export function PreviewStep() {
   const mode = useDesignSystem((s) => s.currentPreviewMode);
   const components = useDesignSystem((s) => s.components);
   const setComponentSkeleton = useDesignSystem((s) => s.setComponentSkeleton);
-  const [modalOpen, setModalOpen] = useState(false);
+  const density = useDesignSystem((s) => s.primitives.density ?? "standard");
+  const setDensity = useDesignSystem((s) => s.setDensity);
 
-  const tableCfg = components.table;
-  const tabsCfg = components.tabs;
-  const modalCfg = components.modal;
-  const buttonCfg = components.button;
-  const buttonResolve = useComponentBindings("button");
+  const [formFactor, setFormFactor] = useState<FormFactor>("saas");
+  const [industry, setIndustry] = useState<Industry>("fintech");
+  const [showStates, setShowStates] = useState(false);
+
+  const pack = packFor(industry);
+  const Surface = SURFACES[formFactor];
+  const factorHint = FORM_FACTORS.find((f) => f.value === formFactor)?.hint ?? "";
 
   return (
     <StepScaffold
       step="preview"
       title="Your system, under real load"
-      lede="A dense budget product built entirely from your tokens — no hardcoded styles anywhere in the frame. Go back and change any decision, or swap skeletons right here, and watch the product morph. If it holds up here, it ships."
+      lede="A real product built entirely from your tokens — no hardcoded styles anywhere in the frame. Switch the form factor to see the same system as a dense console, a phone app, and a marketing page; switch the industry to change only the content. If it holds up across all of them, it ships."
       aside={
         <>
+          <Field label="Form factor" hint={factorHint}>
+            <Segmented
+              options={FORM_FACTORS.map(({ label, value }) => ({ label, value }))}
+              value={formFactor}
+              onChange={setFormFactor}
+            />
+          </Field>
+
+          <Field label="Industry" hint="content only — layout and tokens are unchanged">
+            <Segmented options={INDUSTRIES} value={industry} onChange={setIndustry} />
+          </Field>
+
+          <AsideDivider />
+
+          <Field label="Density" hint="rescales base unit + corner radius together">
+            <Segmented options={DENSITY_OPTIONS} value={density} onChange={setDensity} />
+          </Field>
+
+          <Field label="States" hint="every interaction state, side by side">
+            <Segmented
+              options={[
+                { label: "Product only", value: "off" },
+                { label: "Show all states", value: "on" },
+              ]}
+              value={showStates ? "on" : "off"}
+              onChange={(v) => setShowStates(v === "on")}
+            />
+          </Field>
+
           <SliderControl
             label="Canvas zoom"
             value={zoom}
@@ -238,19 +133,19 @@ export function PreviewStep() {
 
           <SelectControl
             label="Table skeleton"
-            value={tableCfg?.skeletonId ?? "1"}
+            value={components.table?.skeletonId ?? "1"}
             options={skeletonOptions(TABLE_SKELETONS)}
             onChange={(v) => setComponentSkeleton("table", v)}
           />
           <SelectControl
             label="Tabs skeleton"
-            value={tabsCfg?.skeletonId ?? "1"}
+            value={components.tabs?.skeletonId ?? "1"}
             options={skeletonOptions(TABS_SKELETONS)}
             onChange={(v) => setComponentSkeleton("tabs", v)}
           />
           <SelectControl
             label="Modal skeleton"
-            value={modalCfg?.skeletonId ?? "1"}
+            value={components.modal?.skeletonId ?? "1"}
             options={skeletonOptions(MODAL_SKELETONS)}
             onChange={(v) => setComponentSkeleton("modal", v)}
           />
@@ -258,111 +153,19 @@ export function PreviewStep() {
           <AsideDivider />
 
           <AsideNote>
-            Use the Light / Dark toggle in the top bar to check both modes —
-            the product should feel equally considered in each.
+            {formFactor === "mobile"
+              ? "Touch targets hold a 44pt floor here regardless of density — if Compact makes the rest of the screen feel cramped against them, that's the spacing scale telling you something."
+              : formFactor === "marketing"
+                ? "This is the display end of the type scale under real load. A ratio that reads fine in the console can shout here — or disappear."
+                : "Use the Light / Dark toggle in the top bar to check both modes — the product should feel equally considered in each."}
           </AsideNote>
         </>
       }
     >
       <ZoomBox scale={zoom} fill>
         <ThemeFrame mode={mode}>
-          <div className="relative flex" style={{ minHeight: 560 }}>
-            <SidebarMenu />
-
-            <main
-              style={{
-                flex: 1,
-                minWidth: 0,
-                padding: sv(4),
-                display: "flex",
-                flexDirection: "column",
-                gap: sv(4),
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: sv(3) }}>
-                <div>
-                  <h1
-                    style={{
-                      color: tv("text-primary"),
-                      fontSize: "var(--ark-text-xl)",
-                      lineHeight: "var(--ark-leading-xl)",
-                      fontWeight: 800,
-                      margin: 0,
-                    }}
-                  >
-                    Operating Ledger
-                  </h1>
-                  <p
-                    style={{
-                      color: tv("text-muted"),
-                      fontSize: "var(--ark-text-xs)",
-                      margin: 0,
-                    }}
-                  >
-                    FY26 · consolidated across 4 cost centers
-                  </p>
-                </div>
-                <div style={{ marginLeft: "auto" }}>
-                  <TokenButton
-                    size={(buttonCfg?.properties.size as "sm" | "md" | "lg") ?? "md"}
-                    radiusStep={Number(buttonCfg?.properties.radiusStep ?? 2)}
-                    resolve={buttonResolve}
-                    onClick={() => setModalOpen(true)}
-                    prefixIcon={<Plus size={13} />}
-                  >
-                    New transaction
-                  </TokenButton>
-                </div>
-              </div>
-
-              <StatDeck />
-
-              <section
-                style={{
-                  background: tv("surface-elevated"),
-                  border: `1px solid ${tv("border-muted")}`,
-                  borderRadius: rv(Number(tableCfg?.properties.radiusStep ?? 2)),
-                  overflow: "hidden",
-                  boxShadow: "var(--ark-shadow-low)",
-                }}
-              >
-                <TableSkeleton
-                  skeletonId={tableCfg?.skeletonId ?? "1"}
-                  radiusStep={Number(tableCfg?.properties.radiusStep ?? 2)}
-                />
-              </section>
-
-              <section
-                style={{
-                  background: tv("surface-elevated"),
-                  border: `1px solid ${tv("border-muted")}`,
-                  borderRadius: rv(Number(tabsCfg?.properties.radiusStep ?? 2)),
-                  overflow: "hidden",
-                }}
-              >
-                <TabsSkeleton
-                  skeletonId={tabsCfg?.skeletonId ?? "1"}
-                  radiusStep={Number(tabsCfg?.properties.radiusStep ?? 2)}
-                />
-              </section>
-            </main>
-
-            {modalOpen ? (
-              // Absolute overlay over the whole product frame (the parent is
-              // `relative`). Without this, ModalScene — which is `position:
-              // relative; width/height:100%` for its in-card studio previews —
-              // lands here as a THIRD flex sibling beside the sidebar and
-              // <main>, so opening it squished the dashboard and left the
-              // backdrop covering only its own column instead of the product.
-              <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
-                <ModalScene
-                  skeletonId={modalCfg?.skeletonId ?? "1"}
-                  radiusStep={Number(modalCfg?.properties.radiusStep ?? 4)}
-                  onClose={() => setModalOpen(false)}
-                />
-              </div>
-            ) : null}
-          </div>
+          <Surface pack={pack} />
+          {showStates ? <StatesStrip /> : null}
         </ThemeFrame>
       </ZoomBox>
     </StepScaffold>

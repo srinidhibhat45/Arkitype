@@ -2,6 +2,38 @@
 
 > Compressed memory checkpoint. Update after every compiled module.
 
+## Status: ✅ DEPLOYED + SEO — implemented (2026-08-04)
+
+Live at **arkitype.srinidhibhat.com**. Full rationale in `HANDOFF.md` §7b.
+
+- **`lib/site.ts`** is the single source of the host — metadata, sitemap, robots,
+  JSON-LD, and the Figma plugin's `allowedDomains` all read it.
+  `NEXT_PUBLIC_SITE_URL` overrides for previews.
+- **Marketing surfaces get real SEO**: title template, canonicals, OG/Twitter,
+  `SoftwareApplication` JSON-LD, `sitemap.xml`, `robots.txt`,
+  `manifest.webmanifest`, and a generated 1200×630 OG card
+  (`app/opengraph-image.tsx` — no custom font, no external asset, so it can't
+  fail on a network hop). `/docs` got its own `layout.tsx` purely to carry
+  metadata, since the page itself is a client component.
+- **⚠️ `/p/*` is `noindex` + `Disallow:`, deliberately.** The slug is the access
+  grant (`select using (true)`), so indexing published styleguides would turn
+  "anyone with the link" into "anyone with a search box". Published slugs must
+  never enter the sitemap. Unfurls in Slack/iMessage still work — those fetch
+  the URL directly and don't consult robots.
+- **Figma plugin `allowedDomains` narrowed** from `"*"` to the real origin plus
+  localhost — the follow-up left open when the host was undecided.
+- Three defects that only rendering could catch: the root layout's
+  `canonical: "/"` was being **inherited by published pages**, declaring the
+  homepage as their canonical (every non-root route now self-references); the
+  `/docs` title double-branded through the title template; and the manifest
+  claimed icon sizes the files didn't have.
+- Verified against a **production build**, not just dev: `robots.txt`,
+  `sitemap.xml`, `manifest.webmanifest`, and `/opengraph-image` (real 1200×630
+  PNG) all serve; `og:image` resolves to the absolute site URL in prod (it shows
+  `localhost` in dev — dev-only); a published page renders exactly one robots
+  tag, `noindex, nofollow`, proven by temporarily stubbing the snapshot fetch
+  (added, exercised, removed — `grep TEMP-VERIFY` clean).
+
 ## Status: ✅ FIGMA PULL SYNC + FORM-FACTOR × INDUSTRY PROOFING — implemented (2026-08-04)
 
 Overhaul-plan Phases 3 and 4, closed together. Full detail in `MAJOR_OVERHAUL_PLAN.md`.

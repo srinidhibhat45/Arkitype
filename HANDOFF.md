@@ -276,6 +276,41 @@ freeform editing surface and it becomes Zeroheight with fewer features.
 
 ---
 
+## 7b. SEO & the indexing boundary
+
+Live at **https://arkitype.srinidhibhat.com**. The host is declared once in
+`lib/site.ts` (override with `NEXT_PUBLIC_SITE_URL` for previews) and everything
+else reads it: `metadataBase`, `app/sitemap.ts`, `app/robots.ts`, the
+`SoftwareApplication` JSON-LD in `app/layout.tsx`, and the Figma plugin's
+`allowedDomains`. Don't paste the hostname anywhere else.
+
+⚠️ **`/p/*` is `noindex` and `Disallow:` — that is a security boundary, not a
+preference.** `published_snapshots` is `select using (true)`, so the slug *is*
+the access grant (§7). Indexing published styleguides would turn "anyone with
+the link" into "anyone with a search box", and a designer who shared a client's
+system could not un-share it. Both halves are needed and both are load-bearing:
+`robots.ts` stops crawling, the routes' own `robots: { index: false }` stops
+indexing of a URL found via an inbound link. **Never add published slugs to the
+sitemap** — that file is fetched by anyone and would publish every customer's
+system at once. Making them discoverable is a product decision that belongs
+behind a per-publication opt-in.
+
+Two traps this setup already hit, worth not re-introducing:
+- The root layout sets `alternates: { canonical: "/" }`, which **is inherited by
+  any route that doesn't set its own** — published pages were briefly declaring
+  the homepage as their canonical. Every non-root route sets a self-referencing
+  canonical for this reason.
+- The root `title.template` appends `— Arkitype`, so a page title must not
+  contain the brand or it doubles up in results.
+
+`app/opengraph-image.tsx` generates the 1200×630 card at request time with no
+custom font and no external asset — a social card that needs a network hop is a
+social card that intermittently doesn't render. In `next dev` the `og:image` URL
+resolves to `localhost`; that's dev-only, and the production build emits the
+absolute site URL (verified).
+
+---
+
 ## 8. Project layout
 
 ```

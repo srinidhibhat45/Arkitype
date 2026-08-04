@@ -1,5 +1,7 @@
 # Arkitype
 
+**Live at [arkitype.srinidhibhat.com](https://arkitype.srinidhibhat.com)**
+
 A guided **design-system builder**. Arkitype walks you through a series of
 focused decisions — colour, type, space, shape, motion — turns them into a
 coherent set of design tokens and semantic roles, lets you deeply re-bind
@@ -8,6 +10,14 @@ and exports the result (docs + Figma variables).
 
 > Status: alpha (`0.1.0-alpha`). See [`progress.md`](./progress.md) for the
 > detailed build log.
+
+The host is set once in [`lib/site.ts`](./lib/site.ts) and read by metadata,
+`sitemap.ts`, `robots.ts`, and the structured data — override it with
+`NEXT_PUBLIC_SITE_URL` for a preview deployment. Published styleguides
+(`/p/<slug>`) are deliberately `noindex` **and** disallowed in `robots.txt`:
+with `select using (true)` on `published_snapshots`, the slug *is* the access
+grant, so indexing them would turn "anyone with the link" into "anyone with a
+search box".
 
 ## The workflow
 

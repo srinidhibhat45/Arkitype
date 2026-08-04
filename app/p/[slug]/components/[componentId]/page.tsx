@@ -26,6 +26,13 @@ async function fetchSnapshot(slug: string): Promise<PublishedSnapshot | null> {
 const componentLabel = (id: string): string | undefined =>
   COMPONENT_LANES.flatMap((l) => l.items).find((i) => i.id === id)?.label;
 
+/** See app/p/[slug]/page.tsx — the slug is the access grant, so never indexed. */
+const PRIVATE_ROBOTS = {
+  index: false,
+  follow: false,
+  googleBot: { index: false, follow: false },
+} as const;
+
 export async function generateMetadata({
   params,
 }: {
@@ -33,8 +40,19 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const snapshot = await fetchSnapshot(params.slug);
   const label = componentLabel(params.componentId);
-  if (!snapshot || !label) return { title: "Not found — Arkitype" };
-  return { title: `${label} — ${snapshot.name}` };
+  if (!snapshot || !label) return { title: "Not found", robots: PRIVATE_ROBOTS };
+  const title = `${label} — ${snapshot.name}`;
+  const description = `The ${label} component from the ${snapshot.name} design system: every variant and state, with usage guidance. Published with Arkitype.`;
+  return {
+    title,
+    description,
+    robots: PRIVATE_ROBOTS,
+    // Self-referencing — see app/p/[slug]/page.tsx: the root layout's
+    // `canonical: "/"` is otherwise inherited here.
+    alternates: { canonical: `/p/${params.slug}/components/${params.componentId}` },
+    openGraph: { type: "website", title, description },
+    twitter: { card: "summary", title, description },
+  };
 }
 
 export default async function PublishedComponentPage({

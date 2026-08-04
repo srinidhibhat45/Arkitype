@@ -10,8 +10,11 @@
   "documentAccess": "dynamic-page",
   "networkAccess": {
     "allowedDomains": [
-      "*"
+      "https://arkitype.srinidhibhat.com",
+      "http://localhost:3111",
+      "https://fonts.googleapis.com",
+      "https://fonts.gstatic.com"
     ],
-    "reasoning": "Pulls a design-system bundle from the sync link the user copies out of their own Arkitype workspace. The workspace host is chosen by the user, so the domain cannot be known ahead of time. Also loads the Instrument Sans and JetBrains Mono UI fonts from Google Fonts."
+    "reasoning": "Pulls the user's own design-system bundle from the Arkitype sync link they copy out of the app (arkitype.srinidhibhat.com; localhost is for developing the plugin against a local server). Also loads the Instrument Sans and JetBrains Mono UI fonts from Google Fonts."
   }
 }

@@ -11,7 +11,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { renderHero } from "@/components/factory/ComponentStudio";
+import { renderHero, useLiveHeroInteraction } from "@/components/factory/ComponentStudio";
 import {
   COMPONENT_SPECS,
   STATE_LABEL,
@@ -75,6 +75,14 @@ export function PublicComponentPage({
     o: Record<string, string | boolean | number> = opts
   ) => renderHero(componentId, { state, size: "md", radiusStep, resolve, mode, opts: o });
 
+  // Same real hover/press/focus (and, for checkbox/radio/switch, click-to-toggle)
+  // as the Studio's own canvas — a published spec page is exactly where someone
+  // would want to try a component for real, not just read a static swatch.
+  const { toggleKey, effectiveStateFor, liveHandlers, heroOptsWithToggle, toggleLive } =
+    useLiveHeroInteraction(componentId);
+  const multiState = spec ? spec.states.length > 1 : false;
+  const showLiveHint = multiState || !!toggleKey;
+
   return (
     <div className="min-h-screen bg-ink text-fg">
       <header className="border-b border-line">
@@ -127,10 +135,23 @@ export function PublicComponentPage({
               primitives={snapshot.primitives}
               semantics={snapshot.semantics}
             >
-              <div className="flex min-h-[180px] items-center justify-center p-10">
-                {hero(spec.states[0] ?? "default")}
+              <div
+                role={toggleKey ? "button" : undefined}
+                onClick={toggleKey ? () => toggleLive(opts) : undefined}
+                className="flex min-h-[180px] items-center justify-center p-10"
+                style={toggleKey ? { cursor: "pointer" } : undefined}
+                {...liveHandlers("single")}
+              >
+                {hero(effectiveStateFor(spec.states[0] ?? "default", "single"), heroOptsWithToggle(opts))}
               </div>
             </ThemeFrame>
+            {showLiveHint ? (
+              <p className="mt-2 text-center text-[11px] text-fg-mute">
+                {toggleKey
+                  ? "Hover, press or tab into it above — click to toggle it on/off"
+                  : "Hover, press or tab into it above to try the real interaction"}
+              </p>
+            ) : null}
 
             {spec.states.length > 1 ? (
               <div className="mt-10">

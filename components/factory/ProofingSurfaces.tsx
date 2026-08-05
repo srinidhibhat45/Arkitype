@@ -344,6 +344,7 @@ export function MobileSurface({ pack }: { pack: IndustryPack }) {
   const buttonResolve = useComponentBindings("button");
   const badgeResolve = useComponentBindings("badge");
   const [tab, setTab] = useState(0);
+  const [modalOpen, setModalOpen] = useState(false);
   const m = pack.mobile;
 
   return (
@@ -361,6 +362,7 @@ export function MobileSurface({ pack }: { pack: IndustryPack }) {
           touch target off the edge here. */}
       <div
         style={{
+          position: "relative",
           width: 390,
           maxWidth: "100%",
           display: "flex",
@@ -433,6 +435,7 @@ export function MobileSurface({ pack }: { pack: IndustryPack }) {
             size={ids.buttonSize}
             radiusStep={ids.buttonRadius}
             resolve={buttonResolve}
+            onClick={() => setModalOpen(true)}
             prefixIcon={<Plus size={13} />}
           >
             {pack.primaryCta}
@@ -551,6 +554,20 @@ export function MobileSurface({ pack }: { pack: IndustryPack }) {
             );
           })}
         </div>
+
+        {modalOpen ? (
+          // Confined to the phone's own frame (its nearest `relative`
+          // ancestor), not the page — a bottom sheet is a mobile-native
+          // pattern, so its preview should be restrained to the device it
+          // belongs on rather than floating over the whole canvas.
+          <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
+            <ModalScene
+              skeletonId={ids.modal}
+              radiusStep={ids.modalRadius}
+              onClose={() => setModalOpen(false)}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

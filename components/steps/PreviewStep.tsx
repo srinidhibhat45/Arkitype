@@ -16,6 +16,7 @@
  * whose failures are still ahead of it.
  */
 import { useState } from "react";
+import { Layout, Monitor, Smartphone } from "lucide-react";
 import { useDesignSystem, type Density } from "@/store/useDesignSystem";
 import {
   AsideDivider,
@@ -60,6 +61,15 @@ const SURFACES: Record<FormFactor, (props: { pack: ReturnType<typeof packFor> })
   marketing: MarketingSurface,
 };
 
+// Icons so the form-factor switch reads instantly as "device types" rather
+// than three more abstract labels in a list — it's the control this whole
+// step exists for, so it lives on the canvas itself, not buried in the aside.
+const FORM_FACTOR_ICONS: Record<FormFactor, typeof Monitor> = {
+  saas: Monitor,
+  mobile: Smartphone,
+  marketing: Layout,
+};
+
 const packFor = (industry: Industry) => INDUSTRY_PACKS[industry];
 
 export function PreviewStep() {
@@ -88,14 +98,6 @@ export function PreviewStep() {
       lede="A real product built entirely from your tokens — no hardcoded styles anywhere in the frame. Switch the form factor to see the same system as a dense console, a phone app, and a marketing page; switch the industry to change only the content. If it holds up across all of them, it ships."
       aside={
         <>
-          <Field label="Form factor" hint={factorHint}>
-            <Segmented
-              options={FORM_FACTORS.map(({ label, value }) => ({ label, value }))}
-              value={formFactor}
-              onChange={setFormFactor}
-            />
-          </Field>
-
           <Field label="Industry" hint="content only — layout and tokens are unchanged">
             <Segmented options={INDUSTRIES} value={industry} onChange={setIndustry} />
           </Field>
@@ -162,6 +164,34 @@ export function PreviewStep() {
         </>
       }
     >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line-strong bg-ink-panel px-4 py-3 shadow-sm">
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-fg-mute">
+            Previewing as
+          </div>
+          <div className="mt-0.5 text-[12px] text-fg-dim">{factorHint}</div>
+        </div>
+        <div className="inline-flex shrink-0 gap-0.5 rounded-lg border border-line bg-ink p-1">
+          {FORM_FACTORS.map(({ label, value }) => {
+            const Icon = FORM_FACTOR_ICONS[value];
+            const active = value === formFactor;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFormFactor(value)}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[13px] font-semibold transition-colors ${
+                  active ? "bg-fg text-ink shadow-sm" : "text-fg-mute hover:bg-ink-hover hover:text-fg-dim"
+                }`}
+              >
+                <Icon size={15} />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <ZoomBox scale={zoom} fill>
         <ThemeFrame mode={mode}>
           <Surface pack={pack} />

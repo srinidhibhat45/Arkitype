@@ -19,7 +19,7 @@
  * Options persist to `ComponentConfig.properties` (exported in the docs bundle);
  * colour/scale bindings persist to `ComponentConfig.bindings`.
  */
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Moon,
@@ -173,6 +173,63 @@ const SIZE_OPTIONS = SIZE_ORDER.map((v) => ({
   label: v.charAt(0).toUpperCase() + v.slice(1),
   value: v,
 }));
+
+/**
+ * Components whose primary on/off option can be flipped by clicking their
+ * live hero directly, so "try it" never touches the saved default sitting in
+ * the inspector. Limited to the single-hero controls (no previewAxis card
+ * grid competing for the same click) — chip has a variant axis, so its own
+ * cards keep meaning "pick this as the default variant".
+ */
+const LIVE_TOGGLE_KEY: Record<string, string> = {
+  checkbox: "checked",
+  radio: "checked",
+  switch: "checked",
+};
+
+/**
+ * Genuine hover / press / focus (and, for checkbox/radio/switch, a real
+ * click-to-toggle) for a component's hero preview — shared by the Studio's
+ * editable canvas and the read-only published component page, so "try it"
+ * works the same wherever a hero is rendered. Layers on top of whatever
+ * `activeState` the caller is otherwise showing (a manually-picked state in
+ * the Studio, always "default" on the public page) so the instance responds
+ * like the real component instead of only ever showing a static swatch.
+ * Keyed per-card so an axis grid (e.g. Button's eight variants) previews
+ * hover/press/focus on whichever card the pointer is actually over.
+ */
+export function useLiveHeroInteraction(id: string) {
+  const [live, setLive] = useState<{ key: string; kind: "hover" | "active" | "focus" } | null>(null);
+  const toggleKey = LIVE_TOGGLE_KEY[id];
+  const [liveToggle, setLiveToggle] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setLive(null);
+    setLiveToggle(null);
+  }, [id]);
+
+  const effectiveStateFor = (activeState: CState, key: string): CState =>
+    activeState === "disabled" ? "disabled" : live?.key === key ? live.kind : activeState;
+
+  const liveHandlers = (key: string) => ({
+    onMouseEnter: () => setLive({ key, kind: "hover" as const }),
+    onMouseLeave: () => setLive((cur) => (cur?.key === key ? null : cur)),
+    onMouseDown: () => setLive({ key, kind: "active" as const }),
+    onMouseUp: () => setLive({ key, kind: "hover" as const }),
+    onFocus: () => setLive({ key, kind: "focus" as const }),
+    onBlur: () => setLive((cur) => (cur?.key === key ? null : cur)),
+  });
+
+  const heroOptsWithToggle = (
+    opts: Record<string, string | boolean | number>
+  ): Record<string, string | boolean | number> =>
+    toggleKey && liveToggle !== null ? { ...opts, [toggleKey]: liveToggle } : opts;
+
+  const toggleLive = (opts: Record<string, string | boolean | number>) =>
+    setLiveToggle((cur) => !(cur ?? Boolean(opts[toggleKey])));
+
+  return { toggleKey, effectiveStateFor, liveHandlers, heroOptsWithToggle, toggleLive };
+}
 
 /** A text option that names a Material Icons ligature (prefixIcon, suffixIcon…),
  *  so the inspector renders the visual IconField picker instead of a raw input. */
@@ -959,6 +1016,12 @@ export function ComponentStudioPreview({
   const hero = (st: CState, o: Record<string, string | boolean | number> = opts): ReactNode =>
     renderHero(id, { state: st, size: "md", radiusStep, resolve, mode, opts: o });
 
+  const { toggleKey, effectiveStateFor, liveHandlers, heroOptsWithToggle, toggleLive } =
+    useLiveHeroInteraction(id);
+
+  const showLiveHint = multiState || !!toggleKey;
+  const singleClickable = !!toggleKey && activeState !== "disabled";
+
   /* the clickable canvas strip: states for controls, variants for display */
   const stripItems: Array<{ key: string; label: string; node: ReactNode; active: boolean; onClick: () => void }> =
     multiState
@@ -996,8 +1059,17 @@ export function ComponentStudioPreview({
     <div className="space-y-6">
       {/* top toolbar: reset · zoom · light/dark */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="text-[12px] font-bold uppercase tracking-wider text-fg-mute">
-          Live Studio Preview
+        <div>
+          <div className="text-[12px] font-bold uppercase tracking-wider text-fg-mute">
+            Live Studio Preview
+          </div>
+          {showLiveHint ? (
+            <div className="mt-0.5 text-[10.5px] normal-case tracking-normal text-fg-mute/70">
+              {toggleKey
+                ? "Hover, press or tab into it below — click to toggle it on/off"
+                : "Hover, press or tab into it below to try the real interaction"}
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-3">
           {overrideCount > 0 ? (
@@ -1074,10 +1146,11 @@ export function ComponentStudioPreview({
                           ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-105 z-10"
                           : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
                       }`}
+                      {...liveHandlers(opt.value)}
                     >
                       <div className="p-2">
                         <ZoomBox scale={canvasZoom}>
-                          {hero(activeState, { ...opts, [axis.key]: opt.value })}
+                          {hero(effectiveStateFor(activeState, opt.value), { ...opts, [axis.key]: opt.value })}
                         </ZoomBox>
                       </div>
                       <span
@@ -1092,11 +1165,22 @@ export function ComponentStudioPreview({
               ) : (
                 <div
                   ref={previewRef}
+                  role={singleClickable ? "button" : undefined}
+                  onClick={singleClickable ? () => toggleLive(opts) : undefined}
                   className="relative flex flex-col items-center gap-2 p-4 rounded-xl border border-transparent"
+                  style={singleClickable ? { cursor: "pointer" } : undefined}
+                  {...liveHandlers("single")}
                 >
                   <div className="p-2">
-                    <ZoomBox scale={canvasZoom}>{hero(activeState)}</ZoomBox>
+                    <ZoomBox scale={canvasZoom}>
+                      {hero(effectiveStateFor(activeState, "single"), heroOptsWithToggle(opts))}
+                    </ZoomBox>
                   </div>
+                  {singleClickable ? (
+                    <span className="text-[10px] font-semibold tracking-wide mt-2 select-none text-fg-mute">
+                      Click to try it
+                    </span>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1197,8 +1281,6 @@ export function ComponentStudioPreview({
     </div>
   );
 }
-
-import { useEffect } from "react";
 
 /* ── figma-style scrubbable numeric input ── */
 

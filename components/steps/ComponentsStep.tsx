@@ -154,6 +154,12 @@ function SkeletonPreview({ pattern }: { pattern: string }) {
   const skeletonId = cfg?.skeletonId ?? "1";
   const radiusStep = Number(cfg?.properties.radiusStep ?? 3);
   const skeletonName = (SKELETON_META[pattern] ?? []).find((sk) => sk.id === skeletonId)?.name ?? "Preview";
+  // Bottom-Sheet is a mobile pattern (base-pinned, 65%-height slice) — the
+  // generic 420px desktop canvas the other three skeletons share only left it
+  // ~270px, clipping almost the entire file grid it exists to demonstrate.
+  // Give it a phone-proportioned frame instead so it gets the headroom a
+  // bottom sheet actually needs, and reads as the mobile surface it is.
+  const isBottomSheet = pattern === "modal" && skeletonId === "4";
 
   return (
     <div>
@@ -162,9 +168,17 @@ function SkeletonPreview({ pattern }: { pattern: string }) {
       </div>
       <ThemeFrame mode={mode}>
         {pattern === "modal" ? (
-          <div className="relative h-[420px]">
-            <ModalScene skeletonId={skeletonId} radiusStep={radiusStep} />
-          </div>
+          isBottomSheet ? (
+            <div className="flex justify-center py-4">
+              <div className="relative h-[860px] w-[390px] max-w-full overflow-hidden rounded-[32px] border border-line-strong">
+                <ModalScene skeletonId={skeletonId} radiusStep={radiusStep} />
+              </div>
+            </div>
+          ) : (
+            <div className="relative h-[420px]">
+              <ModalScene skeletonId={skeletonId} radiusStep={radiusStep} />
+            </div>
+          )
         ) : pattern === "tabs" ? (
           <div className="min-h-[280px]">
             <TabsSkeleton skeletonId={skeletonId} radiusStep={radiusStep} />

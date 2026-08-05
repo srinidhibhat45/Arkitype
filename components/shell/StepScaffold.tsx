@@ -134,7 +134,7 @@ export function StepScaffold({
               <h1 className="mt-2 text-[22px] font-extrabold leading-tight tracking-tight text-fg">
                 {title}
               </h1>
-              <p className="mt-2.5 text-[14px] leading-relaxed text-fg-dim">
+              <p className="mt-2 text-[12.5px] leading-snug text-fg-mute">
                 {lede}
               </p>
             </>
@@ -142,7 +142,7 @@ export function StepScaffold({
 
           {tabs ? <div className="mt-4 border-b border-line pb-2">{tabs}</div> : null}
 
-          <div className={`${hideHeader ? "" : "mt-5"} space-y-4`}>
+          <div className={`${hideHeader ? "" : "mt-4"} space-y-4`}>
             {aside}
           </div>
         </div>

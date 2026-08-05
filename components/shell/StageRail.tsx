@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Check, Plus, Trash2, Copy, Layers, Database } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Plus, Trash2, Copy, Layers, Database, Search, X } from "lucide-react";
 import { rampStepLabels } from "@/lib/color";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 import {
@@ -95,6 +95,41 @@ export function StageRail() {
 
   const doneCount = STEP_ORDER.filter((id) => done[id]).length;
 
+  // Filter — a Figma-style search toggle over the panel header rather than a
+  // permanently-docked field, so the default state stays exactly as tight as
+  // Figma's own Layers panel. Matches step labels, and (on the Components
+  // step) the 53 part names nested underneath.
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterQuery, setFilterQuery] = useState("");
+  const filterInputRef = useRef<HTMLInputElement>(null);
+  const q = filterQuery.trim().toLowerCase();
+
+  const closeFilter = () => {
+    setFilterOpen(false);
+    setFilterQuery("");
+  };
+
+  const filteredLanes = useMemo(() => {
+    if (!q) return COMPONENT_LANES;
+    return COMPONENT_LANES.map((lane) => ({
+      ...lane,
+      items: lane.items.filter((item) => item.label.toLowerCase().includes(q)),
+    })).filter((lane) => lane.items.length > 0);
+  }, [q]);
+
+  // A part match (e.g. "button") keeps the Components row visible and its
+  // tree forced open even though the word "Components" itself doesn't match —
+  // otherwise the very thing you searched for would be the thing that hides.
+  const hasComponentMatches = q !== "" && filteredLanes.some((l) => l.items.length > 0);
+
+  const filteredSteps = useMemo(
+    () =>
+      q
+        ? STEP_ORDER.filter((id) => STEP_META[id].label.toLowerCase().includes(q) || (id === "components" && hasComponentMatches))
+        : STEP_ORDER,
+    [q, hasComponentMatches]
+  );
+
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedText(text);
@@ -133,7 +168,7 @@ export function StageRail() {
       className="relative flex shrink-0 flex-col border-r border-line bg-ink select-none"
     >
       {/* Top Figma Tab Switcher */}
-      <div className="flex h-9 shrink-0 items-center border-b border-line px-3.5 bg-ink">
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-line px-2.5 bg-ink">
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -157,18 +192,66 @@ export function StageRail() {
             Tokens
           </button>
         </div>
+
+        {activeLeftTab === "layers" ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (filterOpen) closeFilter();
+              else {
+                setFilterOpen(true);
+                requestAnimationFrame(() => filterInputRef.current?.focus());
+              }
+            }}
+            title="Filter layers"
+            aria-label="Filter layers"
+            aria-pressed={filterOpen}
+            className={`rounded p-1 transition-colors ${
+              filterOpen ? "text-fg bg-ink-hover" : "text-fg-mute hover:text-fg-dim"
+            }`}
+          >
+            <Search size={12} />
+          </button>
+        ) : null}
       </div>
+
+      {/* Inline filter — Figma-pattern toggle, not a permanently docked field */}
+      {activeLeftTab === "layers" && filterOpen ? (
+        <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-line px-2.5 bg-ink">
+          <Search size={11} className="shrink-0 text-fg-mute" />
+          <input
+            ref={filterInputRef}
+            type="text"
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") closeFilter();
+            }}
+            placeholder="Filter layers…"
+            className="h-full min-w-0 flex-1 bg-transparent text-[12px] text-fg placeholder:text-fg-mute focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={closeFilter}
+            title="Clear filter"
+            aria-label="Clear filter"
+            className="shrink-0 rounded p-0.5 text-fg-mute hover:text-fg transition-colors"
+          >
+            <X size={11} />
+          </button>
+        </div>
+      ) : null}
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {activeLeftTab === "layers" ? (
-          /* Layers View (original step stages & components hierarchical tree) */
-          <div className="px-3 py-4">
-            <p className="px-3 pb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-fg-mute">
-              Document layers
-            </p>
+          /* Layers View (step stages & components hierarchical tree) */
+          <div className="px-3 py-3">
+            {q && filteredSteps.length === 0 && filteredLanes.every((l) => l.items.length === 0) ? (
+              <p className="px-3 py-2 text-[12px] text-fg-mute">No matches for &ldquo;{filterQuery}&rdquo;</p>
+            ) : null}
             <div className="space-y-1">
-              {STEP_ORDER.map((id) => {
+              {filteredSteps.map((id) => {
                 const m = STEP_META[id];
                 const active = activeStep === id;
                 const isDone = !!done[id];
@@ -205,9 +288,10 @@ export function StageRail() {
                     </button>
 
                     {/* Hierarchical sub-tree list of component layers grouped by Lane */}
-                    {isComponentsStep && (activeStep === "components" || activeStep === "ship" || activeStep === "preview") && (
+                    {isComponentsStep &&
+                      (activeStep === "components" || activeStep === "ship" || activeStep === "preview" || hasComponentMatches) && (
                       <div className="mt-1.5 border-l border-line ml-[21px] pl-3.5 space-y-3 py-1">
-                        {COMPONENT_LANES.map((lane) => (
+                        {filteredLanes.map((lane) => (
                           <div key={lane.label} className="space-y-1">
                             <span className="block px-2 text-[9px] font-bold uppercase tracking-[0.08em] text-fg-mute">
                               {lane.label}
@@ -257,15 +341,12 @@ export function StageRail() {
           </div>
         ) : (
           /* Tokens Studio View (defined primitives & semantics) */
-          <div className="px-4 py-4 space-y-6">
+          <div className="px-4 py-3 space-y-6">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-fg-mute mb-3">
-                Primitives & Semantics
-              </p>
               {/* Density Switcher */}
               <div className="mb-2 rounded-lg bg-ink-panel p-2 border border-line">
                 <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute block mb-1.5">
-                  Density Mode (Spacing Base)
+                  Density
                 </span>
                 <div className="grid grid-cols-3 gap-1 bg-ink border border-line rounded p-0.5">
                   {(["compact", "comfortable", "loose"] as const).map((d) => {

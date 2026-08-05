@@ -22,7 +22,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <div className="mb-6">
+    <div className="mb-5">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <span className="text-[13.5px] font-semibold text-fg-dim">{label}</span>
         {hint ? (
@@ -36,7 +36,7 @@ export function Field({
 
 export function AsideNote({ children }: { children: ReactNode }) {
   return (
-    <p className="mb-6 text-[13.5px] leading-relaxed text-fg-mute">{children}</p>
+    <p className="mb-4 text-[12px] leading-snug text-fg-mute">{children}</p>
   );
 }
 

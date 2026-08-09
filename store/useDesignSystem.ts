@@ -74,10 +74,37 @@ export interface VariablesUI {
   connectedOnly: boolean;
   /** How wires are routed: right-angle elbows, or free curves. */
   wireStyle: VarWireStyle;
+  /** Which surface the Variables workspace shows — the table, or the map. */
+  view: VarView;
+  /** How loudly the map draws wires you aren't currently looking at. */
+  wireDensity: VarWireDensity;
+  /** Collections collapsed to their header on the map, by collection id. */
+  collapsed: string[];
+  /** The collection the table has open. */
+  activeCollection: string | null;
+  /** The "new set" panel is open. In the store because the rail, the table and
+   *  the map all offer the same way in, and they're siblings. */
+  creating: boolean;
 }
 
 /** Wire routing on the map — mirrors lib/variableGraph's WireStyle. */
 export type VarWireStyle = "stepped" | "curved";
+
+/**
+ * The two ways to read the same variables. The table is the everyday editing
+ * surface — sets on the left, modes across the top, the shape designers already
+ * know. The map is the same data as a graph, for the question the table can't
+ * answer: what does this feed, and where did it come from.
+ */
+export type VarView = "table" | "map";
+
+/**
+ * How much of the wiring the map draws at rest. A full system is several
+ * hundred aliases, and drawing them all at full strength is a hairball — so
+ * "calm" is the default: everything is still there, but hushed until you point
+ * at something.
+ */
+export type VarWireDensity = "full" | "calm" | "focus";
 
 export const DEFAULT_VARIABLES_UI: VariablesUI = {
   selected: null,
@@ -87,6 +114,11 @@ export const DEFAULT_VARIABLES_UI: VariablesUI = {
   editMode: "both",
   connectedOnly: false,
   wireStyle: "stepped",
+  view: "table",
+  wireDensity: "calm",
+  collapsed: [],
+  activeCollection: null,
+  creating: false,
 };
 
 /* ────────────────────────────── edit history ────────────────────────────── */
@@ -872,6 +904,14 @@ export interface ArkitypeState {
   setVariableEditMode: (mode: VariablesUI["editMode"]) => void;
   setVariablesConnectedOnly: (only: boolean) => void;
   setVariableWireStyle: (style: VarWireStyle) => void;
+  setVariableView: (view: VarView) => void;
+  setVariableWireDensity: (density: VarWireDensity) => void;
+  /** Collapse a map card to its header — wires re-anchor there. */
+  toggleVariableCollapsed: (collectionId: string) => void;
+  setVariableCollapsedAll: (collectionIds: string[]) => void;
+  setActiveVariableCollection: (collectionId: string | null) => void;
+  /** Open or close the "new set of variables" panel. */
+  setVariablesCreating: (creating: boolean) => void;
 
   /* undo / redo / reset */
   undo: () => void;
@@ -939,6 +979,16 @@ export interface ArkitypeState {
   /* roles + component tokens (both live in `semantics`) */
   setSemantic: (mode: PreviewMode, token: string, value: string) => void;
   addRole: (groupLabel: string, token: string) => void;
+  /**
+   * A whole set at once — the group plus its tokens plus their values, in one
+   * write, so a ready-made starter set costs exactly one press of ⌘Z. Tokens
+   * whose names are already taken are skipped rather than overwritten.
+   */
+  createVariableSet: (
+    label: string,
+    kind: "semantic" | "component",
+    tokens: Array<{ name: string; light: string; dark?: string }>
+  ) => void;
   removeRole: (token: string) => void;
   /** Rename a token everywhere it's referenced: group lists, both modes,
    *  "@token" references from other tokens, and component `role:` bindings. */
@@ -1463,9 +1513,15 @@ export const useDesignSystem = create<ArkitypeState>()(
               currentPreviewMode: project.currentPreviewMode,
               canvasZoom: project.canvasZoom,
               view: "workspace",
-              // Node ids are file-scoped; carrying a selection across files
-              // would leave the Variables inspector pointing at nothing.
-              variablesUI: { ...state.variablesUI, selected: null, focus: null },
+              // Node and collection ids are file-scoped; carrying a selection
+              // across files would leave the inspector — and the table's open
+              // set — pointing at nothing.
+              variablesUI: {
+                ...state.variablesUI,
+                selected: null,
+                focus: null,
+                activeCollection: null,
+              },
             };
           }),
 
@@ -1752,6 +1808,34 @@ export const useDesignSystem = create<ArkitypeState>()(
 
       setVariableWireStyle: (style) =>
         set((state) => ({ variablesUI: { ...state.variablesUI, wireStyle: style } })),
+
+      setVariableView: (view) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, view } })),
+
+      setVariableWireDensity: (density) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, wireDensity: density } })),
+
+      toggleVariableCollapsed: (collectionId) =>
+        set((state) => {
+          const collapsed = state.variablesUI.collapsed;
+          return {
+            variablesUI: {
+              ...state.variablesUI,
+              collapsed: collapsed.includes(collectionId)
+                ? collapsed.filter((c) => c !== collectionId)
+                : [...collapsed, collectionId],
+            },
+          };
+        }),
+
+      setVariableCollapsedAll: (collectionIds) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, collapsed: collectionIds } })),
+
+      setActiveVariableCollection: (collectionId) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, activeCollection: collectionId } })),
+
+      setVariablesCreating: (creating) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, creating } })),
 
       /* ── undo / redo / reset ── */
 
@@ -2525,6 +2609,38 @@ export const useDesignSystem = create<ArkitypeState>()(
               },
             },
           };
+        }),
+
+      createVariableSet: (label, kind, tokens) =>
+        set((state) => {
+          const l = label.trim();
+          if (!l) return state;
+          const existing = state.semantics.groups.find((g) => g.label === l);
+
+          const light = { ...state.semantics.modes.light };
+          const dark = { ...state.semantics.modes.dark };
+          const added: string[] = [];
+          for (const t of tokens) {
+            const slug = slugify(t.name);
+            // A name already in the file belongs to whoever took it — a preset
+            // adds what's missing, it never redefines what's there.
+            if (!slug || light[slug] !== undefined || added.includes(slug)) continue;
+            light[slug] = t.light;
+            dark[slug] = t.dark ?? t.light;
+            added.push(slug);
+          }
+
+          // Nothing new to add to a group that already exists — leave the
+          // document (and the undo stack) untouched.
+          if (existing && added.length === 0) return state;
+
+          const groups = existing
+            ? state.semantics.groups.map((g) =>
+                g.label === l ? { ...g, tokens: [...g.tokens, ...added] } : g
+              )
+            : [...state.semantics.groups, { label: l, kind, tokens: added }];
+
+          return { semantics: { groups, modes: { light, dark } } };
         }),
 
       removeRole: (token) =>

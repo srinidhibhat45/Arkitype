@@ -920,8 +920,15 @@ export interface CardBox {
   h: number;
 }
 
-export const cardHeight = (c: VarCollection): number =>
-  CARD_HEAD_H + c.nodes.length * ROW_H + (c.addTo ? CARD_FOOT_H : 6);
+/**
+ * A card's height. A collapsed card is its header and nothing else — the main
+ * lever against wire crowding, since every wire into a collapsed collection
+ * lands on that one header instead of fanning across forty rows.
+ */
+export const cardHeight = (c: VarCollection, collapsed?: ReadonlySet<string>): number =>
+  collapsed?.has(c.id)
+    ? CARD_HEAD_H
+    : CARD_HEAD_H + c.nodes.length * ROW_H + (c.addTo ? CARD_FOOT_H : 6);
 
 /**
  * Tier-banded auto-layout. Each tier gets its own plate on the canvas, and
@@ -933,7 +940,10 @@ export const cardHeight = (c: VarCollection): number =>
  * primitive tier is by far the tallest, and an even split is what keeps it
  * from towering over the other three.
  */
-export function autoLayout(collections: VarCollection[]): Record<string, CardBox> {
+export function autoLayout(
+  collections: VarCollection[],
+  collapsed?: ReadonlySet<string>
+): Record<string, CardBox> {
   const boxes: Record<string, CardBox> = {};
   let xCursor = 0;
 
@@ -942,10 +952,12 @@ export function autoLayout(collections: VarCollection[]): Record<string, CardBox
     // cards fill in around them instead of stranding a column half empty.
     const inTier = collections
       .filter((c) => c.tier === tier)
-      .sort((a, b) => cardHeight(b) - cardHeight(a) || a.label.localeCompare(b.label));
+      .sort(
+        (a, b) => cardHeight(b, collapsed) - cardHeight(a, collapsed) || a.label.localeCompare(b.label)
+      );
     if (inTier.length === 0) continue;
 
-    const heights = inTier.map((c) => cardHeight(c) + CARD_GAP_Y);
+    const heights = inTier.map((c) => cardHeight(c, collapsed) + CARD_GAP_Y);
     const total = heights.reduce((s, h) => s + h, 0);
     const cols = Math.max(1, Math.ceil(total / MAX_COL_H));
     const target = total / cols;
@@ -961,7 +973,7 @@ export function autoLayout(collections: VarCollection[]): Record<string, CardBox
         x: xCursor + col * (CARD_W + SUBCOL_GAP),
         y: colY[col],
         w: CARD_W,
-        h: cardHeight(c),
+        h: cardHeight(c, collapsed),
       };
       colY[col] += heights[i];
     });

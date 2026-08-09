@@ -10,6 +10,13 @@
  * and every card and wire carries that accent, so "which tier is this" and
  * "where did this value come from" are answered before you read a label.
  *
+ * Keeping it readable: a full system is several hundred aliases, and drawn at
+ * full strength they are a hairball rather than a map. Two things fix that, and
+ * both are the user's to set. Wires rest quietly and only light up along the
+ * chain you point at (Wires: Calm — or All to see the whole weave, Focus to see
+ * nothing else); and any card can be collapsed to its header, which gathers
+ * every wire into or out of forty rows onto a single point.
+ *
  * Wiring it: drag from a row's right-hand handle onto any row to its right and
  * the alias is written into the store (`setSemantic` for tokens,
  * `setComponentBinding` for component properties) — the same edits the Colour
@@ -24,8 +31,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Focus,
+  FoldVertical,
   Maximize,
   Minus,
   Plus,
@@ -34,10 +44,16 @@ import {
   Spline,
   Undo2,
   Unlink,
+  UnfoldVertical,
   Waypoints,
   X,
 } from "lucide-react";
-import { PreviewMode, docChanged, useDesignSystem } from "@/store/useDesignSystem";
+import {
+  PreviewMode,
+  VarWireDensity,
+  docChanged,
+  useDesignSystem,
+} from "@/store/useDesignSystem";
 import {
   BAND_HEAD_H,
   BAND_PAD,
@@ -49,7 +65,6 @@ import {
   TIER_ORDER,
   VarCollection,
   VarEdge,
-  VarNode,
   VarTier,
   VariableGraph,
   WireStyle,
@@ -62,6 +77,7 @@ import {
   wirePath,
 } from "@/lib/variableGraph";
 import { resolveTokenValue } from "@/lib/tokens";
+import { RowMark, TierBadge } from "@/components/variables/VariableBits";
 
 // Low enough that "fit" really fits: a full system is ~2,400px of graph, and a
 // canvas sharing the screen with two panels is a fifth of that. Labels are lost
@@ -74,78 +90,42 @@ const FOOT_H = 24;
 interface Placed extends Point {
   collection: VarCollection;
   h: number;
+  collapsed: boolean;
 }
 
 /* ────────────────────────── geometry helpers ────────────────────────── */
 
-/** Left ("in") or right ("out") anchor of a row, in graph coordinates. */
+/**
+ * Left ("in") or right ("out") anchor of a row, in graph coordinates. Every row
+ * of a collapsed card shares the header's anchor — which is the whole point:
+ * forty wires arrive as one bundle instead of forty.
+ */
 function anchorOf(placed: Placed, rowIdx: number, side: "in" | "out"): Point {
   return {
     x: side === "out" ? placed.x + CARD_W : placed.x,
-    y: placed.y + CARD_HEAD_H + rowIdx * ROW_H + ROW_H / 2,
+    y: placed.collapsed
+      ? placed.y + CARD_HEAD_H / 2
+      : placed.y + CARD_HEAD_H + rowIdx * ROW_H + ROW_H / 2,
   };
 }
 
-/* ────────────────────────── row glyphs ────────────────────────── */
+/* ────────────────────────── wire weights ────────────────────────── */
 
-/** Every kind gets a mark, so a row reads as "what it is" before you read it. */
-function RowMark({ node, mode }: { node: VarNode; mode: PreviewMode }) {
-  if (node.kind === "color") {
-    const hex = node.swatch?.[mode] ?? "#000";
-    return (
-      <span
-        className="h-3 w-3 shrink-0 rounded-[3px] border border-line"
-        style={{
-          backgroundImage:
-            "linear-gradient(45deg,#8883 25%,transparent 25%,transparent 75%,#8883 75%),linear-gradient(45deg,#8883 25%,transparent 25%,transparent 75%,#8883 75%)",
-          backgroundSize: "6px 6px",
-          backgroundPosition: "0 0,3px 3px",
-        }}
-      >
-        <span className="block h-full w-full rounded-[2px]" style={{ background: hex }} />
-      </span>
-    );
-  }
-  const glyph =
-    node.kind === "space"
-      ? "↔"
-      : node.kind === "radius"
-        ? "◠"
-        : node.kind === "size"
-          ? "Aa"
-          : node.kind === "weight"
-            ? "W"
-            : node.kind === "font"
-              ? "F"
-              : node.kind === "shadow"
-                ? "▦"
-                : node.kind === "duration"
-                  ? "◷"
-                  : "∿";
-  return (
-    <span className="flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] border border-line font-mono text-[7px] leading-none text-fg-mute">
-      {glyph}
-    </span>
-  );
-}
+/**
+ * How loud a wire is at rest, per density setting. "Calm" is the default and
+ * the answer to the crowding: every wire is still drawn — nothing is hidden
+ * from you — but quietly enough that the cards, the lanes and whatever you're
+ * pointing at stay on top of it.
+ */
+const WIRE_REST: Record<VarWireDensity, { opacity: number; width: number } | null> = {
+  full: { opacity: 0.8, width: 1.5 },
+  calm: { opacity: 0.26, width: 1.1 },
+  // Nothing at rest — only the chain under the cursor is drawn at all.
+  focus: null,
+};
 
-/** The ordinal that travels with every tier — colour is never the only cue. */
-function TierBadge({ tier, size = 14 }: { tier: VarTier; size?: number }) {
-  return (
-    <span
-      className="flex shrink-0 items-center justify-center rounded-[4px] font-mono font-bold leading-none"
-      style={{
-        width: size,
-        height: size,
-        fontSize: size * 0.62,
-        background: tierColor(tier),
-        color: "rgb(var(--c-ink-raised))",
-      }}
-    >
-      {TIER_META[tier].step}
-    </span>
-  );
-}
+/** How far an unrelated wire drops once something *is* focused. */
+const WIRE_DIMMED: Record<VarWireDensity, number> = { full: 0.3, calm: 0.09, focus: 0 };
 
 /* ────────────────────────── canvas chrome ────────────────────────── */
 
@@ -153,11 +133,14 @@ function ToolButton({
   title,
   onClick,
   disabled,
+  active,
   children,
 }: {
   title: string;
   onClick: () => void;
   disabled?: boolean;
+  /** Renders the button as the chosen one in a set — routing, mode, and so on. */
+  active?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -165,9 +148,14 @@ function ToolButton({
       type="button"
       title={title}
       aria-label={title}
+      aria-pressed={active}
       onClick={onClick}
       disabled={disabled}
-      className="rounded p-1 text-fg-mute transition-colors enabled:hover:bg-ink-hover enabled:hover:text-fg disabled:opacity-30"
+      className={`rounded p-1 transition-colors disabled:opacity-30 ${
+        active
+          ? "bg-fg text-ink"
+          : "text-fg-mute enabled:hover:bg-ink-hover enabled:hover:text-fg"
+      }`}
     >
       {children}
     </button>
@@ -176,7 +164,14 @@ function ToolButton({
 
 /* ────────────────────────── the canvas ────────────────────────── */
 
-export function VariableCanvas({ graph }: { graph: VariableGraph }) {
+export function VariableCanvas({
+  graph,
+  onNewSet,
+}: {
+  graph: VariableGraph;
+  /** Opens the create panel — shared with the table, and owned above both. */
+  onNewSet: () => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const activeProjectId = useDesignSystem((s) => s.activeProjectId);
   const ui = useDesignSystem((s) => s.variablesUI);
@@ -186,6 +181,9 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
   const clearComponentBinding = useDesignSystem((s) => s.clearComponentBinding);
   const addRole = useDesignSystem((s) => s.addRole);
   const setWireStyle = useDesignSystem((s) => s.setVariableWireStyle);
+  const setWireDensity = useDesignSystem((s) => s.setVariableWireDensity);
+  const toggleCollapsed = useDesignSystem((s) => s.toggleVariableCollapsed);
+  const setCollapsedAll = useDesignSystem((s) => s.setVariableCollapsedAll);
   const undo = useDesignSystem((s) => s.undo);
   const redo = useDesignSystem((s) => s.redo);
   const revertToCheckpoint = useDesignSystem((s) => s.revertToCheckpoint);
@@ -199,6 +197,8 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
   const [view, setView] = useState({ x: 40, y: 32, scale: 0.85 });
   const [drag, setDrag] = useState<Record<string, Point>>({});
   const [hovered, setHovered] = useState<string | null>(null);
+  /** Pointing at a card lights everything it touches — the collapsed-card case. */
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<{
     from: string;
@@ -228,6 +228,8 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
   }, []);
 
   const wireStyle: WireStyle = ui.wireStyle;
+  const density = ui.wireDensity;
+  const collapsed = useMemo(() => new Set(ui.collapsed), [ui.collapsed]);
 
   /* ── which mode(s) an edit writes ── */
   const editModes: PreviewMode[] = ui.editMode === "both" ? ["light", "dark"] : [ui.editMode];
@@ -259,7 +261,10 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
 
   /* ── card placement: auto-layout, then user drags on top ── */
 
-  const auto = useMemo(() => autoLayout(visible.collections), [visible.collections]);
+  const auto = useMemo(
+    () => autoLayout(visible.collections, collapsed),
+    [visible.collections, collapsed]
+  );
 
   const placed = useMemo(() => {
     const out: Record<string, Placed> = {};
@@ -267,15 +272,17 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
       const box = auto[c.id];
       if (!box) continue;
       const moved = drag[c.id];
+      const isCollapsed = collapsed.has(c.id);
       out[c.id] = {
         collection: c,
         x: moved?.x ?? box.x,
         y: moved?.y ?? box.y,
-        h: CARD_HEAD_H + c.nodes.length * ROW_H + (c.addTo ? FOOT_H : 6),
+        h: isCollapsed ? CARD_HEAD_H : CARD_HEAD_H + c.nodes.length * ROW_H + (c.addTo ? FOOT_H : 6),
+        collapsed: isCollapsed,
       };
     }
     return out;
-  }, [visible.collections, auto, drag]);
+  }, [visible.collections, auto, drag, collapsed]);
 
   /**
    * The four plates, measured from where the cards actually are — so a band
@@ -305,6 +312,12 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
     for (const b of out) b.h = Math.max(b.h, floor - b.y);
     return out;
   }, [placed]);
+
+  /** Drives the fold-all toggle: it only offers "unfold" once nothing is open. */
+  const allFolded = useMemo(() => {
+    const ids = Object.keys(placed);
+    return ids.length > 0 && ids.every((id) => collapsed.has(id));
+  }, [placed, collapsed]);
 
   const bounds = useMemo(() => {
     let w = 600;
@@ -586,10 +599,24 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
   /* ── highlight ── */
 
   const focusId = hovered ?? ui.selected;
-  const related = useMemo(
-    () => (focusId && graph.nodes[focusId] ? relatedNodes(graph, focusId) : null),
-    [focusId, graph]
-  );
+
+  /**
+   * What's currently "lit". A hovered row (or the selection) lights its whole
+   * chain; a hovered card lights the union of its rows' chains, which is how a
+   * collapsed card stays useful — you can still ask what it feeds without
+   * expanding it.
+   */
+  const related = useMemo(() => {
+    if (focusId && graph.nodes[focusId]) return relatedNodes(graph, focusId);
+    if (hoveredCard) {
+      const card = graph.collections.find((c) => c.id === hoveredCard);
+      if (!card) return null;
+      const out = new Set<string>();
+      for (const n of card.nodes) relatedNodes(graph, n.id).forEach((id) => out.add(id));
+      return out;
+    }
+    return null;
+  }, [focusId, hoveredCard, graph]);
 
   const copyRef = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -698,46 +725,85 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
           className="absolute left-0 top-0"
           style={{ overflow: "visible" }}
         >
-          {wires.map(({ edge, b, d, tier }) => {
+          {wires.map(({ edge, a, b, d, tier }) => {
             const dim = related !== null && !(related.has(edge.from) && related.has(edge.to));
             const lit = related !== null && !dim;
             const isHovered = hoveredEdge === edge.id;
+            const rest = WIRE_REST[density];
+
+            // In Focus, a wire that isn't part of what you're pointing at isn't
+            // drawn at all — but its hit area stays below, so the map never
+            // becomes a surface you can't grab a wire on.
+            const hidden = !lit && !isHovered && rest === null;
+
             const stroke = isHovered ? "rgb(var(--c-focus))" : tierColor(tier);
-            // Persistent by design: an unrelated wire fades, but never below
-            // the point where you can still trace it.
-            const opacity = isHovered ? 1 : dim ? 0.34 : lit ? 1 : 0.85;
-            const width = isHovered || lit ? 2.4 : 1.5;
+            const opacity = isHovered
+              ? 1
+              : lit
+                ? 1
+                : related !== null
+                  ? WIRE_DIMMED[density]
+                  : (rest?.opacity ?? 0);
+            const width = isHovered || lit ? 2.2 : (rest?.width ?? 1.1);
+
+            // Dashes carry real information — which mode this alias applies to —
+            // but at rest, at this density, they read as buzz rather than as a
+            // legend. So they're spelled out exactly where you can act on them:
+            // on the lit chain, on hover, and whenever you've asked for All.
+            const spellOutMode = isHovered || lit || density === "full";
+            const dash = !spellOutMode
+              ? undefined
+              : edge.mode === "light"
+                ? "9 5"
+                : edge.mode === "dark"
+                  ? "2 4"
+                  : edge.mode === "binding"
+                    ? "1 4"
+                    : undefined;
+
             return (
               <g key={edge.id}>
-                {lit ? (
-                  <path d={d} fill="none" stroke={stroke} strokeWidth={7} strokeOpacity={0.16} strokeLinecap="round" />
+                {!hidden ? (
+                  <>
+                    {lit ? (
+                      <path
+                        d={d}
+                        fill="none"
+                        stroke={stroke}
+                        strokeWidth={7}
+                        strokeOpacity={0.16}
+                        strokeLinecap="round"
+                      />
+                    ) : null}
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke={stroke}
+                      strokeWidth={width}
+                      strokeOpacity={opacity}
+                      strokeDasharray={dash}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    {/* Terminals. At rest a wire ends in a dot at each end —
+                        enough to find where it lands without the visual weight
+                        of three hundred arrowheads. Direction is already in the
+                        layout; the arrow only appears once the wire is the one
+                        you're reading. */}
+                    {isHovered || lit ? (
+                      <path
+                        d={`M ${b.x} ${b.y} L ${b.x - 6} ${b.y - 3.4} L ${b.x - 6} ${b.y + 3.4} Z`}
+                        fill={stroke}
+                        fillOpacity={opacity}
+                      />
+                    ) : (
+                      <>
+                        <circle cx={a.x} cy={a.y} r={1.7} fill={stroke} fillOpacity={opacity} />
+                        <circle cx={b.x} cy={b.y} r={1.7} fill={stroke} fillOpacity={opacity} />
+                      </>
+                    )}
+                  </>
                 ) : null}
-                <path
-                  d={d}
-                  fill="none"
-                  stroke={stroke}
-                  strokeWidth={width}
-                  strokeOpacity={opacity}
-                  strokeDasharray={
-                    edge.mode === "light"
-                      ? "9 5"
-                      : edge.mode === "dark"
-                        ? "2 4"
-                        : edge.mode === "binding"
-                          ? "1 4"
-                          : undefined
-                  }
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                {/* Arrowhead at the consuming end — every wire says which way
-                    the value travels, without needing to be hovered. Both
-                    routings arrive horizontally, so it always points right. */}
-                <path
-                  d={`M ${b.x} ${b.y} L ${b.x - 6} ${b.y - 3.4} L ${b.x - 6} ${b.y + 3.4} Z`}
-                  fill={stroke}
-                  fillOpacity={opacity}
-                />
                 {/* Fat invisible stroke: the actual hover target for unlinking. */}
                 <path
                   d={d}
@@ -794,7 +860,7 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
           return (
             <div
               key={c.id}
-              className="absolute rounded-lg bg-ink-raised shadow-xl"
+              className={`absolute rounded-lg bg-ink-raised shadow-xl ${p.collapsed ? "" : "pb-px"}`}
               style={{
                 left: p.x,
                 top: p.y,
@@ -802,19 +868,40 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
                 border: `1px solid ${tierColor(c.tier, 0.42)}`,
               }}
               onMouseDown={(e) => e.stopPropagation()}
+              onMouseEnter={() => setHoveredCard(c.id)}
+              onMouseLeave={() => setHoveredCard((h) => (h === c.id ? null : h))}
             >
               <header
                 onMouseDown={(e) => startCardDrag(e, c.id)}
-                className="flex h-[34px] cursor-grab items-center gap-1.5 rounded-t-lg px-2.5 active:cursor-grabbing"
+                onDoubleClick={() => toggleCollapsed(c.id)}
+                title="Drag to move · double-click to fold"
+                className={`flex h-[34px] cursor-grab items-center gap-1.5 px-2 active:cursor-grabbing ${
+                  p.collapsed ? "rounded-lg" : "rounded-t-lg"
+                }`}
                 style={{
                   background: tierColor(c.tier, 0.12),
-                  borderBottom: `1px solid ${tierColor(c.tier, 0.3)}`,
+                  borderBottom: p.collapsed ? undefined : `1px solid ${tierColor(c.tier, 0.3)}`,
                 }}
               >
-                <TierBadge tier={c.tier} />
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => toggleCollapsed(c.id)}
+                  title={
+                    p.collapsed
+                      ? `Unfold ${c.label}`
+                      : `Fold ${c.label} — its wires gather onto the header`
+                  }
+                  aria-label={p.collapsed ? `Unfold ${c.label}` : `Fold ${c.label}`}
+                  aria-expanded={!p.collapsed}
+                  className="-ml-0.5 shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:bg-ink-hover hover:text-fg"
+                >
+                  {p.collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                </button>
+                <TierBadge tier={c.tier} size={14} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[11px] font-bold leading-none text-fg">{c.label}</p>
-                  {c.note ? (
+                  {c.note && !p.collapsed ? (
                     <p
                       className="mt-0.5 truncate text-[8.5px] font-semibold uppercase tracking-[0.07em]"
                       style={{ color: accent }}
@@ -826,7 +913,7 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
                 <span className="shrink-0 font-mono text-[9px] text-fg-mute">{c.nodes.length}</span>
               </header>
 
-              {c.nodes.map((node) => {
+              {(p.collapsed ? [] : c.nodes).map((node) => {
                 const isSelected = ui.selected === node.id;
                 const isDrop = dropTarget?.id === node.id;
                 const dim = related !== null && !related.has(node.id);
@@ -844,7 +931,7 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
                         ? { background: tierColor(c.tier, 0.18), boxShadow: `inset 2px 0 0 ${accent}` }
                         : null),
                     }}
-                    className={`group/row relative flex cursor-pointer items-center gap-1.5 px-2 transition-colors ${
+                    className={`group/row relative flex cursor-pointer items-center gap-1.5 border-b border-line/60 px-2 transition-colors last:border-b-0 ${
                       isDrop
                         ? dropTarget.ok
                           ? "bg-focus/25 ring-1 ring-inset ring-focus"
@@ -909,7 +996,7 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
                 );
               })}
 
-              {c.addTo ? (
+              {c.addTo && !p.collapsed ? (
                 <div className="rounded-b-lg border-t border-line px-1.5 py-1">
                   {addingIn === c.id ? (
                     <input
@@ -981,30 +1068,75 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
         </button>
       </div>
 
-      {/* ── wire routing ── */}
+      {/* ── how much wiring is drawn, and how it's routed ── */}
       <div
         onMouseDown={(e) => e.stopPropagation()}
-        className="absolute right-3 top-3 flex items-center gap-0.5 rounded-lg border border-line bg-ink-raised/95 p-1 shadow-lg backdrop-blur"
+        className="absolute right-3 top-3 flex items-center gap-1 rounded-lg border border-line bg-ink-raised/95 p-1 shadow-lg backdrop-blur"
       >
+        <span className="pl-1 text-[9px] font-bold uppercase tracking-[0.08em] text-fg-mute">
+          Wires
+        </span>
+        {(
+          [
+            { id: "full", label: "All", hint: "Every wire at full strength — the whole weave at once" },
+            { id: "calm", label: "Calm", hint: "Every wire, hushed — chains light up as you point at them" },
+            { id: "focus", label: "Focus", hint: "Only the chain you're pointing at is drawn" },
+          ] as const
+        ).map((d) => (
+          <button
+            key={d.id}
+            type="button"
+            onClick={() => setWireDensity(d.id)}
+            title={d.hint}
+            className={`rounded px-1.5 py-1 text-[10.5px] font-semibold transition-colors ${
+              density === d.id ? "bg-fg text-ink" : "text-fg-mute hover:bg-ink-hover hover:text-fg"
+            }`}
+          >
+            {d.label}
+          </button>
+        ))}
+
+        <span className="mx-0.5 h-4 w-px bg-line" />
+
         {(
           [
             { id: "stepped", label: "Elbow", icon: Waypoints, hint: "Right-angle wires that share a trunk — easiest to trace" },
             { id: "curved", label: "Curve", icon: Spline, hint: "Free curves — easier when two cards nearly overlap" },
           ] as const
         ).map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setWireStyle(s.id)}
-            title={s.hint}
-            className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10.5px] font-semibold transition-colors ${
-              wireStyle === s.id ? "bg-fg text-ink" : "text-fg-mute hover:bg-ink-hover hover:text-fg"
-            }`}
-          >
+          <ToolButton key={s.id} title={s.hint} onClick={() => setWireStyle(s.id)} active={wireStyle === s.id}>
             <s.icon size={12} />
-            {s.label}
-          </button>
+          </ToolButton>
         ))}
+
+        <span className="mx-0.5 h-4 w-px bg-line" />
+
+        <ToolButton
+          title={
+            allFolded
+              ? "Unfold every card"
+              : "Fold every card to its header — the fastest way to see the shape of the system"
+          }
+          onClick={() => setCollapsedAll(allFolded ? [] : Object.keys(placed))}
+        >
+          {allFolded ? <UnfoldVertical size={12} /> : <FoldVertical size={12} />}
+        </ToolButton>
+      </div>
+
+      {/* ── create, from the map itself ── */}
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        className="absolute bottom-3 left-1/2 -translate-x-1/2"
+      >
+        <button
+          type="button"
+          onClick={onNewSet}
+          title="Add a new set of variables — empty, or one of the ready-made ones"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-ink-raised/95 px-2.5 py-1.5 text-[11px] font-semibold text-fg-dim shadow-lg backdrop-blur transition-colors hover:border-line-strong hover:text-fg"
+        >
+          <Plus size={12} />
+          New set of variables
+        </button>
       </div>
 
       {/* ── viewport controls ── */}
@@ -1084,8 +1216,11 @@ export function VariableCanvas({ graph }: { graph: VariableGraph }) {
                 </div>
               ))}
               <p className="pt-0.5 text-[9.5px] leading-snug text-fg-mute">
-                A wire is painted in the tier of the value it carries, and points at whatever consumes
-                it.
+                A wire is painted in the tier of the value it carries. Point at a row or a card and
+                its chain lights up — that&apos;s when the arrow and the dashes above appear.
+              </p>
+              <p className="text-[9.5px] leading-snug text-fg-mute">
+                Too busy? Fold a card with its chevron, or drop Wires to Focus.
               </p>
             </div>
           </div>

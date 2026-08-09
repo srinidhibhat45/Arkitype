@@ -27,7 +27,8 @@ import {
   VarTierKey,
   componentStatus,
 } from "@/store/useDesignSystem";
-import { TIER_META, VarTier, buildVariableGraph, tierColor } from "@/lib/variableGraph";
+import { TIER_META, buildVariableGraph, tierColor } from "@/lib/variableGraph";
+import { TierBadge } from "@/components/variables/VariableBits";
 import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 
 /**
@@ -105,33 +106,18 @@ function AddForm({
   );
 }
 
-/** The tier ordinal, in the same colours the map uses. */
-function TierBadge({ tier, size = 13 }: { tier: VarTier; size?: number }) {
-  return (
-    <span
-      className="flex shrink-0 items-center justify-center rounded-[3px] font-mono font-bold leading-none"
-      style={{
-        width: size,
-        height: size,
-        fontSize: size * 0.62,
-        background: tierColor(tier),
-        color: "rgb(var(--c-ink-raised))",
-      }}
-    >
-      {TIER_META[tier].step}
-    </span>
-  );
-}
-
 /**
- * The Variables tab's rail — the navigator for the map on the canvas. Search
- * finds any variable in the file and flies the canvas to it; the toggles below
- * decide what the map draws, which matters because the primitive tier alone is
- * a hundred-odd rows.
+ * The Variables tab's rail — the navigator for whichever surface is showing.
+ * Search finds any variable in the file and goes to it, in either view.
+ *
+ * What sits below the search depends on the view, because most of it only means
+ * something on the map: which tiers are drawn, which collections are hidden,
+ * which mode a dragged wire writes. The table answers all three by having a
+ * sets list and two named columns, so the rail doesn't repeat it.
  *
  * The tier colours and ordinals here are the map's, deliberately: the rail is a
- * table of contents for the canvas, so a row has to be recognisable as the same
- * thing in both places.
+ * table of contents, so a row has to be recognisable as the same thing wherever
+ * you meet it.
  */
 function VariablesPanel() {
   const primitives = useDesignSystem((s) => s.primitives);
@@ -143,6 +129,9 @@ function VariablesPanel() {
   const toggleVariableTier = useDesignSystem((s) => s.toggleVariableTier);
   const setVariableEditMode = useDesignSystem((s) => s.setVariableEditMode);
   const setVariablesConnectedOnly = useDesignSystem((s) => s.setVariablesConnectedOnly);
+  const setActiveVariableCollection = useDesignSystem((s) => s.setActiveVariableCollection);
+  const setVariablesCreating = useDesignSystem((s) => s.setVariablesCreating);
+  const isMap = ui.view === "map";
 
   const graph = useMemo(
     () => buildVariableGraph({ primitives, semantics, components }),
@@ -170,6 +159,16 @@ function VariablesPanel() {
 
   return (
     <div className="space-y-4 px-3 py-3">
+      {/* start something new — the same panel the table and the map open */}
+      <button
+        type="button"
+        onClick={() => setVariablesCreating(true)}
+        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-line bg-ink-panel py-1.5 text-[11.5px] font-semibold text-fg-dim transition-colors hover:border-line-strong hover:bg-ink-hover hover:text-fg"
+      >
+        <Plus size={11} />
+        New set of variables
+      </button>
+
       {/* search */}
       <div className="flex h-8 items-center gap-1.5 rounded-md border border-line bg-ink-panel px-2">
         <Search size={11} className="shrink-0 text-fg-mute" />
@@ -222,8 +221,17 @@ function VariablesPanel() {
         </div>
       ) : (
         <>
-          {/* which mode a wire edit writes */}
-          <div>
+          {/* Says where the controls went, rather than leaving a bare panel. */}
+          {!isMap ? (
+            <p className="text-[10.5px] leading-relaxed text-fg-mute">
+              Your sets are listed beside the table, and each column is a mode. Switch to Map for
+              the wiring — what feeds what, and what depends on it.
+            </p>
+          ) : null}
+
+          {/* which mode a wire edit writes — a map question only: the table
+              writes to the column you typed in */}
+          <div className={isMap ? "" : "hidden"}>
             <span className="mb-1 block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
               Editing
             </span>
@@ -255,8 +263,8 @@ function VariablesPanel() {
             </p>
           </div>
 
-          {/* tiers */}
-          <div className="space-y-1">
+          {/* tiers — what the map draws */}
+          <div className={`space-y-1 ${isMap ? "" : "hidden"}`}>
             <span className="block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
               Tiers
             </span>
@@ -300,10 +308,13 @@ function VariablesPanel() {
             </label>
           </div>
 
-          {/* collections, grouped into the same four lanes the map draws */}
-          <div className="space-y-2.5">
+          {/* The file's sets, grouped into the same four lanes the map draws.
+              The table carries this list itself, immediately left of the
+              columns — so in that view the rail stays out of its way rather
+              than showing the same thing twice. */}
+          <div className={`space-y-2.5 ${isMap ? "" : "hidden"}`}>
             <span className="block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
-              Collections
+              Sets
             </span>
             {TIERS.map((t) => {
               const inTier = graph.collections.filter((c) => c.tier === t);
@@ -320,32 +331,46 @@ function VariablesPanel() {
                   </div>
                   {inTier.map((c) => {
                     const hidden = ui.hiddenCollections.includes(c.id);
+                    const open = !isMap && ui.activeCollection === c.id;
                     return (
                       <div
                         key={c.id}
-                        className="group/coll flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-ink-panel"
+                        className={`group/coll flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-colors ${
+                          open ? "bg-ink-raised" : "hover:bg-ink-panel"
+                        }`}
                       >
                         <button
                           type="button"
-                          onClick={() => c.nodes[0] && focusVariable(c.nodes[0].id)}
+                          onClick={() => {
+                            // One row, two views: on the map it flies the
+                            // canvas there; in the table it opens the set.
+                            setActiveVariableCollection(c.id);
+                            if (isMap && c.nodes[0]) focusVariable(c.nodes[0].id);
+                          }}
                           className={`min-w-0 flex-1 truncate text-left text-[11.5px] hover:text-fg ${
-                            hidden ? "text-fg-mute line-through" : "text-fg-dim"
+                            hidden && isMap
+                              ? "text-fg-mute line-through"
+                              : open
+                                ? "font-semibold text-fg"
+                                : "text-fg-dim"
                           }`}
-                          title={`Jump to ${c.label}`}
+                          title={isMap ? `Jump to ${c.label}` : `Open ${c.label}`}
                         >
                           {c.label}
                         </button>
                         <span className="shrink-0 font-mono text-[10px] text-fg-mute">
                           {c.nodes.length}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => toggleVariableCollection(c.id)}
-                          title={hidden ? "Show on the map" : "Hide from the map"}
-                          className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
-                        >
-                          {hidden ? <EyeOff size={10} /> : <Eye size={10} />}
-                        </button>
+                        {isMap ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleVariableCollection(c.id)}
+                            title={hidden ? "Show on the map" : "Hide from the map"}
+                            className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
+                          >
+                            {hidden ? <EyeOff size={10} /> : <Eye size={10} />}
+                          </button>
+                        ) : null}
                       </div>
                     );
                   })}

@@ -1,22 +1,45 @@
 "use client";
 
 /**
- * The Variables workspace — the map plus its inspector, laid out on the same
- * canvas/aside rhythm as every step surface (see StepScaffold) so switching
- * into it doesn't feel like leaving the tool.
+ * The Variables workspace — two views of one graph, plus the inspector they
+ * share, laid out on the same canvas/aside rhythm as every step surface (see
+ * StepScaffold) so switching into it doesn't feel like leaving the tool.
  *
- * It replaces the step canvas rather than sitting inside one: the map spans all
- * eight steps' worth of tokens at once, so it has no single step to belong to.
- * The rail, the top bar, and the step you were on are all untouched — click
+ * The table is where the work happens: sets down the left, modes across the
+ * top, the shape a designer already knows. The map answers the question a table
+ * can't — what feeds this, and what breaks if I change it. Neither owns any
+ * token state; both write to the same store the Colour and Components steps do.
+ *
+ * It replaces the step canvas rather than sitting inside one: Variables spans
+ * all eight steps' worth of tokens at once, so it has no single step to belong
+ * to. The rail, the top bar, and the step you were on are all untouched — click
  * Layers or Tokens and you're back exactly where you were.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useDesignSystem } from "@/store/useDesignSystem";
+import { Network, Table2 } from "lucide-react";
+import { VarView, useDesignSystem } from "@/store/useDesignSystem";
 import { buildVariableGraph } from "@/lib/variableGraph";
 import { VariableCanvas } from "@/components/variables/VariableCanvas";
+import { VariableTable } from "@/components/variables/VariableTable";
 import { VariableInspector } from "@/components/variables/VariableInspector";
+import { NewSetPanel } from "@/components/variables/NewVariableSet";
 
 const MIN_INSPECTOR_WIDTH = 300;
+
+const VIEWS: Array<{ id: VarView; label: string; icon: typeof Table2; hint: string }> = [
+  {
+    id: "table",
+    label: "Table",
+    icon: Table2,
+    hint: "Sets down the left, modes across the top — the everyday editing view",
+  },
+  {
+    id: "map",
+    label: "Map",
+    icon: Network,
+    hint: "The same variables as a graph — what feeds what, and what depends on it",
+  },
+];
 
 export function VariablesView() {
   const primitives = useDesignSystem((s) => s.primitives);
@@ -24,6 +47,13 @@ export function VariablesView() {
   const components = useDesignSystem((s) => s.components);
   const activeProjectId = useDesignSystem((s) => s.activeProjectId);
   const markCheckpoint = useDesignSystem((s) => s.markCheckpoint);
+  const view = useDesignSystem((s) => s.variablesUI.view);
+  const setView = useDesignSystem((s) => s.setVariableView);
+  const setActiveVariableCollection = useDesignSystem((s) => s.setActiveVariableCollection);
+  // The create panel is opened from three places — the table's sets list, the
+  // map, and the rail — so which of them is showing is the store's business.
+  const creating = useDesignSystem((s) => s.variablesUI.creating);
+  const setCreating = useDesignSystem((s) => s.setVariablesCreating);
 
   const graph = useMemo(
     () => buildVariableGraph({ primitives, semantics, components }),
@@ -74,7 +104,53 @@ export function VariablesView() {
 
   return (
     <div className="flex h-full min-h-0 flex-1">
-      <VariableCanvas graph={graph} />
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* which of the two views is showing — the only chrome they share */}
+        <div className="flex h-[38px] shrink-0 items-center gap-2 border-b border-line bg-ink-panel px-3">
+          <div className="flex rounded-md border border-line bg-ink p-0.5">
+            {VIEWS.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => setView(v.id)}
+                title={v.hint}
+                aria-pressed={view === v.id}
+                className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-semibold transition-colors ${
+                  view === v.id ? "bg-fg text-ink" : "text-fg-mute hover:text-fg"
+                }`}
+              >
+                <v.icon size={12} />
+                {v.label}
+              </button>
+            ))}
+          </div>
+          <p className="truncate text-[10.5px] text-fg-mute">
+            {view === "table"
+              ? "Every variable in the file, by set — click a value to point it somewhere else."
+              : "Drag a row's handle onto anything to its right to link them."}
+          </p>
+        </div>
+
+        {view === "table" ? (
+          <VariableTable graph={graph} onNewSet={() => setCreating(true)} />
+        ) : (
+          <VariableCanvas graph={graph} onNewSet={() => setCreating(true)} />
+        )}
+
+
+        {creating ? (
+          <NewSetPanel
+            onClose={(createdId) => {
+              setCreating(false);
+              // Land on what was just made. The graph this render was built
+              // from predates the write, so the id is all we can go on — the
+              // table resolves it against the rebuilt one.
+              if (createdId) setActiveVariableCollection(createdId);
+            }}
+          />
+        ) : null}
+      </div>
+
       <aside
         style={{ width: `${inspectorWidth}px` }}
         className="relative flex h-full shrink-0 flex-col border-l border-line bg-ink-panel"

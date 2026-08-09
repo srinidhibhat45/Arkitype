@@ -75,6 +75,41 @@ function FieldList({ items }: { items: { label: string; body: ReactNode }[] }) {
   );
 }
 
+/**
+ * A numbered do-this-then-this list. Distinct from FieldList on purpose: that
+ * one inventories controls you might use in any order, this one is a path with
+ * a beginning and an end, and the numbers are the point.
+ */
+function Steps({ items }: { items: { label: string; body: ReactNode }[] }) {
+  return (
+    <ol className="mt-5 space-y-5">
+      {items.map((it, i) => (
+        <li key={it.label} className="flex gap-4">
+          <span
+            aria-hidden
+            className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line-strong text-[12px] font-medium text-fg-dim"
+          >
+            {i + 1}
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-fg">{it.label}</p>
+            <div className="mt-1 text-sm leading-relaxed text-fg-dim">{it.body}</div>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** An inline keyboard shortcut. */
+function Key({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="rounded border border-line-strong bg-ink-panel px-1.5 py-0.5 font-sans text-[12px] text-fg-dim">
+      {children}
+    </kbd>
+  );
+}
+
 /* ── sidebar structure ────────────────────────────────────────── */
 
 const NAV: { heading: string; items: { id: string; label: string }[] }[] = [
@@ -82,7 +117,9 @@ const NAV: { heading: string; items: { id: string; label: string }[] }[] = [
     heading: "Getting started",
     items: [
       { id: "overview", label: "Overview" },
+      { id: "quick-start", label: "Quick start · 5 minutes" },
       { id: "starting-a-file", label: "Starting a file" },
+      { id: "the-workspace", label: "The workspace" },
       { id: "files-and-clients", label: "Files & clients" },
     ],
   },
@@ -93,7 +130,7 @@ const NAV: { heading: string; items: { id: string; label: string }[] }[] = [
   {
     heading: "Reference",
     items: [
-      { id: "variables-map", label: "The Variables map" },
+      { id: "variables-map", label: "Variables: table and map" },
       { id: "accessibility", label: "Accessibility engine" },
       { id: "export-formats", label: "Export formats" },
       { id: "publishing", label: "Publishing & sharing" },
@@ -232,6 +269,107 @@ export default function DocsPage() {
               Component (reads roles + scales, never a raw value) → Export
               (compiled to CSS vars, Tailwind, MUI, Figma, or docs).
             </Callout>
+            <p className="!mt-6">
+              If you&apos;d rather try it than read it, the{" "}
+              <a href="#quick-start" className="font-medium text-fg underline underline-offset-2">
+                quick start
+              </a>{" "}
+              below gets you from an empty account to a real exported artifact in about five
+              minutes. Everything after it is reference — read it when you hit the thing it
+              describes.
+            </p>
+          </Section>
+
+          {/* ── Quick start ──────────────────────────────────────── */}
+          <Section id="quick-start" eyebrow="Getting started" title="Quick start · 5 minutes">
+            <p>
+              The shortest honest path through Arkitype. You can stop after step 4 and still have
+              something worth looking at — the rest is handoff.
+            </p>
+            <Steps
+              items={[
+                {
+                  label: "Make a file",
+                  body: (
+                    <>
+                      From the dashboard, <strong className="font-medium text-fg">New file</strong>.
+                      Pick <strong className="font-medium text-fg">Blank system</strong> if you just
+                      want to look around, or paste a URL under{" "}
+                      <strong className="font-medium text-fg">From a live site</strong> to start from
+                      a brand that already exists. Name it, set a brand colour, and open it. Nothing
+                      here is permanent — every field is editable afterwards.
+                    </>
+                  ),
+                },
+                {
+                  label: "Set the brand colour and check the warnings",
+                  body: (
+                    <>
+                      You land on <strong className="font-medium text-fg">01 · Colour &amp; roles</strong>.
+                      Change the Brand seed and watch the whole ramp regenerate. Switch to the{" "}
+                      <strong className="font-medium text-fg">Roles</strong> tab: this is where a
+                      colour stops being a colour and starts being a job. If a change would push a
+                      real pairing below AA, you&apos;ll get a named warning rather than a silent
+                      failure — you can override it, but you&apos;ll know.
+                    </>
+                  ),
+                },
+                {
+                  label: "Skim steps 2–5, change one thing in each",
+                  body: (
+                    <>
+                      Typography, Spacing, Shape, Motion. You don&apos;t have to finish them — move a
+                      type ratio, a base spacing unit, a radius slider, one duration. The point is to
+                      feel that these are upstream of everything else, not to get them right on the
+                      first pass.
+                    </>
+                  ),
+                },
+                {
+                  label: "Go to Preview and watch it hold together",
+                  body: (
+                    <>
+                      Step 7 renders a whole product from your tokens — nothing in the frame is
+                      hardcoded. Flip <strong className="font-medium text-fg">form factor</strong>{" "}
+                      (SaaS / Mobile / Marketing) and the top-bar{" "}
+                      <strong className="font-medium text-fg">Preview: Light / Dark</strong> toggle.
+                      This is the step that tells you whether the decisions you just made actually
+                      work. Go back and fix what doesn&apos;t.
+                    </>
+                  ),
+                },
+                {
+                  label: "Ship something",
+                  body: (
+                    <>
+                      Step 8. Grab <strong className="font-medium text-fg">CSS variables</strong> or a{" "}
+                      <strong className="font-medium text-fg">Tailwind config</strong> if you want to
+                      use it in code today, or hit{" "}
+                      <strong className="font-medium text-fg">Publish</strong> to get a shareable link
+                      that needs no account and no install. For Figma, publish first, then paste the
+                      sync link into{" "}
+                      <a
+                        href={FIGMA_PLUGIN_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-fg underline underline-offset-2"
+                      >
+                        {FIGMA_PLUGIN_NAME}
+                      </a>
+                      .
+                    </>
+                  ),
+                },
+              ]}
+            />
+            <Callout title="Two things that make the first hour easier">
+              <p>
+                <Key>⌘Z</Key> works everywhere in the workspace, not just where you&apos;d expect —
+                so poke at things. And the eight steps are an order, not a gate: the rail lets you
+                jump to any of them at any time, and coming back to Colour after Components is
+                normal, not a mistake.
+              </p>
+            </Callout>
           </Section>
 
           <Section id="starting-a-file" eyebrow="Getting started" title="Starting a file">
@@ -270,6 +408,98 @@ export default function DocsPage() {
               Each account holds up to <strong className="font-medium text-fg">{PROJECT_LIMIT}</strong> design
               files. Duplicating or creating past the limit is blocked with a clear
               message rather than failing silently.
+            </Callout>
+          </Section>
+
+          {/* ── The workspace ────────────────────────────────────── */}
+          <Section id="the-workspace" eyebrow="Getting started" title="The workspace">
+            <p>
+              Every step shares the same three-part frame: a rail on the left for navigating and
+              editing tokens, the canvas in the middle, and an inspector on the right for whatever is
+              currently selected. Both side panels drag to resize, and the width is remembered.
+            </p>
+
+            <SubHeading>The top bar</SubHeading>
+            <FieldList
+              items={[
+                {
+                  label: "Files · Arkitype · name",
+                  body: "Files takes you back to the dashboard. The name is editable in place — click it and type.",
+                },
+                {
+                  label: "Autosaved",
+                  body: "There's no save button; the file writes as you work. If a save fails you get a red “Not saved” with a Retry instead, and “Changed elsewhere” if the same file was edited in another tab — that one offers Reload rather than silently overwriting.",
+                },
+                {
+                  label: "? — the guided tour",
+                  body: "A four-stop tour of the frame itself (rail, canvas, inspector, top bar). It's always available, not just on first run.",
+                },
+                {
+                  label: "Sun / moon — Appearance",
+                  body: "Themes the tool. This is not your design system's light and dark mode, and changing it doesn't touch a single token.",
+                },
+                {
+                  label: "Preview: Light / Dark",
+                  body: "This one is your system's mode. Everything on the canvas — components, previews, the Variables table's two columns — resolves through it. Check both while you work; a system that only looks considered in one theme isn't finished.",
+                },
+                {
+                  label: "Ship",
+                  body: "Jumps straight to step 8 from anywhere. It fills in solid once the system is far enough along to be worth handing off.",
+                },
+              ]}
+            />
+
+            <SubHeading>The left rail — three tabs</SubHeading>
+            <FieldList
+              items={[
+                {
+                  label: "Layers",
+                  body: "The eight build steps, in order, with a progress count at the foot. Under Components it expands into every component grouped by lane, so you can jump straight to one. The filter box at the top searches steps and components together.",
+                },
+                {
+                  label: "Tokens",
+                  body: "The registry, editable without leaving whatever step you're on: Colors, Spacing, Radius, Font Families, Font Scale Steps, Elevation, and Motion, each with an Add control and a one-click copy on every value. There's also a Density switcher here for rescaling spacing and radius together.",
+                },
+                {
+                  label: "Variables",
+                  body: (
+                    <>
+                      The navigator for the Variables workspace — search across every variable in the
+                      file, create a new set, and (on the map) control which tiers and collections are
+                      drawn. See{" "}
+                      <a
+                        href="#variables-map"
+                        className="font-medium text-fg underline underline-offset-2"
+                      >
+                        Variables: the table and the map
+                      </a>
+                      .
+                    </>
+                  ),
+                },
+              ]}
+            />
+            <p className="!mt-6">
+              Layers and Tokens sit <em>beside</em> the step you&apos;re on. Variables is different —
+              it takes over the canvas, because it spans all eight steps&apos; tokens at once and has
+              no single step to live inside. Your step is untouched underneath: switch back to Layers
+              or Tokens and you&apos;re exactly where you left off.
+            </p>
+
+            <SubHeading>Undoing things</SubHeading>
+            <p>
+              <Key>⌘Z</Key> and <Key>⇧⌘Z</Key> (<Key>Ctrl+Z</Key> / <Key>Ctrl+Y</Key> on Windows)
+              cover the whole workspace, not one panel — a colour rebind, a component binding, a
+              renamed token, a whole ready-made variable set all undo the same way. A rapid gesture
+              like scrubbing a slider collapses into one step rather than fifty. The shortcut
+              deliberately stays out of the way while you&apos;re typing in a field, where the
+              browser&apos;s own text undo is the right behaviour.
+            </p>
+            <Callout title="If you get lost">
+              Nothing in the builder is destructive without saying so first — deletes ask twice, and
+              the Variables workspace additionally offers <em>Reset this sitting</em>, which returns
+              every token to how it stood when you opened it. Even that is recorded as an ordinary
+              edit, so one <Key>⌘Z</Key> brings your work back if you hit it by mistake.
             </Callout>
           </Section>
 
@@ -566,14 +796,29 @@ export default function DocsPage() {
             </Callout>
           </Section>
 
-          {/* ── Variables map ────────────────────────────────────── */}
-          <Section id="variables-map" eyebrow="Reference" title="The Variables map">
+          {/* ── Variables ────────────────────────────────────────── */}
+          <Section id="variables-map" eyebrow="Reference" title="Variables: the table and the map">
             <p>
               The <strong className="font-medium text-fg">Variables</strong> tab in the left rail
-              replaces the step canvas with a map of every variable in the file at once — every
-              ramp step, scale rung, semantic role, component token, and every component property
+              replaces the step canvas with every variable in the file at once — every ramp step,
+              scale rung, semantic role, component token, and every component property
               you&apos;ve bound. It isn&apos;t a second copy of your tokens: an edit here lands in
               exactly the same place the Colour and Components steps write to.
+            </p>
+            <p>
+              Two views, switched top-left. <strong className="font-medium text-fg">Table</strong> is
+              the everyday one: your sets down the left, a column per mode, a row per variable.
+              Click any value to point it at another variable or type one in.{" "}
+              <strong className="font-medium text-fg">Map</strong> is the same data as a graph, for
+              the question a table can&apos;t answer — what feeds this, and what breaks if I change
+              it.
+            </p>
+            <p>
+              <strong className="font-medium text-fg">New set of variables</strong> — in the rail, in
+              the table&apos;s sets list, and at the foot of the map — starts an empty set, or drops
+              in a ready-made one. The ready-made sets (a focus ring, a disabled grey, six chart
+              colours, a tooltip&apos;s own colours…) arrive wired to your ramps and roles rather
+              than to invented values, and land as a single edit, so one ⌘Z puts it back.
             </p>
             <p>
               Value flows left to right through four lanes. Each lane has its own colour and a
@@ -601,12 +846,61 @@ export default function DocsPage() {
               ]}
             />
 
+            <SubHeading>The table</SubHeading>
+            <p>
+              Sets down the left, grouped by those four tiers with a count each. Pick one and it
+              fills the columns: a <strong className="font-medium text-fg">Name</strong> column, then
+              one column per mode — Light and Dark for a role or component token, a single read-only
+              Value for a primitive, and <em>Bound to</em> for a component property.
+            </p>
+            <FieldList
+              items={[
+                {
+                  label: "Rows group themselves",
+                  body: "Variables sharing everything but their last segment collapse under one heading — overlay-scrim and overlay-veil become an “overlay” heading with scrim and veil under it. Renaming the visible part keeps the prefix, so the grouping can't quietly rewrite a name.",
+                },
+                {
+                  label: "A value states what it is",
+                  body: "A chip carrying a swatch and either the name it follows (an alias), or its hex (a literal), plus an alpha percentage when there is one. Aliases read as names on purpose — that's the whole reason to alias.",
+                },
+                {
+                  label: "Clicking a value opens both ways to set it",
+                  body: "A colour well and a free-text field on top — a ramp reference like brand-600, an @role, or a raw hex — and a searchable list of every variable that could legally feed this one below. Nothing in that list can produce an illegal link, so there's no error to recover from.",
+                },
+                {
+                  label: "Names, adds and deletes",
+                  body: "Rename a variable in place and every reference and component binding follows. Hovering a row offers copy and delete; the set header renames or deletes the whole set, and “+ Variable” adds to it.",
+                },
+              ]}
+            />
+
+            <SubHeading>Creating a set</SubHeading>
+            <p>
+              <strong className="font-medium text-fg">New set of variables</strong> appears in three
+              places — the rail, the top of the table&apos;s sets list, and the foot of the map — and
+              opens the same panel. Name an empty set (a{" "}
+              <strong className="font-medium text-fg">Role</strong> set or a{" "}
+              <strong className="font-medium text-fg">Component</strong> one), or take a ready-made
+              one: Focus &amp; overlay, Selection &amp; highlight, Disabled, Chart, Badge, Table,
+              Tooltip, Dialog, Navigation, Toast.
+            </p>
+            <Callout title="What “ready-made” actually means here">
+              A preset is a starting point, not a template — once applied it&apos;s ordinary tokens
+              you can rename, rebind, or delete, and nothing keeps referring back to it. The values
+              resolve against <em>your</em> file: a set asking for a brand ramp finds yours, or the
+              closest thing to it, and a component token pointing at a role you don&apos;t have falls
+              back to a primitive instead of dangling. Each one lands as a single edit, so one{" "}
+              <Key>⌘Z</Key> removes the set and everything in it.
+            </Callout>
+
             <SubHeading>Reading the wires</SubHeading>
             <p>
               A wire is painted in the lane of the value it <em>carries</em> and points at whatever
               consumes it, so its colour answers &ldquo;where did this come from&rdquo; without a
-              click. Wires stay drawn at full strength at all times; hovering or selecting a row
-              lights its whole chain and fades the rest, but never out of sight.
+              click. At rest a wire is quiet and ends in a small dot at each end; point at a row or a
+              card and its whole chain lights up, gains an arrow, and spells out the dashes below.
+              A full system is several hundred aliases, and this is what keeps it a map rather than
+              a hairball.
             </p>
             <FieldList
               items={[
@@ -617,8 +911,16 @@ export default function DocsPage() {
                 },
                 { label: "Fine dots", body: "A component-property binding" },
                 {
+                  label: "Wires: All / Calm / Focus",
+                  body: "How much is drawn at rest. Calm is the default — everything is there, hushed. All puts every wire at full strength when you want the whole weave; Focus draws nothing but the chain under your cursor.",
+                },
+                {
                   label: "Elbow / Curve",
                   body: "Two routings, top-right of the canvas. Elbows share a trunk, so a bundle leaving one ramp can be traced; curves keep each wire distinct when two cards nearly overlap.",
+                },
+                {
+                  label: "Folding a card",
+                  body: "The chevron on any card header (or a double-click on it) collapses the card to its header, and every wire into or out of it gathers onto that one point. Fold-all, next to the routing controls, does the whole file at once — the fastest way to see the shape of a system.",
                 },
               ]}
             />
@@ -631,24 +933,59 @@ export default function DocsPage() {
               detaches the link and freezes the colour it currently resolves to, so the system looks
               identical the instant after. The inspector does the same work in words — it states
               what the selected variable follows, offers a searchable list of everything that could
-              legally feed it, and shows the whole chain in the direction the value travels.
+              legally feed it, and shows the whole chain in the direction the value travels. In the
+              table, that same work is a click on the value.
             </p>
+            <p>
+              One control worth knowing before you drag anything:{" "}
+              <strong className="font-medium text-fg">Editing — Light / Dark / Both</strong>, at the
+              top of the rail, decides which mode a new wire writes to <em>and</em> which wires are
+              drawn. On Both (the default) a link lands in light and dark together; on a single mode
+              it lands only there, and the map shows only that mode&apos;s wiring.
+            </p>
+
+            <SubHeading>Getting around the canvas</SubHeading>
+            <FieldList
+              items={[
+                {
+                  label: "Pan and zoom",
+                  body: (
+                    <>
+                      Drag the background to pan, scroll to pan vertically, <Key>⌘</Key> + scroll to
+                      zoom. The zoom controls, <em>Fit to view</em> and <em>Reset card layout</em> sit
+                      bottom-left.
+                    </>
+                  ),
+                },
+                {
+                  label: "Finding one variable",
+                  body: "Search in the rail. On the map it flies the canvas to it; in the table it opens the set that holds it. Clicking a source or a dependent in the inspector does the same thing.",
+                },
+                {
+                  label: "Hiding what you're not looking at",
+                  body: "The rail's Tiers toggles drop a whole lane, individual sets have an eye toggle, and “Hide unused primitives” drops every ramp step nothing references yet — which is most of them, on a fresh file.",
+                },
+                {
+                  label: "Key",
+                  body: "The legend, bottom-right, holds the four lane colours and what each dash pattern means. It collapses, and stays collapsed.",
+                },
+              ]}
+            />
 
             <SubHeading>Undo, redo, reset</SubHeading>
             <p>
-              <strong className="font-medium text-fg">⌘Z</strong> and{" "}
-              <strong className="font-medium text-fg">⇧⌘Z</strong> work across the whole workspace,
-              not just this map, and a rapid gesture like scrubbing a slider collapses into one
-              step. <strong className="font-medium text-fg">Reset this sitting</strong>, top-left of
-              the canvas, puts every token back to how it stood when you opened Variables — and
-              because it&apos;s recorded like any other edit, one ⌘Z brings your work back if you
+              <Key>⌘Z</Key> and <Key>⇧⌘Z</Key> work across the whole workspace, not just this map,
+              and a rapid gesture like scrubbing a slider collapses into one step.{" "}
+              <strong className="font-medium text-fg">Reset this sitting</strong>, top-left of the
+              canvas, puts every token back to how it stood when you opened Variables — and because
+              it&apos;s recorded like any other edit, one <Key>⌘Z</Key> brings your work back if you
               pressed it by mistake.
             </p>
             <Callout title="Layout is a view preference">
-              Dragging cards around, hiding a collection, and the zoom level are all remembered per
-              file and per browser — none of it is part of the design system, and none of it is
-              exported. <em>Reset card layout</em>, next to the zoom controls, puts the cards back
-              on their lanes without touching a single token.
+              Dragging cards around, folding them, hiding a collection, which view you were in and
+              the zoom level are all remembered per file and per browser — none of it is part of the
+              design system, and none of it is exported. <em>Reset card layout</em>, next to the
+              zoom controls, puts the cards back on their lanes without touching a single token.
             </Callout>
           </Section>
 
@@ -955,6 +1292,67 @@ export default function DocsPage() {
                 {
                   label: "Does the tool's own light/dark toggle affect my design system?",
                   body: "No — the chrome toggle (top right) only changes how the builder itself looks. Your system's light and dark modes are configured separately in Roles and Shape, and Preview lets you check both.",
+                },
+                {
+                  label: "Do I have to do the eight steps in order?",
+                  body: "No. The order is how the tokens depend on each other, not a gate — click any step in the rail at any time. Going back to Colour after you've built components is normal; that's the whole point of everything referencing a token instead of a value.",
+                },
+                {
+                  label: "What's the difference between the Tokens tab and the Variables tab?",
+                  body: (
+                    <>
+                      Same tokens, different question. <strong className="font-medium text-fg">Tokens</strong>{" "}
+                      is a registry that sits beside whatever step you&apos;re on — quick edits and
+                      copying values without losing your place.{" "}
+                      <strong className="font-medium text-fg">Variables</strong> takes over the canvas
+                      to show all of them at once, and is where you go to ask what feeds what. Neither
+                      is a copy: an edit in either lands in the same place the steps write to.
+                    </>
+                  ),
+                },
+                {
+                  label: "How do I add my own token or colour role?",
+                  body: (
+                    <>
+                      A single one: the Tokens tab&apos;s Add controls, or the Roles tab in step 1. A
+                      whole set at once:{" "}
+                      <strong className="font-medium text-fg">New set of variables</strong> in the
+                      Variables tab, which also offers ready-made sets (focus ring, disabled, chart
+                      series, and more) wired to your own ramps. See{" "}
+                      <a
+                        href="#variables-map"
+                        className="font-medium text-fg underline underline-offset-2"
+                      >
+                        Variables
+                      </a>
+                      .
+                    </>
+                  ),
+                },
+                {
+                  label: "The Variables map looks like spaghetti. What do I do?",
+                  body: (
+                    <>
+                      Three levers, in the order worth trying them. Fold the cards you aren&apos;t
+                      reading — the fold-all button collapses every card to its header and gathers its
+                      wires onto one point. Drop{" "}
+                      <strong className="font-medium text-fg">Wires</strong> from Calm to Focus, which
+                      draws only the chain under your cursor. And turn on{" "}
+                      <em>Hide unused primitives</em> in the rail, since on most files the majority of
+                      ramp steps aren&apos;t referenced yet.
+                    </>
+                  ),
+                },
+                {
+                  label: "I broke something. How far back can I go?",
+                  body: (
+                    <>
+                      <Key>⌘Z</Key> covers the whole workspace and holds a long history. In the
+                      Variables workspace, <em>Reset this sitting</em> additionally returns every
+                      token to how it stood when you opened it — and that itself is undoable. Nothing
+                      is deleted without a second click asking you to confirm.
+                    </>
+                  ),
                 },
                 {
                   label: "What can I export to?",

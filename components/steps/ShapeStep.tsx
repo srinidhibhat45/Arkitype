@@ -17,7 +17,6 @@ import {
   useDesignSystem,
 } from "@/store/useDesignSystem";
 import {
-  AsideNote,
   CanvasSection,
   HexInput,
   Segmented,
@@ -222,20 +221,17 @@ export function ShapeStep() {
             max={2.5}
             step={0.05}
             unit="×"
+            info="One slider scales the whole radius array; the extremes (none, full) never move. Type an exact px under any swatch to pin that one step."
             onChange={setRadiusScale}
           />
-          <AsideNote>
-            One slider scales the whole radius array; the extremes (none, full)
-            never move. Type an exact px under any swatch to pin it.
-          </AsideNote>
-          <AsideNote>
-            Elevation is structured — offset, blur, spread, colour and opacity —
-            and stored per mode. Edit one mode while watching both previews.
-          </AsideNote>
         </>
       }
     >
-      <CanvasSection title="Radius" hint={`${radiusScale}× scale · editable`}>
+      <CanvasSection
+        title="Radius"
+        hint={`${radiusScale}× scale`}
+        info="Architectural at 0×, balanced at 1×, friendly past 1.5× — radius is one of the strongest brand signals a system carries."
+      >
         <div className="flex flex-wrap items-start gap-4 rounded-xl border border-line p-5">
           {radii.map((r, i) => {
             const isFull = r === 9999;
@@ -284,7 +280,11 @@ export function ShapeStep() {
         </div>
       </CanvasSection>
 
-      <CanvasSection title="Elevation" hint="light and dark, simultaneously">
+      <CanvasSection
+        title="Elevation"
+        hint="light and dark, simultaneously"
+        info="Shadows are structured — offset, blur, spread, colour and opacity — and stored per mode, because depth reads differently on a light surface than a dark one. Edit one mode while watching both previews."
+      >
         <div className="space-y-5">
           <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
             <ElevationPreview mode="light" levels={elevation.light} />

@@ -31,7 +31,7 @@ interface ColorPrimitives {
  * plain ref or an 8-digit hex (which carries its own alpha and no slash) passes
  * through untouched. Alpha is clamped to 0–100.
  */
-function splitAlpha(ref: string): { base: string; alpha: number | null } {
+export function splitAlpha(ref: string): { base: string; alpha: number | null } {
   const slash = ref.lastIndexOf("/");
   if (slash === -1) return { base: ref, alpha: null };
   const a = Number(ref.slice(slash + 1));

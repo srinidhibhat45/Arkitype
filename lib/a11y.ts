@@ -61,3 +61,21 @@ export function checkContrast(hexA: string, hexB: string, context: A11yContext):
   const ratio = contrastRatio(hexA, hexB);
   return { ratio: Math.round(ratio * 100) / 100, level: wcagLevel(ratio, context), context };
 }
+
+export type A11yTier = "AA" | "AAA";
+
+/**
+ * The ratio a pairing must clear for a tier in a given context. `ui-component`
+ * has no AAA tier in WCAG 2.x (SC 1.4.11 defines 3:1 only), so AAA reuses the
+ * AA bar there and {@link tierApplies} reports it as not-applicable.
+ */
+export function thresholdFor(context: A11yContext, tier: A11yTier): number {
+  if (context === "text-normal") return tier === "AAA" ? 7 : 4.5;
+  if (context === "text-large") return tier === "AAA" ? 4.5 : 3;
+  return 3;
+}
+
+/** Whether a tier is even defined for a context (AAA is not, for non-text). */
+export function tierApplies(context: A11yContext, tier: A11yTier): boolean {
+  return !(context === "ui-component" && tier === "AAA");
+}

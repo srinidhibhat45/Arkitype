@@ -50,6 +50,93 @@ export type PreviewMode = "light" | "dark";
 /** Appearance of the tool itself (chrome), independent of the preview mode. */
 export type ChromeTheme = "light" | "dark";
 
+/** The three panels the left rail switches between. */
+export type LeftTab = "layers" | "tokens" | "variables";
+
+/** Tier bands on the Variables map — kept as a literal union (rather than
+ *  imported from lib/variableGraph) so the store stays dependency-free. */
+export type VarTierKey = "primitive" | "semantic" | "component" | "usage";
+
+/**
+ * View state for the Variables map. Transient by design: the map is a *view* of
+ * the token graph, so what's hidden or selected is a property of this session,
+ * not of the design system being built.
+ */
+export interface VariablesUI {
+  selected: string | null;
+  /** Bumped by focusVariable so the canvas can scroll a node into view. */
+  focus: { id: string; tick: number } | null;
+  hiddenCollections: string[];
+  tiers: Record<VarTierKey, boolean>;
+  /** Which mode(s) a drag-to-connect writes, and which alias edges are drawn. */
+  editMode: PreviewMode | "both";
+  /** Hide primitives nothing references yet — the ramps are 60 rows otherwise. */
+  connectedOnly: boolean;
+  /** How wires are routed: right-angle elbows, or free curves. */
+  wireStyle: VarWireStyle;
+}
+
+/** Wire routing on the map — mirrors lib/variableGraph's WireStyle. */
+export type VarWireStyle = "stepped" | "curved";
+
+export const DEFAULT_VARIABLES_UI: VariablesUI = {
+  selected: null,
+  focus: null,
+  hiddenCollections: [],
+  tiers: { primitive: true, semantic: true, component: true, usage: true },
+  editMode: "both",
+  connectedOnly: false,
+  wireStyle: "stepped",
+};
+
+/* ────────────────────────────── edit history ────────────────────────────── */
+
+/**
+ * The three slices that *are* the design system. Everything else in the store
+ * is either session state (who's signed in, which panel is open) or a cache of
+ * these three — so an undo step is exactly this, and nothing else.
+ */
+export interface DocSnapshot {
+  primitives: ArkitypeState["primitives"];
+  semantics: ArkitypeState["semantics"];
+  components: ArkitypeState["components"];
+}
+
+export interface EditHistory {
+  past: DocSnapshot[];
+  future: DocSnapshot[];
+  /**
+   * Where the document stood when the Variables map was opened — the point
+   * "Reset" returns to. One checkpoint, not a stack: it answers "undo this
+   * whole sitting", which is a different question from step-by-step undo.
+   */
+  checkpoint: DocSnapshot | null;
+}
+
+/**
+ * Consecutive edits inside this window collapse into one undo step, as long as
+ * they touch the same slices. Dragging a colour slider fires a set per pixel;
+ * without coalescing, one drag would cost fifty presses of ⌘Z.
+ */
+const HISTORY_COALESCE_MS = 450;
+/** Snapshots are references, not clones — this cap is about sanity, not bytes. */
+const HISTORY_LIMIT = 100;
+
+/** The document, lifted out of the wider store. */
+export const docOf = (state: DocSnapshot): DocSnapshot => ({
+  primitives: state.primitives,
+  semantics: state.semantics,
+  components: state.components,
+});
+
+/** Has the document moved since `snapshot`? Reference equality is enough —
+ *  every action replaces the slices it touches. */
+export const docChanged = (state: DocSnapshot, snapshot: DocSnapshot | null): boolean =>
+  !!snapshot &&
+  (state.primitives !== snapshot.primitives ||
+    state.semantics !== snapshot.semantics ||
+    state.components !== snapshot.components);
+
 /** Global padding/radius "vibe" — a one-shot preset over spacingBase + radiusScale,
  *  same category as a colour-harmony chip: applies once, then stays fully editable
  *  by hand in Space/Shape. Not a locked mode. */
@@ -716,7 +803,15 @@ export interface ArkitypeState {
   activeComponentState: string;
   hoveredPartId: string | null;
   selectedPartId: string | null;
-  activeLeftTab: "layers" | "tokens";
+  activeLeftTab: LeftTab;
+  /** Variables tab view state — transient, never persisted. */
+  variablesUI: VariablesUI;
+  /**
+   * Undo/redo over the document, recorded centrally in `set` so every action —
+   * existing or future — is undoable without opting in. Session-scoped: it's a
+   * record of what you did just now, not part of the saved file.
+   */
+  history: EditHistory;
 
   /* Auth & onboarding actions */
   /** Populate the store from a signed-in Supabase session (profile + projects). */
@@ -766,7 +861,25 @@ export interface ArkitypeState {
   setActiveComponentState: (s: string) => void;
   setHoveredPartId: (id: string | null) => void;
   setSelectedPartId: (id: string | null) => void;
-  setActiveLeftTab: (tab: "layers" | "tokens") => void;
+  setActiveLeftTab: (tab: LeftTab) => void;
+
+  /* variables map */
+  selectVariable: (id: string | null) => void;
+  /** Select *and* ask the canvas to bring the node into view. */
+  focusVariable: (id: string) => void;
+  toggleVariableCollection: (collectionId: string) => void;
+  toggleVariableTier: (tier: VarTierKey) => void;
+  setVariableEditMode: (mode: VariablesUI["editMode"]) => void;
+  setVariablesConnectedOnly: (only: boolean) => void;
+  setVariableWireStyle: (style: VarWireStyle) => void;
+
+  /* undo / redo / reset */
+  undo: () => void;
+  redo: () => void;
+  /** Pin "here is where I started" — the Variables map calls this on open. */
+  markCheckpoint: () => void;
+  /** Put the document back to the checkpoint. Undoable like any other edit. */
+  revertToCheckpoint: () => void;
 
   /* colour */
   setSeed: (slot: string, hex: string) => void;
@@ -782,7 +895,9 @@ export interface ArkitypeState {
   setSpacingMultiplier: (index: number, multiplier: number) => void;
   setSpacingOverride: (index: number, px: number) => void;
   clearSpacingOverride: (index: number) => void;
-  addSpacingStep: () => void;
+  /** Append a rung. Pass a multiplier to set it explicitly; omit to continue
+   *  the ladder's own progression. */
+  addSpacingStep: (multiplier?: number) => void;
   removeSpacingStep: (index: number) => void;
   setRadiusScale: (scale: number) => void;
   setRadiusOverride: (index: number, px: number) => void;
@@ -1147,6 +1262,13 @@ function freshPrimitives(): ArkitypeState["primitives"] {
 export const useDesignSystem = create<ArkitypeState>()(
   persist(
     (originalSet, get) => {
+      /* ── history bookkeeping (see EditHistory) ──
+       * Off only while undo/redo are themselves writing, so replaying a
+       * snapshot doesn't get recorded as a fresh edit. */
+      let recording = true;
+      let lastPushAt = 0;
+      let lastPushKey = "";
+
       const set = (
         partial:
           | ArkitypeState
@@ -1157,9 +1279,47 @@ export const useDesignSystem = create<ArkitypeState>()(
         originalSet((state) => {
           const next = typeof partial === "function" ? partial(state) : partial;
           const merged = { ...state, ...next };
-          
+
           const isSelectingProject = next.activeProjectId !== undefined && next.activeProjectId !== state.activeProjectId;
-          
+
+          // ── record the pre-edit document, if this write touched it ──
+          // Reference comparison is the same contract the autosave below
+          // relies on: every action in this store replaces the slices it
+          // changes rather than mutating them in place.
+          const changed =
+            (merged.primitives !== state.primitives ? "p" : "") +
+            (merged.semantics !== state.semantics ? "s" : "") +
+            (merged.components !== state.components ? "c" : "");
+
+          if (changed && recording && !isSelectingProject && state.activeProjectId) {
+            const now = Date.now();
+            const before: DocSnapshot = {
+              primitives: state.primitives,
+              semantics: state.semantics,
+              components: state.components,
+            };
+            // A continuing gesture (a slider mid-drag) extends the step it
+            // started; anything else opens a new one.
+            const continues =
+              merged.history.past.length > 0 &&
+              changed === lastPushKey &&
+              now - lastPushAt < HISTORY_COALESCE_MS;
+            lastPushAt = now;
+            lastPushKey = changed;
+            merged.history = {
+              checkpoint: merged.history.checkpoint,
+              future: [], // a fresh edit forks the timeline
+              past: continues
+                ? merged.history.past
+                : [...merged.history.past, before].slice(-HISTORY_LIMIT),
+            };
+          } else if (isSelectingProject) {
+            // Undo must never reach across files.
+            merged.history = { past: [], future: [], checkpoint: null };
+            lastPushAt = 0;
+            lastPushKey = "";
+          }
+
           const existing = merged.activeProjectId ? merged.projects[merged.activeProjectId] : undefined;
           // Only touch the snapshot (and bump updatedAt) when one of the
           // synced fields actually changed reference — otherwise every
@@ -1196,6 +1356,23 @@ export const useDesignSystem = create<ArkitypeState>()(
           }
           return merged;
         }, replace);
+      };
+
+      /** Start a new undo step on the next write, whatever the timing. */
+      const breakCoalescing = () => {
+        lastPushAt = 0;
+        lastPushKey = "";
+      };
+
+      /** Replay a snapshot without recording it as a new edit. */
+      const applySnapshot = (snapshot: DocSnapshot, history: EditHistory) => {
+        recording = false;
+        breakCoalescing();
+        try {
+          set({ ...snapshot, history });
+        } finally {
+          recording = true;
+        }
       };
 
       const createDefaultProjectState = (id: string, name: string): ProjectState => {
@@ -1245,6 +1422,8 @@ export const useDesignSystem = create<ArkitypeState>()(
         hoveredPartId: null,
         selectedPartId: null,
         activeLeftTab: "layers",
+        variablesUI: { ...DEFAULT_VARIABLES_UI, tiers: { ...DEFAULT_VARIABLES_UI.tiers } },
+        history: { past: [], future: [], checkpoint: null },
 
         /* Auth & onboarding actions (Supabase-backed; driven by AuthProvider) */
         hydrateSession: (user, survey, projects) =>
@@ -1284,6 +1463,9 @@ export const useDesignSystem = create<ArkitypeState>()(
               currentPreviewMode: project.currentPreviewMode,
               canvasZoom: project.canvasZoom,
               view: "workspace",
+              // Node ids are file-scoped; carrying a selection across files
+              // would leave the Variables inspector pointing at nothing.
+              variablesUI: { ...state.variablesUI, selected: null, focus: null },
             };
           }),
 
@@ -1527,6 +1709,86 @@ export const useDesignSystem = create<ArkitypeState>()(
        setSelectedPartId: (id) => set({ selectedPartId: id }),
        setActiveLeftTab: (tab) => set({ activeLeftTab: tab }),
 
+      /* ── variables map ── */
+
+      selectVariable: (id) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, selected: id } })),
+
+      focusVariable: (id) =>
+        set((state) => ({
+          variablesUI: {
+            ...state.variablesUI,
+            selected: id,
+            focus: { id, tick: (state.variablesUI.focus?.tick ?? 0) + 1 },
+          },
+        })),
+
+      toggleVariableCollection: (collectionId) =>
+        set((state) => {
+          const hidden = state.variablesUI.hiddenCollections;
+          return {
+            variablesUI: {
+              ...state.variablesUI,
+              hiddenCollections: hidden.includes(collectionId)
+                ? hidden.filter((c) => c !== collectionId)
+                : [...hidden, collectionId],
+            },
+          };
+        }),
+
+      toggleVariableTier: (tier) =>
+        set((state) => ({
+          variablesUI: {
+            ...state.variablesUI,
+            tiers: { ...state.variablesUI.tiers, [tier]: !state.variablesUI.tiers[tier] },
+          },
+        })),
+
+      setVariableEditMode: (mode) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, editMode: mode } })),
+
+      setVariablesConnectedOnly: (only) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, connectedOnly: only } })),
+
+      setVariableWireStyle: (style) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, wireStyle: style } })),
+
+      /* ── undo / redo / reset ── */
+
+      undo: () => {
+        const s = get();
+        const previous = s.history.past[s.history.past.length - 1];
+        if (!previous) return;
+        applySnapshot(previous, {
+          past: s.history.past.slice(0, -1),
+          future: [...s.history.future, docOf(s)].slice(-HISTORY_LIMIT),
+          checkpoint: s.history.checkpoint,
+        });
+      },
+
+      redo: () => {
+        const s = get();
+        const upcoming = s.history.future[s.history.future.length - 1];
+        if (!upcoming) return;
+        applySnapshot(upcoming, {
+          past: [...s.history.past, docOf(s)].slice(-HISTORY_LIMIT),
+          future: s.history.future.slice(0, -1),
+          checkpoint: s.history.checkpoint,
+        });
+      },
+
+      markCheckpoint: () =>
+        set((state) => ({ history: { ...state.history, checkpoint: docOf(state) } })),
+
+      revertToCheckpoint: () => {
+        const s = get();
+        if (!s.history.checkpoint || !docChanged(s, s.history.checkpoint)) return;
+        // Deliberately *not* silent: a reset is recorded like any other edit,
+        // so one ⌘Z brings the work back if the button was a mistake.
+        breakCoalescing();
+        set({ ...s.history.checkpoint });
+      },
+
       startSystem: (name, brandHex) =>
         set((state) => {
           const families = cloneFamilies(state.primitives.colorFamilies);
@@ -1561,6 +1823,11 @@ export const useDesignSystem = create<ArkitypeState>()(
               activeStep: target,
               visited: { ...state.journey.visited, [target]: true },
             },
+            // The Variables map takes over the canvas, so a step can't be shown
+            // underneath it. Anything that navigates to a step — the top bar's
+            // Ship button, the tutorial, a jump-to-token — has to bring the
+            // step surface back, or it would look like the click did nothing.
+            ...(state.activeLeftTab === "variables" ? { activeLeftTab: "layers" as LeftTab } : {}),
           };
         }),
 
@@ -1575,6 +1842,7 @@ export const useDesignSystem = create<ArkitypeState>()(
               done,
               visited: { ...state.journey.visited, [landing]: true },
             },
+            ...(state.activeLeftTab === "variables" ? { activeLeftTab: "layers" as LeftTab } : {}),
           };
         }),
 
@@ -1766,12 +2034,16 @@ export const useDesignSystem = create<ArkitypeState>()(
           };
         }),
 
-      addSpacingStep: () =>
+      addSpacingStep: (multiplier) =>
         set((state) => {
           const multipliers = [...state.primitives.spacingMultipliers];
           const last = multipliers[multipliers.length - 1] ?? 16;
           const prev = multipliers[multipliers.length - 2] ?? 12;
-          multipliers.push(last + (last - prev)); // continue the ladder
+          multipliers.push(
+            typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0
+              ? multiplier
+              : last + (last - prev) // continue the ladder
+          );
           return {
             primitives: {
               ...state.primitives,

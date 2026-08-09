@@ -10,16 +10,77 @@
  * primitive step, a literal hex, or — for component tokens — another role via
  * `@role`, so the whole system stays one continuous editable chain.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PreviewMode, SemanticGroup, useDesignSystem } from "@/store/useDesignSystem";
-import { resolveTokenValue, alphaOfValue, applyAlphaToValue } from "@/lib/tokens";
+import { resolveToken, resolveTokenValue, alphaOfValue, applyAlphaToValue } from "@/lib/tokens";
 import { isValidHex, stripAlpha, withAlpha } from "@/lib/color";
-import { CanvasSection } from "@/components/ui/controls";
+import { CanvasSection, Tooltip } from "@/components/ui/controls";
+import { checkContrast } from "@/lib/a11y";
+import { derivePairs, pairsInvolving } from "@/lib/a11yPairs";
 import { Check, Plus, Trash2 } from "lucide-react";
+
+/* ── live contrast verdict for one token, in one mode ── */
+
+/**
+ * The worst pairing this token takes part in, for this mode. Rendered inline on
+ * the row being edited so a contrast regression shows up under the cursor —
+ * the full breakdown still lives in the audit panel above.
+ */
+function TokenVerdict({ mode, token }: { mode: PreviewMode; token: string }) {
+  const primitives = useDesignSystem((s) => s.primitives);
+  const semantics = useDesignSystem((s) => s.semantics);
+
+  const worst = useMemo(() => {
+    const state = { primitives, semantics };
+    const pairs = pairsInvolving(token, derivePairs(semantics.groups));
+    if (pairs.length === 0) return null;
+    return pairs
+      .map((pair) => {
+        const check = checkContrast(
+          resolveToken(state, mode, pair.fg),
+          resolveToken(state, mode, pair.bg),
+          pair.context
+        );
+        return { pair, ...check };
+      })
+      .sort((a, b) => rank(a.level) - rank(b.level) || a.ratio - b.ratio)[0];
+  }, [primitives, semantics, mode, token]);
+
+  if (!worst) return null;
+
+  const tone =
+    worst.level === "fail"
+      ? "border-red-500/40 text-red-400"
+      : worst.level === "AAA"
+        ? "border-emerald-500/30 text-emerald-400"
+        : "border-line text-fg-mute";
+
+  return (
+    <Tooltip
+      side="left"
+      content={
+        <>
+          Weakest pairing for this token in {mode} mode:{" "}
+          <span className="text-fg">{worst.pair.label}</span> at {worst.ratio}:1 —{" "}
+          {worst.level === "fail" ? "below AA." : `${worst.level}.`}
+        </>
+      }
+    >
+      <span
+        className={`inline-flex shrink-0 cursor-help items-center rounded border px-1 py-px font-mono text-[9px] font-bold leading-none ${tone}`}
+      >
+        {worst.level === "fail" ? "✕" : worst.level}
+      </span>
+    </Tooltip>
+  );
+}
+
+const rank = (level: "fail" | "AA" | "AAA"): number =>
+  level === "fail" ? 0 : level === "AA" ? 1 : 2;
 
 /* ── one mode's value: colour well + free-text ref/hex + alpha ── */
 
-function ModeValueEditor({ mode, token }: { mode: PreviewMode; token: string }) {
+export function ModeValueEditor({ mode, token }: { mode: PreviewMode; token: string }) {
   const primitives = useDesignSystem((s) => s.primitives);
   const semantics = useDesignSystem((s) => s.semantics);
   const setSemantic = useDesignSystem((s) => s.setSemantic);
@@ -95,6 +156,8 @@ function ModeValueEditor({ mode, token }: { mode: PreviewMode; token: string }) 
           {alpha}%
         </span>
       </div>
+
+      <TokenVerdict mode={mode} token={token} />
     </div>
   );
 }

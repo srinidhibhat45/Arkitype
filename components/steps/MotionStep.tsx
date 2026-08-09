@@ -15,7 +15,6 @@ import {
 } from "@/store/useDesignSystem";
 import {
   AsideDivider,
-  AsideNote,
   CanvasSection,
   Field,
 } from "@/components/ui/controls";
@@ -79,7 +78,11 @@ export function MotionStep() {
       lede="Motion is a foundation, not a garnish — three durations and four curves cover almost every interaction. Buttons and inputs across the whole system already animate with these tokens, so tuning a value here re-times everything at once."
       aside={
         <>
-          <Field label="Durations" hint="ms, enter any values">
+          <Field
+            label="Durations"
+            hint="ms"
+            info="A quick heuristic: exits faster than entrances, colour faster than position, and nothing a user waits on past ~400ms."
+          >
             <div className="space-y-2.5">
               {DURATION_NAMES.map((name) => (
                 <div key={name}>
@@ -112,7 +115,11 @@ export function MotionStep() {
 
           <AsideDivider />
 
-          <Field label="Easing curves" hint="any CSS timing function">
+          <Field
+            label="Easing curves"
+            hint="CSS timing function"
+            info="Every component in the system animates with these tokens, so retuning a curve here re-times the whole library at once."
+          >
             <div className="space-y-2">
               {motion.easings.map((e, i) => (
                 <div key={e.name} className="flex items-center gap-2">
@@ -130,11 +137,6 @@ export function MotionStep() {
               ))}
             </div>
           </Field>
-
-          <AsideNote>
-            A quick heuristic: exits faster than entrances, colour faster than
-            position, and nothing users wait on past ~400ms.
-          </AsideNote>
         </>
       }
     >

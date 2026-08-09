@@ -41,6 +41,22 @@
   --c-fg-dim: 60 60 65; /* highly legible secondary text */
   --c-fg-mute: 85 85 90; /* highly legible tertiary text */
   --c-focus: 13 110 216; /* focus/drag accent, #0d6ed8 */
+
+  /*
+   * Variables map — the four token tiers.
+   *
+   * The one place the tool's chrome carries hue, and a deliberate exception to
+   * the monochrome rule: on a map of 400 rows, "which tier is this" has to be
+   * answerable before you read a single label, and shape alone doesn't survive
+   * a canvas zoomed to 40%. Four distinct hues (never a red/green pair), each
+   * always paired with an ordinal badge so colour is a shortcut, not the only
+   * cue. Desaturated enough not to compete with the design system's own colour
+   * sitting a few pixels away in the swatches.
+   */
+  --c-tier-primitive: 13 124 138; /* teal, #0d7c8a */
+  --c-tier-semantic: 104 71 219; /* violet, #6847db */
+  --c-tier-component: 173 100 6; /* amber, #ad6406 */
+  --c-tier-usage: 190 50 106; /* rose, #be326a */
   color-scheme: light;
 }
 
@@ -55,6 +71,12 @@
   --c-fg-dim: 190 190 198; /* higher contrast secondary, #bebec6 */
   --c-fg-mute: 145 145 152; /* higher contrast tertiary, #919198 */
   --c-focus: 13 153 255; /* focus/drag accent, #0d99ff */
+
+  /* Same four hues, lifted for a dark surface. */
+  --c-tier-primitive: 42 196 212; /* #2ac4d4 */
+  --c-tier-semantic: 154 130 255; /* #9a82ff */
+  --c-tier-component: 232 163 61; /* #e8a33d */
+  --c-tier-usage: 244 122 165; /* #f47aa5 */
   color-scheme: dark;
 }
 

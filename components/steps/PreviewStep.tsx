@@ -20,8 +20,8 @@ import { Layout, Monitor, Smartphone } from "lucide-react";
 import { useDesignSystem, type Density } from "@/store/useDesignSystem";
 import {
   AsideDivider,
-  AsideNote,
   Field,
+  InfoTip,
   Segmented,
   SelectControl,
   SliderControl,
@@ -98,17 +98,35 @@ export function PreviewStep() {
       lede="A real product built entirely from your tokens — no hardcoded styles anywhere in the frame. Switch the form factor to see the same system as a dense console, a phone app, and a marketing page; switch the industry to change only the content. If it holds up across all of them, it ships."
       aside={
         <>
-          <Field label="Industry" hint="content only — layout and tokens are unchanged">
+          <Field
+            label="Industry"
+            hint="content only"
+            info={
+              <>
+                Swaps the copy and data, never the layout or the tokens — the point
+                is to see whether the same system survives a different domain.
+                {formFactor === "mobile"
+                  ? " On mobile, touch targets hold a 44pt floor regardless of density: if Compact makes the rest of the screen feel cramped against them, that's the spacing scale telling you something."
+                  : formFactor === "marketing"
+                    ? " This form factor is the display end of the type scale under real load — a ratio that reads fine in a console can shout here, or disappear."
+                    : " Use the Light / Dark toggle in the top bar to check both modes; the product should feel equally considered in each."}
+              </>
+            }
+          >
             <Segmented options={INDUSTRIES} value={industry} onChange={setIndustry} />
           </Field>
 
           <AsideDivider />
 
-          <Field label="Density" hint="rescales base unit + corner radius together">
+          <Field
+            label="Density"
+            hint="base unit + radius"
+            info="Rescales the base spacing unit and corner radius together, so you can feel a denser or roomier system without editing either scale by hand."
+          >
             <Segmented options={DENSITY_OPTIONS} value={density} onChange={setDensity} />
           </Field>
 
-          <Field label="States" hint="every interaction state, side by side">
+          <Field label="States" hint="side by side">
             <Segmented
               options={[
                 { label: "Product only", value: "off" },
@@ -131,7 +149,13 @@ export function PreviewStep() {
 
           <AsideDivider />
 
-          <AsideNote>Swap structures without leaving the preview:</AsideNote>
+          <div className="mb-2 flex items-center gap-1.5">
+            <span className="text-[13.5px] font-semibold text-fg-dim">Structures</span>
+            <InfoTip label="About structures">
+              Swap the structural patterns without leaving the preview — the same
+              choice applies everywhere that pattern appears in the product.
+            </InfoTip>
+          </div>
 
           <SelectControl
             label="Table skeleton"
@@ -151,16 +175,6 @@ export function PreviewStep() {
             options={skeletonOptions(MODAL_SKELETONS)}
             onChange={(v) => setComponentSkeleton("modal", v)}
           />
-
-          <AsideDivider />
-
-          <AsideNote>
-            {formFactor === "mobile"
-              ? "Touch targets hold a 44pt floor here regardless of density — if Compact makes the rest of the screen feel cramped against them, that's the spacing scale telling you something."
-              : formFactor === "marketing"
-                ? "This is the display end of the type scale under real load. A ratio that reads fine in the console can shout here — or disappear."
-                : "Use the Light / Dark toggle in the top bar to check both modes — the product should feel equally considered in each."}
-          </AsideNote>
         </>
       }
     >

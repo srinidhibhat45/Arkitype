@@ -14,7 +14,6 @@ import {
 } from "@/store/useDesignSystem";
 import {
   AsideDivider,
-  AsideNote,
   CanvasSection,
   Field,
   Segmented,
@@ -134,13 +133,13 @@ export function SpaceStep() {
       lede="Every gap, inset and gutter should be a multiple of one base unit — that's what makes layouts feel deliberate. Tune the base to shift everything at once, edit any rung's multiplier, pin a step to an exact px, or add rungs when a dense UI needs them."
       aside={
         <>
-          <Field label="Density" hint="rescales base unit + corner radius together">
+          <Field
+            label="Density"
+            hint="base unit + radius"
+            info="A quick preset, not a locked mode — pick one to jump the whole system denser or roomier, then keep tuning any value below by hand."
+          >
             <Segmented options={DENSITY_OPTIONS} value={density} onChange={setDensity} />
           </Field>
-          <AsideNote>
-            A quick preset, not a locked mode — pick one to jump the whole
-            system denser or roomier, then keep tuning any value below by hand.
-          </AsideNote>
 
           <AsideDivider />
 
@@ -151,16 +150,17 @@ export function SpaceStep() {
             max={12}
             step={1}
             unit="px"
+            info="Steps are multiples of the base. The first eight are always present — components rely on space-1…8 — so add more only when a dense layout needs them."
             onChange={setSpacingBase}
           />
-          <AsideNote>
-            Steps are multiples of the base. The first eight are always present
-            (components rely on space-1…8); add more for dense layouts.
-          </AsideNote>
 
           <AsideDivider />
 
-          <Field label="Breakpoints" hint="px, enter any values">
+          <Field
+            label="Breakpoints"
+            hint="px"
+            info="Where layouts reflow. These export as layout variables, so design and code reflow at the same widths."
+          >
             <div className="space-y-2">
               {BREAKPOINT_NAMES.map((name) => (
                 <div key={name} className="flex items-center gap-2">
@@ -181,23 +181,22 @@ export function SpaceStep() {
               ))}
             </div>
           </Field>
-
-          <AsideNote>
-            Breakpoints export as layout variables so design and code reflow at
-            the same widths.
-          </AsideNote>
         </>
       }
     >
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <CanvasSection title="Spacing scale" hint={`${spacingBase}px base · editable`}>
+        <CanvasSection
+          title="Spacing scale"
+          hint={`${spacingBase}px base`}
+          info="Each rung is a multiple of the base unit. Edit a multiplier to move one rung, pin an exact px to break from the generator for a single step, or add rungs past space-8 for dense layouts."
+        >
           <div className="rounded-xl border border-line p-5">
             {spacing.map((_, i) => (
               <SpacingRow key={i} index={i} />
             ))}
             <button
               type="button"
-              onClick={addSpacingStep}
+              onClick={() => addSpacingStep()}
               className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-line py-2 text-[12px] font-medium text-fg-mute transition-colors hover:border-line-strong hover:text-fg-dim"
             >
               <Plus size={13} />

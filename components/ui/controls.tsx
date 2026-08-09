@@ -6,25 +6,147 @@
  */
 import * as RadixSlider from "@radix-ui/react-slider";
 import * as RadixSelect from "@radix-ui/react-select";
-import { Check, ChevronDown } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check, ChevronDown, Info } from "lucide-react";
+import { useCallback, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { isValidHex } from "@/lib/color";
+
+/* ── Tooltip ── */
+
+type TooltipSide = "top" | "bottom" | "left" | "right";
+
+/**
+ * Hover/focus tooltip rendered into a portal, so it escapes the inspector's
+ * `overflow-y-auto` instead of being clipped by it. Explanatory prose lives
+ * here rather than on the surface: the panel stays scannable, and the words are
+ * one hover away when someone actually wants them.
+ */
+export function Tooltip({
+  content,
+  side = "left",
+  children,
+  className = "",
+}: {
+  content: ReactNode;
+  side?: TooltipSide;
+  children: ReactNode;
+  className?: string;
+}) {
+  const id = useId();
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [box, setBox] = useState<{ top: number; left: number } | null>(null);
+
+  const GAP = 10;
+  const WIDTH = 260;
+
+  const show = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    // Keep the card on screen: clamp along the cross axis, and flip the main
+    // axis when the preferred side has no room.
+    const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+    let top: number;
+    let left: number;
+    if (side === "left" || side === "right") {
+      const wantLeft = side === "left" ? r.left - WIDTH - GAP : r.right + GAP;
+      const flipped = side === "left" ? r.right + GAP : r.left - WIDTH - GAP;
+      left = wantLeft < 8 || wantLeft + WIDTH > window.innerWidth - 8 ? flipped : wantLeft;
+      top = r.top + r.height / 2;
+    } else {
+      left = r.left + r.width / 2 - WIDTH / 2;
+      top = side === "top" ? r.top - GAP : r.bottom + GAP;
+    }
+    setBox({
+      top: clamp(top, 12, window.innerHeight - 12),
+      left: clamp(left, 8, Math.max(8, window.innerWidth - WIDTH - 8)),
+    });
+  }, [side]);
+
+  const hide = useCallback(() => setBox(null), []);
+
+  const transform =
+    side === "left" || side === "right"
+      ? "translateY(-50%)"
+      : side === "top"
+        ? "translate(0, -100%)"
+        : "none";
+
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        className={`inline-flex ${className}`}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        aria-describedby={box ? id : undefined}
+      >
+        {children}
+      </span>
+      {box && typeof document !== "undefined"
+        ? createPortal(
+            <span
+              id={id}
+              role="tooltip"
+              style={{ top: box.top, left: box.left, width: WIDTH, transform }}
+              className="pointer-events-none fixed z-[300] rounded-lg border border-line-strong bg-ink-raised px-3 py-2 text-[11.5px] leading-snug text-fg-dim shadow-2xl"
+            >
+              {content}
+            </span>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
+
+/** The hover target for a tooltip: a quiet ⓘ that costs one line-height. */
+export function InfoTip({
+  children,
+  side = "left",
+  label = "More information",
+}: {
+  children: ReactNode;
+  side?: TooltipSide;
+  label?: string;
+}) {
+  return (
+    <Tooltip content={children} side={side} className="shrink-0 align-middle">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={(e) => e.preventDefault()}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-fg-mute transition-colors hover:text-fg focus-visible:text-fg focus-visible:outline-none"
+      >
+        <Info size={12} />
+      </button>
+    </Tooltip>
+  );
+}
 
 /* ── Field wrapper ── */
 
 export function Field({
   label,
   hint,
+  info,
   children,
 }: {
   label: string;
   hint?: string;
+  /** Explanatory prose — shown on hover from an ⓘ rather than eating the panel. */
+  info?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="mb-5">
+    <div className="mb-4">
       <div className="mb-2 flex items-baseline justify-between gap-2">
-        <span className="text-[13.5px] font-semibold text-fg-dim">{label}</span>
+        <span className="flex items-center gap-1.5 text-[13.5px] font-semibold text-fg-dim">
+          {label}
+          {info ? <InfoTip label={`About ${label}`}>{info}</InfoTip> : null}
+        </span>
         {hint ? (
           <span className="font-mono text-[12px] text-fg-mute">{hint}</span>
         ) : null}
@@ -34,9 +156,26 @@ export function Field({
   );
 }
 
-export function AsideNote({ children }: { children: ReactNode }) {
+/**
+ * A standalone aside note. Kept for notes with no control to hang off, but it
+ * now renders as a single hoverable line instead of a paragraph — same words,
+ * a fraction of the vertical budget.
+ */
+export function AsideNote({
+  children,
+  label = "Note",
+}: {
+  children: ReactNode;
+  /** Two or three words naming what the note is about. */
+  label?: string;
+}) {
   return (
-    <p className="mb-4 text-[12px] leading-snug text-fg-mute">{children}</p>
+    <Tooltip content={children} side="left">
+      <span className="mb-3 flex cursor-help items-center gap-1.5 text-[11.5px] text-fg-mute transition-colors hover:text-fg-dim">
+        <Info size={11} className="shrink-0" />
+        <span className="truncate underline decoration-dotted underline-offset-2">{label}</span>
+      </span>
+    </Tooltip>
   );
 }
 
@@ -136,6 +275,7 @@ export function SliderControl({
   max,
   step,
   unit = "",
+  info,
   onChange,
 }: {
   label: string;
@@ -144,10 +284,11 @@ export function SliderControl({
   max: number;
   step: number;
   unit?: string;
+  info?: ReactNode;
   onChange: (value: number) => void;
 }) {
   return (
-    <Field label={label} hint={`${value}${unit}`}>
+    <Field label={label} hint={`${value}${unit}`} info={info}>
       <RadixSlider.Root
         className="relative flex h-5 w-full touch-none select-none items-center"
         min={min}
@@ -284,19 +425,29 @@ export function HexInput({
 export function WcagBadge({
   tier,
   pass,
+  compact = false,
 }: {
   tier: "AA" | "AAA";
-  pass: boolean;
+  /** `null` = the tier is not defined for this kind of pairing (non-text AAA). */
+  pass: boolean | null;
+  compact?: boolean;
 }) {
+  const tone =
+    pass === null
+      ? "bg-fg/5 text-fg-mute"
+      : pass
+        ? "bg-emerald-500/10 text-emerald-400"
+        : "bg-red-500/10 text-red-400";
   return (
     <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold leading-none ${
-        pass
-          ? "bg-emerald-500/10 text-emerald-400"
-          : "bg-red-500/10 text-red-400"
+      className={`inline-flex items-center rounded-md font-bold leading-none ${tone} ${
+        compact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-[11px]"
       }`}
+      title={pass === null ? `${tier} is not defined for non-text contrast` : undefined}
     >
-      {tier} {pass ? "Pass" : "Fail"}
+      {tier}
+      {pass === null ? " —" : compact ? "" : pass ? " Pass" : " Fail"}
+      {compact && pass !== null ? (pass ? " ✓" : " ✕") : ""}
     </span>
   );
 }
@@ -306,17 +457,29 @@ export function WcagBadge({
 export function CanvasSection({
   title,
   hint,
+  info,
+  actions,
   children,
 }: {
   title: string;
   hint?: string;
+  /** Longer explanation, moved off the canvas and onto an ⓘ. */
+  info?: ReactNode;
+  /** Controls docked to the section heading (filters, toggles). */
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section className="mb-10">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-[16px] font-bold text-fg">{title}</h2>
-        {hint ? <span className="text-[13px] text-fg-mute">{hint}</span> : null}
+    <section className="mb-6 xl:mb-8">
+      <div className="mb-2.5 flex items-baseline justify-between gap-3">
+        <h2 className="flex items-center gap-1.5 text-[16px] font-bold text-fg">
+          {title}
+          {info ? <InfoTip side="bottom" label={`About ${title}`}>{info}</InfoTip> : null}
+        </h2>
+        <div className="flex items-baseline gap-3">
+          {hint ? <span className="hidden text-[13px] text-fg-mute lg:inline">{hint}</span> : null}
+          {actions}
+        </div>
       </div>
       {children}
     </section>

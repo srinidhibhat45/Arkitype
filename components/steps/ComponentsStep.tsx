@@ -14,14 +14,7 @@ import {
   RADII_NAMES,
   useDesignSystem,
 } from "@/store/useDesignSystem";
-import {
-  AsideDivider,
-  AsideNote,
-  CanvasSection,
-  Field,
-  Segmented,
-  SelectControl,
-} from "@/components/ui/controls";
+import { CanvasSection, Field, SelectControl } from "@/components/ui/controls";
 import { StepScaffold } from "@/components/shell/StepScaffold";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
 import { MODAL_SKELETONS, ModalScene } from "@/components/factory/ModalSkeletons";
@@ -277,36 +270,32 @@ export function ComponentsStep() {
               />
             </>
           ) : null}
-
-          <AsideDivider />
-          <AsideNote>{lane.note}</AsideNote>
         </>
       }
     >
-      {isSkeletal ? (
-        <CanvasSection
-          title={`${itemLabel}`}
-          hint="every parameter binds to a token"
-        >
+      <CanvasSection
+        title={itemLabel}
+        hint="every parameter binds to a token"
+        info={
+          <>
+            {lane.note}
+            <span className="mt-1.5 block text-fg-mute">
+              Nothing here holds a literal value — every part reads roles, scales and
+              motion tokens, so remapping a role updates all {totalCount} of them.
+            </span>
+          </>
+        }
+      >
+        {isSkeletal ? (
           <SkeletonPreview pattern={itemId} />
-        </CanvasSection>
-      ) : isWired ? (
-        <CanvasSection title={itemLabel} hint="every parameter binds to a token">
+        ) : (
           <ComponentStudioPreview
             id={itemId}
             hoveredPart={hoveredPart}
             setHoveredPart={setHoveredPart}
           />
-        </CanvasSection>
-      ) : (
-        <CanvasSection title={itemLabel} hint="every parameter binds to a token">
-          <ComponentStudioPreview
-            id={itemId}
-            hoveredPart={hoveredPart}
-            setHoveredPart={setHoveredPart}
-          />
-        </CanvasSection>
-      )}
+        )}
+      </CanvasSection>
     </StepScaffold>
   );
 }

@@ -27,13 +27,7 @@ import {
   tintedNeutral,
   withAlpha,
 } from "@/lib/color";
-import {
-  AsideDivider,
-  AsideNote,
-  CanvasSection,
-  Field,
-  HexInput,
-} from "@/components/ui/controls";
+import { CanvasSection, HexInput, InfoTip } from "@/components/ui/controls";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 
 /* ── suggestion chips (unchanged behaviour, now per dynamic family) ── */
@@ -176,10 +170,11 @@ function RampRow({ family }: { family: ColorFamily }) {
       id={`family-${family.id}`}
       className={`rounded-xl transition-shadow ${flash ? "ring-1 ring-inset ring-fg" : ""}`}
     >
-      <CanvasSection title={family.name} hint={family.seed.toUpperCase()}>
-        <p className="-mt-1.5 mb-2.5 text-[12px] text-fg-mute">
-          {family.steps} shades · click a swatch to pin its exact value
-        </p>
+      <CanvasSection
+        title={family.name}
+        hint={`${family.steps} shades · ${family.seed.toUpperCase()}`}
+        info="Click any swatch to pin its exact hex or dial its opacity — the rest of the ramp stays generated from the seed, and a dot marks every step you have overridden."
+      >
         <div
           className="grid gap-px overflow-hidden rounded-xl border border-line bg-line"
           style={{ gridTemplateColumns: `repeat(${family.steps}, minmax(0, 1fr))` }}
@@ -285,6 +280,16 @@ export function ColourAside() {
 
   return (
     <>
+      <div className="mb-2 flex items-center gap-1.5">
+        <span className="text-[13.5px] font-semibold text-fg-dim">Palette</span>
+        <InfoTip label="About the palette">
+          Each family generates a perceptually even ramp from one seed hex.
+          Suggestions are colour theory applied to <em>your</em> brand hex, offered
+          rather than imposed — and every swatch stays editable on the canvas, where
+          a dot marks the ones you have pinned by hand.
+        </InfoTip>
+      </div>
+
       {families.map((family) => (
         <FamilyAside key={family.id} family={family} brandSeed={brandSeed} />
       ))}
@@ -297,13 +302,6 @@ export function ColourAside() {
         <Plus size={13} />
         Add family
       </button>
-
-      <AsideDivider />
-
-      <AsideNote>
-        Suggestions are colour theory applied to <em>your</em> brand hex.
-        Every swatch is editable — a dot marks the ones you've pinned by hand.
-      </AsideNote>
     </>
   );
 }

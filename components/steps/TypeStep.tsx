@@ -16,9 +16,9 @@ import { RoundingMode, FontRoleId } from "@/lib/typography";
 import { SCALE_FACTORS, generateTypeScale, STEP_DEFS } from "@/lib/typography";
 import {
   AsideDivider,
-  AsideNote,
   CanvasSection,
   Field,
+  InfoTip,
   Segmented,
   SelectControl,
   SliderControl,
@@ -328,7 +328,14 @@ export function TypeStep() {
           <AsideDivider />
 
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-[12px] font-medium text-fg-dim">Weight scale</span>
+            <span className="flex items-center gap-1.5 text-[12px] font-medium text-fg-dim">
+              Weight scale
+              <InfoTip label="About the weight scale">
+                Named weights every step can bind to. Line-height tightens
+                automatically as sizes grow — override it per step on the canvas only
+                when a specific step needs it.
+              </InfoTip>
+            </span>
             <button
               type="button"
               onClick={addWeight}
@@ -369,11 +376,6 @@ export function TypeStep() {
               </div>
             ))}
           </div>
-
-          <AsideNote>
-            Line-height still tightens automatically as sizes grow — override it
-            per step only when you need to.
-          </AsideNote>
         </>
       }
     >

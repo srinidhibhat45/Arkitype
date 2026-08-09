@@ -10,10 +10,24 @@ import {
   prevStep,
   useDesignSystem,
 } from "@/store/useDesignSystem";
+import { InfoTip } from "@/components/ui/controls";
 
 // Below this, two-column property grids (colour swatches especially) run out
 // of room to truncate their labels and start visually colliding.
-const MIN_INSPECTOR_WIDTH = 320;
+const MIN_INSPECTOR_WIDTH = 300;
+
+/**
+ * The inspector's starting width. On a 13" laptop the rail and the inspector
+ * together were claiming ~620px of a 1280px screen, which is what pushed the
+ * component galleries into a four-row scroll — so the default scales with the
+ * screen instead of being a constant tuned on a large display.
+ */
+function defaultInspectorWidth(): number {
+  if (typeof window === "undefined") return 360;
+  if (window.innerWidth >= 1600) return 380;
+  if (window.innerWidth >= 1400) return 340;
+  return 310;
+}
 
 export function StepScaffold({
   step,
@@ -38,12 +52,15 @@ export function StepScaffold({
 
   useEffect(() => {
     const saved = localStorage.getItem("arkitype-inspector-width");
-    if (saved) {
-      const parsed = parseInt(saved, 10);
-      if (!isNaN(parsed) && parsed >= MIN_INSPECTOR_WIDTH && parsed <= 600) {
-        setInspectorWidth(parsed);
-      }
-    }
+    const parsed = saved ? parseInt(saved, 10) : NaN;
+    const fallback = defaultInspectorWidth();
+    // Never let a width saved on a big monitor swallow a small screen.
+    const cap = Math.max(MIN_INSPECTOR_WIDTH, Math.round(window.innerWidth * 0.32));
+    setInspectorWidth(
+      !isNaN(parsed) && parsed >= MIN_INSPECTOR_WIDTH && parsed <= 600
+        ? Math.min(parsed, cap)
+        : fallback
+    );
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -104,9 +121,16 @@ export function StepScaffold({
 
   return (
     <div className="flex h-full min-h-0 flex-1">
-      {/* Center Canvas */}
-      <div className="flex-1 min-w-0 canvas-dotted overflow-y-auto relative flex justify-center p-12">
-        <div id="workspace-preview-canvas" className="w-full max-w-5xl my-auto rounded-xl border border-line bg-ink-panel shadow-2xl p-8 min-h-[500px] flex flex-col justify-between">
+      {/* Center Canvas — padding scales with the screen so a 13" laptop spends
+          its pixels on the work rather than on margin. */}
+      <div
+        data-canvas-scroll=""
+        className="flex-1 min-w-0 canvas-dotted overflow-y-auto relative flex justify-center p-3 lg:p-5 2xl:p-10"
+      >
+        <div
+          id="workspace-preview-canvas"
+          className="w-full max-w-5xl my-auto rounded-xl border border-line bg-ink-panel shadow-2xl p-4 lg:p-5 2xl:p-8 flex flex-col justify-between"
+        >
           <div className="w-full h-full flex-1">
             {children}
           </div>
@@ -125,24 +149,26 @@ export function StepScaffold({
           className="absolute top-0 bottom-0 left-0 w-1 cursor-col-resize hover:bg-line-strong/50 active:bg-focus transition-colors z-30"
           style={{ transform: "translateX(-50%)" }}
         />
-        <div className="flex-1 overflow-y-auto px-5 py-6">
+        <div className="flex-1 overflow-y-auto px-4 py-4 2xl:px-5">
           {!hideHeader && (
             <>
               <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-fg-mute">
                 Step {meta.n} — {meta.label}
               </p>
-              <h1 className="mt-2 text-[22px] font-extrabold leading-tight tracking-tight text-fg">
-                {title}
+              {/* The lede is orientation, not a control. It lives on the ⓘ so
+                  the panel opens on the work instead of on a paragraph. */}
+              <h1 className="mt-1.5 flex items-start gap-1.5 text-[17px] font-extrabold leading-tight tracking-tight text-fg">
+                <span className="min-w-0">{title}</span>
+                <span className="relative top-[3px]">
+                  <InfoTip label={`About ${meta.label}`}>{lede}</InfoTip>
+                </span>
               </h1>
-              <p className="mt-2 text-[12.5px] leading-snug text-fg-mute">
-                {lede}
-              </p>
             </>
           )}
 
-          {tabs ? <div className="mt-4 border-b border-line pb-2">{tabs}</div> : null}
+          {tabs ? <div className="mt-3 border-b border-line pb-2">{tabs}</div> : null}
 
-          <div className={`${hideHeader ? "" : "mt-4"} space-y-4`}>
+          <div className={`${hideHeader ? "" : "mt-3.5"} space-y-3`}>
             {aside}
           </div>
         </div>

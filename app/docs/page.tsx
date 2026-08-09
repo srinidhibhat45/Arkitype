@@ -93,6 +93,7 @@ const NAV: { heading: string; items: { id: string; label: string }[] }[] = [
   {
     heading: "Reference",
     items: [
+      { id: "variables-map", label: "The Variables map" },
       { id: "accessibility", label: "Accessibility engine" },
       { id: "export-formats", label: "Export formats" },
       { id: "publishing", label: "Publishing & sharing" },
@@ -562,6 +563,92 @@ export default function DocsPage() {
                 The Figma plugin
               </a>{" "}
               for the full walkthrough.
+            </Callout>
+          </Section>
+
+          {/* ── Variables map ────────────────────────────────────── */}
+          <Section id="variables-map" eyebrow="Reference" title="The Variables map">
+            <p>
+              The <strong className="font-medium text-fg">Variables</strong> tab in the left rail
+              replaces the step canvas with a map of every variable in the file at once — every
+              ramp step, scale rung, semantic role, component token, and every component property
+              you&apos;ve bound. It isn&apos;t a second copy of your tokens: an edit here lands in
+              exactly the same place the Colour and Components steps write to.
+            </p>
+            <p>
+              Value flows left to right through four lanes. Each lane has its own colour and a
+              number, and both travel with it everywhere — on the map, in the rail, and in the
+              inspector — so a variable is recognisable as the same thing wherever you meet it.
+            </p>
+            <FieldList
+              items={[
+                {
+                  label: "1 · Primitives",
+                  body: "Raw values — the ramps and scales everything else is built from. They hold literals, so nothing can feed them.",
+                },
+                {
+                  label: "2 · Semantic roles",
+                  body: "Jobs, not values — what a colour is for, pointed at a primitive.",
+                },
+                {
+                  label: "3 · Component tokens",
+                  body: "A component's own names, usually pointed at a role.",
+                },
+                {
+                  label: "4 · Component properties",
+                  body: "The end of the line — a real property on a real component. Only bindings you've actually set appear, so the lane shows the wiring you chose rather than the hundreds of defaults you didn't.",
+                },
+              ]}
+            />
+
+            <SubHeading>Reading the wires</SubHeading>
+            <p>
+              A wire is painted in the lane of the value it <em>carries</em> and points at whatever
+              consumes it, so its colour answers &ldquo;where did this come from&rdquo; without a
+              click. Wires stay drawn at full strength at all times; hovering or selecting a row
+              lights its whole chain and fades the rest, but never out of sight.
+            </p>
+            <FieldList
+              items={[
+                { label: "Solid", body: "The same source in both light and dark" },
+                {
+                  label: "Long dashes / short dots",
+                  body: "Light-only and dark-only. A token whose two modes point at different primitives draws both, landing side by side on the row.",
+                },
+                { label: "Fine dots", body: "A component-property binding" },
+                {
+                  label: "Elbow / Curve",
+                  body: "Two routings, top-right of the canvas. Elbows share a trunk, so a bundle leaving one ramp can be traced; curves keep each wire distinct when two cards nearly overlap.",
+                },
+              ]}
+            />
+
+            <SubHeading>Wiring and unwiring</SubHeading>
+            <p>
+              Drag from a row&apos;s right-hand handle onto any row to its right to link them —
+              illegal drops (a radius into a colour role, or anything that would loop back on
+              itself) are refused before you release. Hovering a wire offers a cut: on a token that
+              detaches the link and freezes the colour it currently resolves to, so the system looks
+              identical the instant after. The inspector does the same work in words — it states
+              what the selected variable follows, offers a searchable list of everything that could
+              legally feed it, and shows the whole chain in the direction the value travels.
+            </p>
+
+            <SubHeading>Undo, redo, reset</SubHeading>
+            <p>
+              <strong className="font-medium text-fg">⌘Z</strong> and{" "}
+              <strong className="font-medium text-fg">⇧⌘Z</strong> work across the whole workspace,
+              not just this map, and a rapid gesture like scrubbing a slider collapses into one
+              step. <strong className="font-medium text-fg">Reset this sitting</strong>, top-left of
+              the canvas, puts every token back to how it stood when you opened Variables — and
+              because it&apos;s recorded like any other edit, one ⌘Z brings your work back if you
+              pressed it by mistake.
+            </p>
+            <Callout title="Layout is a view preference">
+              Dragging cards around, hiding a collection, and the zoom level are all remembered per
+              file and per browser — none of it is part of the design system, and none of it is
+              exported. <em>Reset card layout</em>, next to the zoom controls, puts the cards back
+              on their lanes without touching a single token.
             </Callout>
           </Section>
 

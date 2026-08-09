@@ -10,13 +10,25 @@
 // so it reported failures the product had already fixed.
 import { rampStepLabels } from "../lib/color";
 import { checkContrast } from "../lib/a11y";
-import { ROLE_CONTRAST_PAIRS } from "../lib/a11yPairs";
+import { derivePairs } from "../lib/a11yPairs";
 import {
+  DEFAULT_COMPONENT_GROUPS,
+  DEFAULT_COMPONENT_TOKENS,
   DEFAULT_FAMILIES,
   DEFAULT_LIGHT,
   DEFAULT_DARK,
+  DEFAULT_SEMANTIC_GROUPS,
   familyRamp,
 } from "../store/useDesignSystem";
+
+/**
+ * The same pairing set the product's audit derives — curated contracts plus
+ * whatever each token group implies about itself — minus the advisory ones,
+ * which are reported in-app but are not a gate (see `RoleContrastPair.advisory`).
+ */
+const PAIRS = derivePairs([...DEFAULT_SEMANTIC_GROUPS, ...DEFAULT_COMPONENT_GROUPS]).filter(
+  (p) => !p.advisory
+);
 
 /** Each default family's resolved ramp plus the step labels that index it. */
 const RAMPS = new Map(
@@ -35,8 +47,15 @@ const RAMPS = new Map(
  * "-950" reference into a black swatch that then *passed* the audit against
  * light text — the staleness stayed invisible precisely where it mattered.
  */
-const resolveToken = (val: string): string => {
+const resolveToken = (val: string, map: Record<string, string>, depth = 0): string => {
   if (val.startsWith("#")) return val;
+  // Component tokens are "@role" aliases; follow the chain to a primitive.
+  if (val.startsWith("@")) {
+    if (depth > 8) throw new Error(`Token reference cycle at "${val}"`);
+    const target = map[val.slice(1)];
+    if (!target) throw new Error(`Token "${val}" names a role that does not exist`);
+    return resolveToken(target, map, depth + 1);
+  }
   const cut = val.lastIndexOf("-");
   if (cut === -1) throw new Error(`Malformed token reference: "${val}"`);
 
@@ -63,7 +82,7 @@ const runAudit = () => {
   const runMode = (mode: "light" | "dark", semanticMap: Record<string, string>) => {
     console.log(`Checking ${mode.toUpperCase()} mode pairings...`);
 
-    for (const pair of ROLE_CONTRAST_PAIRS) {
+    for (const pair of PAIRS) {
       const bgVal = semanticMap[pair.bg];
       const fgVal = semanticMap[pair.fg];
 
@@ -73,8 +92,8 @@ const runAudit = () => {
         continue;
       }
 
-      const bgHex = resolveToken(bgVal);
-      const fgHex = resolveToken(fgVal);
+      const bgHex = resolveToken(bgVal, semanticMap);
+      const fgHex = resolveToken(fgVal, semanticMap);
       const check = checkContrast(fgHex, bgHex, pair.context);
 
       if (check.level === "fail") {
@@ -91,8 +110,8 @@ const runAudit = () => {
     console.log("");
   };
 
-  runMode("light", DEFAULT_LIGHT);
-  runMode("dark", DEFAULT_DARK);
+  runMode("light", { ...DEFAULT_LIGHT, ...DEFAULT_COMPONENT_TOKENS });
+  runMode("dark", { ...DEFAULT_DARK, ...DEFAULT_COMPONENT_TOKENS });
 
   if (failed) {
     console.log("❌ Contrast audit failed. One or more pairings do not meet WCAG AA standards.");

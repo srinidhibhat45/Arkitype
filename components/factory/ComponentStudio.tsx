@@ -19,7 +19,7 @@
  * Options persist to `ComponentConfig.properties` (exported in the docs bundle);
  * colour/scale bindings persist to `ComponentConfig.bindings`.
  */
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Moon,
@@ -72,7 +72,7 @@ import { useInspectorData } from "@/components/factory/studioShared";
 import { IconField } from "@/components/factory/IconPicker";
 import { PartHighlight, usePartBox } from "@/components/factory/useHighlight";
 import { ZoomBox } from "@/components/factory/ZoomBox";
-import { HexInput } from "@/components/ui/controls";
+import { HexInput, InfoTip } from "@/components/ui/controls";
 import {
   OptionRow,
   OptionToggle,
@@ -963,6 +963,18 @@ function useStudioData(id: string) {
   };
 }
 
+/**
+ * Gallery metrics. These were tuned on a large display and cost the studio four
+ * rows of vertical scroll on a 13" laptop: 40px of container padding, 48px
+ * gutters and 16px per tile meant only two variants fit across an 820px canvas.
+ * Tightened and made screen-relative, the same eight variants land in two rows.
+ */
+const GALLERY =
+  "flex w-full flex-row flex-wrap items-center justify-center gap-x-3 gap-y-2.5 overflow-x-auto p-3 2xl:gap-x-5 2xl:gap-y-4 2xl:p-5";
+const TILE =
+  "relative flex cursor-pointer flex-col items-center gap-1 rounded-lg border p-2 transition-colors 2xl:p-3";
+const TILE_LABEL = "mt-1 select-none text-[9.5px] font-semibold tracking-wide";
+
 /* ── Cluster type shared between preview and controls ── */
 export type Cluster = {
   key: string;
@@ -1000,6 +1012,74 @@ export function ComponentStudioPreview({
 
   const [activeState, setActiveState] = useState<CState>(spec?.states[0] ?? "default");
   const previewRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Scale the studio so the whole thing sits inside the canvas without
+   * scrolling. A handful of parts (textarea, drawer, stat grid) are simply
+   * taller than a 13" laptop's canvas at 100%, and hunting for the right zoom by
+   * hand is exactly the friction this removes.
+   *
+   * Every step measures the zoom that is *currently applied* and the search only
+   * ever settles on a value it has seen fit. A binary search on a model of the
+   * layout is tempting and wrong: ZoomBox re-measures its content through a
+   * ResizeObserver, so a probe read too early reports the previous frame's
+   * height and the search happily converges on a size that overflows.
+   */
+  const fitToView = useCallback(() => {
+    const scroller = rootRef.current?.closest<HTMLElement>("[data-canvas-scroll]");
+    if (!scroller) return;
+    const MIN = 0.4;
+    const MAX = 2.5;
+    const SHRINK = 0.92;
+    const GROW = 1.06;
+    const MAX_STEPS = 24;
+
+    // Two frames for React to paint, then a task so the ResizeObserver that
+    // sizes each ZoomBox has run before we trust `scrollHeight`.
+    const settle = (fn: () => void) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => window.setTimeout(fn, 0)));
+    const fits = () => scroller.scrollHeight <= scroller.clientHeight + 2;
+
+    let scale = useDesignSystem.getState().canvasZoom;
+    let steps = 0;
+    let phase: "shrink" | "grow" | null = null;
+
+    const apply = (next: number) => {
+      scale = Math.round(Math.min(MAX, Math.max(MIN, next)) * 100) / 100;
+      setCanvasZoom(scale);
+    };
+
+    const run = () => {
+      steps += 1;
+      const ok = fits();
+      // Too tall → shrink until it fits. Already fitting → grow into the slack.
+      if (phase === null) phase = ok ? "grow" : "shrink";
+
+      if (phase === "shrink") {
+        if (ok) return; // the applied scale has been measured to fit — done
+        if (scale <= MIN + 0.001 || steps >= MAX_STEPS) return;
+        apply(scale * SHRINK);
+        settle(run);
+        return;
+      }
+
+      if (!ok) {
+        // Overshot. Step back and re-verify as a shrink: content that settles a
+        // frame late (motion-driven parts especially) can report a fit at a size
+        // that does not survive the next layout.
+        phase = "shrink";
+        apply(scale / GROW);
+        settle(run);
+        return;
+      }
+      if (scale >= MAX - 0.001 || steps >= MAX_STEPS) return;
+      apply(scale * GROW);
+      settle(run);
+    };
+
+    settle(run);
+  }, [setCanvasZoom]);
   // The overlay's coordinate frame: the section wrapper around the preview
   // canvas. It carries no transform, so measured boxes map 1:1 onto pixels.
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -1056,22 +1136,22 @@ export function ComponentStudioPreview({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3" ref={rootRef}>
       {/* top toolbar: reset · zoom · light/dark */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="text-[12px] font-bold uppercase tracking-wider text-fg-mute">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[12px] font-bold uppercase tracking-wider text-fg-mute">
             Live Studio Preview
-          </div>
+          </span>
           {showLiveHint ? (
-            <div className="mt-0.5 text-[10.5px] normal-case tracking-normal text-fg-mute/70">
+            <InfoTip label="How the preview works">
               {toggleKey
-                ? "Hover, press or tab into it below — click to toggle it on/off"
-                : "Hover, press or tab into it below to try the real interaction"}
-            </div>
+                ? "Hover, press or tab into the component below — clicking toggles it on and off, exactly as it will behave in product."
+                : "Hover, press or tab into the component below to try its real interaction states."}
+            </InfoTip>
           ) : null}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {overrideCount > 0 ? (
             <button
               type="button"
@@ -1083,20 +1163,31 @@ export function ComponentStudioPreview({
           ) : null}
 
           {/* Zoom Controller */}
-          <div className="flex items-center gap-1.5 rounded-lg border border-line bg-ink-panel p-0.5 px-2.5 h-7">
-            <span className="text-[9.5px] font-semibold text-fg-mute uppercase tracking-wider">Zoom</span>
+          <div className="flex items-center gap-1.5 rounded-lg border border-line bg-ink-panel p-0.5 px-2 h-7">
+            <span className="hidden text-[9.5px] font-semibold uppercase tracking-wider text-fg-mute 2xl:inline">
+              Zoom
+            </span>
             <input
               type="range"
-              min={0.5}
+              min={0.4}
               max={2.5}
-              step={0.25}
+              step={0.05}
               value={canvasZoom}
+              aria-label="Preview zoom"
               onChange={(e) => setCanvasZoom(Number(e.target.value))}
               className="w-16 accent-fg cursor-ew-resize"
             />
-            <span className="font-mono text-[9px] font-bold text-fg-mute w-8 text-right">
+            <span className="w-8 text-right font-mono text-[9px] font-bold text-fg-mute">
               {Math.round(canvasZoom * 100)}%
             </span>
+            <button
+              type="button"
+              onClick={fitToView}
+              title="Scale the previews so the whole studio fits without scrolling"
+              className="rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-fg-mute transition-colors hover:bg-ink-hover hover:text-fg"
+            >
+              Fit
+            </button>
           </div>
 
           {/* Light/Dark Toggle */}
@@ -1120,8 +1211,8 @@ export function ComponentStudioPreview({
       </div>
 
       {/* VARIANTS / PREVIEW Card (Full Width) */}
-      <div className="flex flex-col rounded-2xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm">
-        <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-5 py-2.5 select-none">
+      <div className="flex flex-col rounded-xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-3 py-1.5 select-none">
           <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-fg-mute">
             {axis ? (axis.label || "Variants") : "Preview"}
           </span>
@@ -1131,7 +1222,7 @@ export function ComponentStudioPreview({
         </div>
         <div className="relative overflow-hidden w-full" ref={sectionRef}>
           <ThemeFrame mode={mode} className="w-full">
-            <div className="flex flex-row flex-wrap items-center justify-center gap-x-12 gap-y-10 p-10 min-h-[180px] w-full overflow-x-auto" style={dotted}>
+            <div className={`${GALLERY} min-h-[110px]`} style={dotted}>
               {axis ? (
                 (axis.options ?? []).map((opt) => {
                   const isActive = opt.value === axisValue;
@@ -1141,20 +1232,18 @@ export function ComponentStudioPreview({
                       role="button"
                       onClick={() => setProperty(id, axis.key, opt.value)}
                       ref={isActive ? previewRef : undefined}
-                      className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border transition-all cursor-pointer ${
+                      className={`${TILE} ${
                         isActive
-                          ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-105 z-10"
+                          ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] z-10"
                           : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
                       }`}
                       {...liveHandlers(opt.value)}
                     >
-                      <div className="p-2">
-                        <ZoomBox scale={canvasZoom}>
-                          {hero(effectiveStateFor(activeState, opt.value), { ...opts, [axis.key]: opt.value })}
-                        </ZoomBox>
-                      </div>
+                      <ZoomBox scale={canvasZoom}>
+                        {hero(effectiveStateFor(activeState, opt.value), { ...opts, [axis.key]: opt.value })}
+                      </ZoomBox>
                       <span
-                        className="text-[10px] font-semibold tracking-wide mt-2 select-none"
+                        className={TILE_LABEL}
                         style={{ color: isActive ? "var(--ark-text-primary)" : "var(--ark-text-muted)" }}
                       >
                         {opt.label}
@@ -1167,19 +1256,15 @@ export function ComponentStudioPreview({
                   ref={previewRef}
                   role={singleClickable ? "button" : undefined}
                   onClick={singleClickable ? () => toggleLive(opts) : undefined}
-                  className="relative flex flex-col items-center gap-2 p-4 rounded-xl border border-transparent"
+                  className={`${TILE} border-transparent`}
                   style={singleClickable ? { cursor: "pointer" } : undefined}
                   {...liveHandlers("single")}
                 >
-                  <div className="p-2">
-                    <ZoomBox scale={canvasZoom}>
-                      {hero(effectiveStateFor(activeState, "single"), heroOptsWithToggle(opts))}
-                    </ZoomBox>
-                  </div>
+                  <ZoomBox scale={canvasZoom}>
+                    {hero(effectiveStateFor(activeState, "single"), heroOptsWithToggle(opts))}
+                  </ZoomBox>
                   {singleClickable ? (
-                    <span className="text-[10px] font-semibold tracking-wide mt-2 select-none text-fg-mute">
-                      Click to try it
-                    </span>
+                    <span className={`${TILE_LABEL} text-fg-mute`}>Click to try it</span>
                   ) : null}
                 </div>
               )}
@@ -1193,17 +1278,17 @@ export function ComponentStudioPreview({
       </div>
 
       {/* Two Column Section for STATES & SIZES */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         {/* STATES Card */}
         {multiState && (
-          <div className={`flex flex-col rounded-2xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm ${!isSizable ? "md:col-span-2" : ""}`}>
-            <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-5 py-2.5 select-none">
+          <div className={`flex flex-col rounded-xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm ${!isSizable ? "xl:col-span-2" : ""}`}>
+            <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-3 py-1.5 select-none">
               <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-fg-mute">States</span>
               <span className="text-[10px] font-bold text-fg-dim uppercase tracking-wider font-mono">{STATE_LABEL[activeState]}</span>
             </div>
             <div className="relative overflow-hidden w-full">
               <ThemeFrame mode={mode} className="w-full">
-                <div className="flex flex-row flex-wrap items-center justify-center gap-x-10 gap-y-8 p-8 min-h-[160px] w-full overflow-x-auto" style={dotted}>
+                <div className={`${GALLERY} min-h-[96px]`} style={dotted}>
                   {spec.states.map((st) => {
                     const isActive = st === activeState;
                     return (
@@ -1211,17 +1296,15 @@ export function ComponentStudioPreview({
                         key={st}
                         role="button"
                         onClick={() => setActiveState(st)}
-                        className={`flex flex-col items-center gap-2 p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        className={`${TILE} ${
                           isActive
-                            ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-105 z-10"
+                            ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] z-10"
                             : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
                         }`}
                       >
-                        <div className="p-1.5">
-                          <ZoomBox scale={canvasZoom * 0.85}>{hero(st)}</ZoomBox>
-                        </div>
+                        <ZoomBox scale={canvasZoom * 0.85}>{hero(st)}</ZoomBox>
                         <span
-                          className="text-[9.5px] font-semibold tracking-wide mt-2 select-none"
+                          className={TILE_LABEL}
                           style={{ color: isActive ? "var(--ark-text-primary)" : "var(--ark-text-muted)" }}
                         >
                           {STATE_LABEL[st]}
@@ -1237,14 +1320,14 @@ export function ComponentStudioPreview({
 
         {/* SIZES Card */}
         {isSizable && (
-          <div className={`flex flex-col rounded-2xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm ${!multiState ? "md:col-span-2" : ""}`}>
-            <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-5 py-2.5 select-none">
+          <div className={`flex flex-col rounded-xl border border-line bg-ink-panel/30 overflow-hidden shadow-sm ${!multiState ? "xl:col-span-2" : ""}`}>
+            <div className="flex items-center justify-between border-b border-line bg-ink-panel/50 px-3 py-1.5 select-none">
               <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-fg-mute">Sizes</span>
               <span className="text-[10px] font-bold text-fg-dim uppercase tracking-wider font-mono">{friendlySizes[size] ?? size}</span>
             </div>
             <div className="relative overflow-hidden w-full">
               <ThemeFrame mode={mode} className="w-full">
-                <div className="flex flex-row flex-wrap items-center justify-center gap-x-10 gap-y-8 p-8 min-h-[160px] w-full overflow-x-auto" style={dotted}>
+                <div className={`${GALLERY} min-h-[96px]`} style={dotted}>
                   {SIZE_OPTIONS.map((sz) => {
                     const isActive = sz.value === size;
                     return (
@@ -1252,19 +1335,17 @@ export function ComponentStudioPreview({
                         key={sz.value}
                         role="button"
                         onClick={() => setProperty(id, "size", sz.value)}
-                        className={`flex flex-col items-center gap-2 p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        className={`${TILE} ${
                           isActive
-                            ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-105 z-10"
+                            ? "border-line-strong bg-fg/10 shadow-[0_4px_12px_rgba(0,0,0,0.05)] z-10"
                             : "border-line/20 bg-transparent hover:border-line hover:bg-fg/5"
                         }`}
                       >
-                        <div className="p-1.5">
-                          <ZoomBox scale={canvasZoom * 0.85}>
-                            {renderHero(id, { state: activeState, size: sz.value as any, radiusStep, resolve, mode, opts })}
-                          </ZoomBox>
-                        </div>
+                        <ZoomBox scale={canvasZoom * 0.85}>
+                          {renderHero(id, { state: activeState, size: sz.value as any, radiusStep, resolve, mode, opts })}
+                        </ZoomBox>
                         <span
-                          className="text-[9.5px] font-semibold tracking-wide mt-2 select-none"
+                          className={TILE_LABEL}
                           style={{ color: isActive ? "var(--ark-text-primary)" : "var(--ark-text-muted)" }}
                         >
                           {friendlySizes[sz.value] ?? sz.label}

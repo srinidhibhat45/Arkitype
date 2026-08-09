@@ -514,7 +514,7 @@ export function ShipStep() {
 
           <AsideDivider />
 
-          <AsideNote>
+          <AsideNote label={tab === "publish" ? "About publishing" : "About this artifact"}>
             {tab === "publish"
               ? "The published site is generated from the same token state as every other artifact here — there's no second copy to keep in sync, and nothing to hand-author."
               : artifact === "json"

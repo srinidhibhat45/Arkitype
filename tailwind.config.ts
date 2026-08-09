@@ -40,6 +40,14 @@ const config: Config = {
         },
         focus: "rgb(var(--c-focus) / <alpha-value>)", // focus rings, drag handles
 
+        // The Variables map's four tier accents — the documented exception to
+        // the monochrome rule (see globals.css). Chrome elsewhere stays grey.
+        tier: {
+          primitive: "rgb(var(--c-tier-primitive) / <alpha-value>)",
+          semantic: "rgb(var(--c-tier-semantic) / <alpha-value>)",
+          component: "rgb(var(--c-tier-component) / <alpha-value>)",
+          usage: "rgb(var(--c-tier-usage) / <alpha-value>)",
+        },
       },
       fontFamily: {
         sans: [

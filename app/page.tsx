@@ -17,6 +17,7 @@ import { ProjectDashboard } from "@/components/dashboard/ProjectDashboard";
 import { Welcome } from "@/components/steps/Welcome";
 import { TopBar } from "@/components/shell/TopBar";
 import { StageRail } from "@/components/shell/StageRail";
+import { HistoryShortcuts } from "@/components/shell/HistoryShortcuts";
 import { FoundationStep } from "@/components/steps/FoundationStep";
 import { TypeStep } from "@/components/steps/TypeStep";
 import { SpaceStep } from "@/components/steps/SpaceStep";
@@ -25,22 +26,31 @@ import { MotionStep } from "@/components/steps/MotionStep";
 import { ComponentsStep } from "@/components/steps/ComponentsStep";
 import { PreviewStep } from "@/components/steps/PreviewStep";
 import { ShipStep } from "@/components/steps/ShipStep";
+import { VariablesView } from "@/components/variables/VariablesView";
 import { FontLoader } from "@/components/ui/FontLoader";
 
 /** The guided builder — shown once a file is open (view === "workspace"). */
 function Workspace() {
   const started = useDesignSystem((s) => s.meta.started);
   const activeStep = useDesignSystem((s) => s.journey.activeStep);
+  const activeLeftTab = useDesignSystem((s) => s.activeLeftTab);
 
   if (!started) return <Welcome />;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-ink">
+      <HistoryShortcuts />
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <StageRail />
         <main className="min-h-0 min-w-0 flex-1">
-          {activeStep === "colour" || activeStep === "roles" ? (
+          {/* The Variables map spans every step's tokens at once, so it takes
+              over the canvas rather than living inside one step. The step you
+              were on is untouched — switching back to Layers or Tokens returns
+              to it exactly as it was. */}
+          {activeLeftTab === "variables" ? (
+            <VariablesView />
+          ) : activeStep === "colour" || activeStep === "roles" ? (
             <FoundationStep initialTab={activeStep === "roles" ? "roles" : "colour"} />
           ) : activeStep === "type" ? (
             <TypeStep />

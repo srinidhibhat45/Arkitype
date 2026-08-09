@@ -1,7 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Plus, Trash2, Copy, Layers, Database, Search, X } from "lucide-react";
+import {
+  Check,
+  Plus,
+  Trash2,
+  Copy,
+  Layers,
+  Database,
+  Search,
+  X,
+  Waypoints,
+  Eye,
+  EyeOff,
+  TriangleAlert,
+} from "lucide-react";
 import { rampStepLabels } from "@/lib/color";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 import {
@@ -11,21 +24,374 @@ import {
   BASE_RADII,
   RADII_NAMES,
   StepId,
+  VarTierKey,
   componentStatus,
 } from "@/store/useDesignSystem";
+import { TIER_META, VarTier, buildVariableGraph, tierColor } from "@/lib/variableGraph";
 import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
+
+/**
+ * A Tokens-panel section header. The add control is a labelled pill rather than
+ * a bare 12px glyph: every section here can be added to, and the affordance has
+ * to say so as plainly as the delete does.
+ */
+function TokenSection({
+  title,
+  addLabel,
+  onAdd,
+  expanded,
+  children,
+}: {
+  title: string;
+  addLabel?: string;
+  onAdd?: () => void;
+  /** Renders the button in its "form open" state. */
+  expanded?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between border-b border-line pb-1.5">
+        <span className="text-[12px] font-bold text-fg">{title}</span>
+        {onAdd && addLabel ? (
+          <button
+            type="button"
+            onClick={onAdd}
+            title={addLabel}
+            aria-label={addLabel}
+            aria-expanded={expanded}
+            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+              expanded
+                ? "border-line-strong bg-ink-hover text-fg"
+                : "border-line bg-ink-panel text-fg-mute hover:border-line-strong hover:bg-ink-hover hover:text-fg"
+            }`}
+          >
+            {expanded ? <X size={10} /> : <Plus size={10} />}
+            {expanded ? "Cancel" : "Add"}
+          </button>
+        ) : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Shared chrome for the inline "new token" forms. */
+function AddForm({
+  onSubmit,
+  onCancel,
+  children,
+}: {
+  onSubmit: (e: React.FormEvent) => void;
+  onCancel: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="space-y-2 rounded-md border border-line-strong bg-ink-panel p-2">
+      {children}
+      <div className="flex justify-end gap-1.5">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded px-1.5 py-0.5 text-[10px] text-fg-mute hover:bg-ink hover:text-fg"
+        >
+          Cancel
+        </button>
+        <button type="submit" className="rounded bg-fg px-2 py-0.5 text-[10px] font-semibold text-ink">
+          Add
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** The tier ordinal, in the same colours the map uses. */
+function TierBadge({ tier, size = 13 }: { tier: VarTier; size?: number }) {
+  return (
+    <span
+      className="flex shrink-0 items-center justify-center rounded-[3px] font-mono font-bold leading-none"
+      style={{
+        width: size,
+        height: size,
+        fontSize: size * 0.62,
+        background: tierColor(tier),
+        color: "rgb(var(--c-ink-raised))",
+      }}
+    >
+      {TIER_META[tier].step}
+    </span>
+  );
+}
+
+/**
+ * The Variables tab's rail — the navigator for the map on the canvas. Search
+ * finds any variable in the file and flies the canvas to it; the toggles below
+ * decide what the map draws, which matters because the primitive tier alone is
+ * a hundred-odd rows.
+ *
+ * The tier colours and ordinals here are the map's, deliberately: the rail is a
+ * table of contents for the canvas, so a row has to be recognisable as the same
+ * thing in both places.
+ */
+function VariablesPanel() {
+  const primitives = useDesignSystem((s) => s.primitives);
+  const semantics = useDesignSystem((s) => s.semantics);
+  const components = useDesignSystem((s) => s.components);
+  const ui = useDesignSystem((s) => s.variablesUI);
+  const focusVariable = useDesignSystem((s) => s.focusVariable);
+  const toggleVariableCollection = useDesignSystem((s) => s.toggleVariableCollection);
+  const toggleVariableTier = useDesignSystem((s) => s.toggleVariableTier);
+  const setVariableEditMode = useDesignSystem((s) => s.setVariableEditMode);
+  const setVariablesConnectedOnly = useDesignSystem((s) => s.setVariablesConnectedOnly);
+
+  const graph = useMemo(
+    () => buildVariableGraph({ primitives, semantics, components }),
+    [primitives, semantics, components]
+  );
+
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+
+  const matches = useMemo(() => {
+    if (!q) return [];
+    return graph.order
+      .map((id) => graph.nodes[id])
+      .filter((n) => n.path.toLowerCase().includes(q) || n.label.toLowerCase().includes(q))
+      .slice(0, 60);
+  }, [q, graph]);
+
+  const tierCounts = useMemo(() => {
+    const counts: Record<VarTierKey, number> = { primitive: 0, semantic: 0, component: 0, usage: 0 };
+    for (const c of graph.collections) counts[c.tier] += c.nodes.length;
+    return counts;
+  }, [graph]);
+
+  const TIERS: VarTierKey[] = ["primitive", "semantic", "component", "usage"];
+
+  return (
+    <div className="space-y-4 px-3 py-3">
+      {/* search */}
+      <div className="flex h-8 items-center gap-1.5 rounded-md border border-line bg-ink-panel px-2">
+        <Search size={11} className="shrink-0 text-fg-mute" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setQuery("");
+            if (e.key === "Enter" && matches[0]) focusVariable(matches[0].id);
+          }}
+          placeholder="Find a variable…"
+          className="h-full min-w-0 flex-1 bg-transparent text-[12px] text-fg placeholder:text-fg-mute focus:outline-none"
+        />
+        {query ? (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            aria-label="Clear search"
+            className="shrink-0 rounded p-0.5 text-fg-mute hover:text-fg"
+          >
+            <X size={11} />
+          </button>
+        ) : null}
+      </div>
+
+      {q ? (
+        <div className="space-y-0.5">
+          <p className="px-1 text-[10px] uppercase tracking-[0.07em] text-fg-mute">
+            {matches.length === 0 ? "No matches" : `${matches.length} match${matches.length === 1 ? "" : "es"}`}
+          </p>
+          {matches.map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              onClick={() => focusVariable(n.id)}
+              className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left transition-colors hover:bg-ink-panel ${
+                ui.selected === n.id ? "bg-ink-raised" : ""
+              }`}
+            >
+              <TierBadge tier={n.tier} size={12} />
+              {n.swatch ? (
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-[2px] border border-line"
+                  style={{ background: n.swatch[ui.editMode === "dark" ? "dark" : "light"] }}
+                />
+              ) : null}
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-fg-dim">{n.path}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* which mode a wire edit writes */}
+          <div>
+            <span className="mb-1 block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
+              Editing
+            </span>
+            <div className="grid grid-cols-3 gap-1 rounded border border-line bg-ink p-0.5">
+              {(["light", "dark", "both"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setVariableEditMode(m)}
+                  title={
+                    m === "both"
+                      ? "Draw every wire, and write new links to both modes"
+                      : `Draw only the wires that apply in ${m}, and write new links to ${m} alone`
+                  }
+                  className={`rounded py-1 text-[10px] font-bold capitalize transition-colors ${
+                    ui.editMode === m ? "bg-fg text-ink" : "text-fg-mute hover:text-fg-dim"
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            {/* One control, two jobs — worth saying, because "Both" doubles the
+                wire count on any token whose modes disagree. */}
+            <p className="mt-1 text-[10px] leading-snug text-fg-mute">
+              {ui.editMode === "both"
+                ? "Every wire is drawn; new links land in light and dark."
+                : `Only ${ui.editMode} wires are drawn; new links land in ${ui.editMode} alone.`}
+            </p>
+          </div>
+
+          {/* tiers */}
+          <div className="space-y-1">
+            <span className="block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
+              Tiers
+            </span>
+            {TIERS.map((t) => {
+              const on = ui.tiers[t];
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => toggleVariableTier(t)}
+                  title={TIER_META[t].blurb}
+                  className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left transition-colors hover:bg-ink-panel"
+                >
+                  <span className={on ? "" : "opacity-35 grayscale"}>
+                    <TierBadge tier={t} />
+                  </span>
+                  <span
+                    className={`min-w-0 flex-1 truncate text-[11.5px] ${
+                      on ? "text-fg-dim" : "text-fg-mute line-through"
+                    }`}
+                  >
+                    {TIER_META[t].plural}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] text-fg-mute">{tierCounts[t]}</span>
+                  {on ? (
+                    <Eye size={11} className="shrink-0 text-fg-mute" />
+                  ) : (
+                    <EyeOff size={11} className="shrink-0 text-fg-mute" />
+                  )}
+                </button>
+              );
+            })}
+            <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 transition-colors hover:bg-ink-panel">
+              <input
+                type="checkbox"
+                checked={ui.connectedOnly}
+                onChange={(e) => setVariablesConnectedOnly(e.target.checked)}
+                className="h-3 w-3 accent-fg"
+              />
+              <span className="text-[11.5px] text-fg-dim">Hide unused primitives</span>
+            </label>
+          </div>
+
+          {/* collections, grouped into the same four lanes the map draws */}
+          <div className="space-y-2.5">
+            <span className="block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
+              Collections
+            </span>
+            {TIERS.map((t) => {
+              const inTier = graph.collections.filter((c) => c.tier === t);
+              if (inTier.length === 0) return null;
+              return (
+                <div key={t} className="space-y-0.5">
+                  <div
+                    className="flex items-center gap-1.5 border-l-2 pl-1.5"
+                    style={{ borderColor: tierColor(t) }}
+                  >
+                    <span className="text-[10px] font-bold" style={{ color: tierColor(t) }}>
+                      {TIER_META[t].plural}
+                    </span>
+                  </div>
+                  {inTier.map((c) => {
+                    const hidden = ui.hiddenCollections.includes(c.id);
+                    return (
+                      <div
+                        key={c.id}
+                        className="group/coll flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-ink-panel"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => c.nodes[0] && focusVariable(c.nodes[0].id)}
+                          className={`min-w-0 flex-1 truncate text-left text-[11.5px] hover:text-fg ${
+                            hidden ? "text-fg-mute line-through" : "text-fg-dim"
+                          }`}
+                          title={`Jump to ${c.label}`}
+                        >
+                          {c.label}
+                        </button>
+                        <span className="shrink-0 font-mono text-[10px] text-fg-mute">
+                          {c.nodes.length}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleVariableCollection(c.id)}
+                          title={hidden ? "Show on the map" : "Hide from the map"}
+                          className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
+                        >
+                          {hidden ? <EyeOff size={10} /> : <Eye size={10} />}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* health */}
+          {graph.issues.length > 0 ? (
+            <div className="space-y-1">
+              <span className="flex items-center gap-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-red-400">
+                <TriangleAlert size={10} />
+                {graph.issues.length} broken link{graph.issues.length === 1 ? "" : "s"}
+              </span>
+              {graph.issues.slice(0, 12).map((i) => (
+                <button
+                  key={`${i.nodeId}-${i.mode}-${i.type}`}
+                  type="button"
+                  onClick={() => focusVariable(i.nodeId)}
+                  className="w-full rounded px-1.5 py-1 text-left text-[10.5px] leading-snug text-fg-mute transition-colors hover:bg-ink-panel hover:text-fg-dim"
+                >
+                  {i.message}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
 
 export function StageRail() {
   const [width, setWidth] = useState(260);
 
   useEffect(() => {
     const saved = localStorage.getItem("arkitype-stage-rail-width");
-    if (saved) {
-      const parsed = parseInt(saved, 10);
-      if (!isNaN(parsed) && parsed >= 200 && parsed <= 450) {
-        setWidth(parsed);
-      }
-    }
+    const parsed = saved ? parseInt(saved, 10) : NaN;
+    // Same reasoning as the inspector: a 13" laptop can't spare 260px of rail
+    // plus 360px of inspector and still show a component gallery in one screen.
+    const fallback = window.innerWidth >= 1600 ? 260 : window.innerWidth >= 1400 ? 232 : 210;
+    const cap = Math.max(200, Math.round(window.innerWidth * 0.22));
+    setWidth(
+      !isNaN(parsed) && parsed >= 200 && parsed <= 450 ? Math.min(parsed, cap) : fallback
+    );
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -75,11 +441,16 @@ export function StageRail() {
   const removeFontRole = useDesignSystem((s) => s.removeFontRole);
   const addTypeStep = useDesignSystem((s) => s.addTypeStep);
   const removeTypeStep = useDesignSystem((s) => s.removeTypeStep);
+  const addLevel = useDesignSystem((s) => s.addLevel);
+  const removeLevel = useDesignSystem((s) => s.removeLevel);
 
   // Copy state feedback
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
   // Inline forms toggles
+  const [addingSpacing, setAddingSpacing] = useState(false);
+  const [spaceMultiplier, setSpaceMultiplier] = useState(20);
+
   const [addingRadius, setAddingRadius] = useState(false);
   const [radName, setRadName] = useState("");
   const [radValue, setRadValue] = useState(8);
@@ -92,6 +463,25 @@ export function StageRail() {
   const [scaleName, setScaleName] = useState("");
   const [scaleExp, setScaleExp] = useState(6);
   const [scaleAssign, setScaleAssign] = useState("H1 Display Extra");
+
+  /**
+   * A new token appended to the bottom of a long, scrolling list is easy to
+   * miss — which reads as "the add button does nothing". Scroll it into view
+   * and flash it so every add is visibly acknowledged.
+   */
+  const [flashKey, setFlashKey] = useState<string | null>(null);
+  const announce = (key: string) => {
+    setFlashKey(key);
+    requestAnimationFrame(() => {
+      document.getElementById(`token-row-${key}`)?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    });
+    window.setTimeout(() => setFlashKey((k) => (k === key ? null : k)), 1600);
+  };
+  const flashClass = (key: string) =>
+    flashKey === key ? "border-line-strong bg-ink-hover" : "border-transparent";
 
   const doneCount = STEP_ORDER.filter((id) => done[id]).length;
 
@@ -138,28 +528,40 @@ export function StageRail() {
     }, 1500);
   };
 
+  const handleAddSpacing = (e: React.FormEvent) => {
+    e.preventDefault();
+    const next = Number(spaceMultiplier);
+    if (!Number.isFinite(next) || next <= 0) return;
+    addSpacingStep(next);
+    setAddingSpacing(false);
+    announce(`spacing-${useDesignSystem.getState().primitives.spacing.length}`);
+  };
+
   const handleAddRadius = (e: React.FormEvent) => {
     e.preventDefault();
     if (!radName) return;
     addRadiusStep(radName, Number(radValue));
     setRadName("");
     setAddingRadius(false);
+    announce(`radius-${radName}`);
   };
 
   const handleAddFont = (e: React.FormEvent) => {
     e.preventDefault();
     if (!fontRole || !fontFamily) return;
     addFontRole(fontRole, fontFamily);
-    setFontRole("");
     setAddingFont(false);
+    announce(`font-${fontRole}`);
+    setFontRole("");
   };
 
   const handleAddScaleStep = (e: React.FormEvent) => {
     e.preventDefault();
     if (!scaleName) return;
     addTypeStep(scaleName, scaleAssign, Number(scaleExp));
-    setScaleName("");
     setAddingScaleStep(false);
+    announce(`scale-${scaleName}`);
+    setScaleName("");
   };
 
   return (
@@ -167,30 +569,38 @@ export function StageRail() {
       style={{ width: `${width}px` }}
       className="relative flex shrink-0 flex-col border-r border-line bg-ink select-none"
     >
-      {/* Top Figma Tab Switcher */}
+      {/* Top Figma Tab Switcher — three panels now, so on a narrow rail only the
+          active tab keeps its label and the other two fall back to their icon. */}
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-line px-2.5 bg-ink">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setActiveLeftTab("layers")}
-            className={`flex items-center gap-1.5 px-2 py-1 text-[12px] font-bold tracking-wide transition-colors rounded ${
-              activeLeftTab === "layers" ? "text-fg bg-ink-hover" : "text-fg-mute hover:text-fg-dim"
-            }`}
-          >
-            <Layers size={11} />
-            Layers
-          </button>
-          <button
-            type="button"
-            id="stage-rail-tokens-tab"
-            onClick={() => setActiveLeftTab("tokens")}
-            className={`flex items-center gap-1.5 px-2 py-1 text-[12px] font-bold tracking-wide transition-colors rounded ${
-              activeLeftTab === "tokens" ? "text-fg bg-ink-hover" : "text-fg-mute hover:text-fg-dim"
-            }`}
-          >
-            <Database size={11} />
-            Tokens
-          </button>
+        <div className="flex min-w-0 items-center gap-1">
+          {(
+            [
+              { id: "layers" as const, label: "Layers", icon: Layers, domId: undefined },
+              { id: "tokens" as const, label: "Tokens", icon: Database, domId: "stage-rail-tokens-tab" },
+              { id: "variables" as const, label: "Variables", icon: Waypoints, domId: "stage-rail-variables-tab" },
+            ]
+          ).map((tab) => {
+            const active = activeLeftTab === tab.id;
+            const Icon = tab.icon;
+            const showLabel = active || width >= 252;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                id={tab.domId}
+                onClick={() => setActiveLeftTab(tab.id)}
+                title={tab.label}
+                aria-label={tab.label}
+                aria-pressed={active}
+                className={`flex items-center gap-1.5 rounded px-2 py-1 text-[12px] font-bold tracking-wide transition-colors ${
+                  active ? "bg-ink-hover text-fg" : "text-fg-mute hover:text-fg-dim"
+                }`}
+              >
+                <Icon size={11} />
+                {showLabel ? tab.label : null}
+              </button>
+            );
+          })}
         </div>
 
         {activeLeftTab === "layers" ? (
@@ -339,6 +749,9 @@ export function StageRail() {
               })}
             </div>
           </div>
+        ) : activeLeftTab === "variables" ? (
+          /* Variables View (navigator for the token map on the canvas) */
+          <VariablesPanel />
         ) : (
           /* Tokens Studio View (defined primitives & semantics) */
           <div className="px-4 py-3 space-y-6">
@@ -377,24 +790,25 @@ export function StageRail() {
             </div>
 
             {/* Colors Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between border-b border-line pb-1.5">
-                <span className="text-[12px] font-bold text-fg">Colors</span>
-                <button
-                  type="button"
-                  onClick={() => addFamily()}
-                  className="rounded p-0.5 hover:bg-ink-hover text-fg-mute hover:text-fg transition-colors"
-                  title="Add Color Family"
-                >
-                  <Plus size={12} />
-                </button>
-              </div>
-
+            <TokenSection
+              title="Colors"
+              addLabel="Add colour family"
+              onAdd={() => {
+                addFamily();
+                const fams = useDesignSystem.getState().primitives.colorFamilies;
+                announce(`family-${fams[fams.length - 1]?.id ?? ""}`);
+              }}
+            >
               <div className="space-y-3 pt-1">
                 {primitives.colorFamilies.map((fam) => {
                   const labels = rampStepLabels(fam.steps);
+                  const flashId = `family-${fam.id}`;
                   return (
-                    <div key={fam.id} className="space-y-1">
+                    <div
+                      key={fam.id}
+                      id={`token-row-${flashId}`}
+                      className={`space-y-1 rounded-md border p-1 transition-colors ${flashClass(flashId)}`}
+                    >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
                           <span
@@ -449,21 +863,43 @@ export function StageRail() {
                   );
                 })}
               </div>
-            </div>
+            </TokenSection>
 
             {/* Spacing Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between border-b border-line pb-1.5">
-                <span className="text-[12px] font-bold text-fg">Spacing</span>
-                <button
-                  type="button"
-                  onClick={() => addSpacingStep()}
-                  className="rounded p-0.5 hover:bg-ink-hover text-fg-mute hover:text-fg transition-colors"
-                  title="Add Spacing Step"
-                >
-                  <Plus size={12} />
-                </button>
-              </div>
+            <TokenSection
+              title="Spacing"
+              addLabel="Add spacing step"
+              expanded={addingSpacing}
+              onAdd={() => {
+                const next = primitives.spacingMultipliers;
+                const last = next[next.length - 1] ?? 16;
+                const prev = next[next.length - 2] ?? 12;
+                setSpaceMultiplier(last + (last - prev));
+                setAddingSpacing((v) => !v);
+              }}
+            >
+              {addingSpacing && (
+                <AddForm onSubmit={handleAddSpacing} onCancel={() => setAddingSpacing(false)}>
+                  <label className="flex items-center gap-2">
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-fg-mute">
+                      Multiplier
+                    </span>
+                    <input
+                      type="number"
+                      min={0.25}
+                      step={0.25}
+                      value={spaceMultiplier}
+                      onChange={(e) => setSpaceMultiplier(Number(e.target.value))}
+                      className="w-0 flex-1 rounded border border-line bg-ink px-1.5 py-0.5 font-mono text-[11.5px] text-fg"
+                      required
+                      autoFocus
+                    />
+                    <span className="shrink-0 font-mono text-[10px] text-fg-mute">
+                      ×{spacingBase} = {Math.round(spaceMultiplier * spacingBase)}px
+                    </span>
+                  </label>
+                </AddForm>
+              )}
 
               <div className="space-y-1 pt-1 pl-1">
                 {primitives.spacing.map((px, i) => {
@@ -474,7 +910,8 @@ export function StageRail() {
                   return (
                     <div
                       key={i}
-                      className="group flex items-center justify-between rounded px-1.5 py-0.5 hover:bg-ink-panel border border-transparent hover:border-line"
+                      id={`token-row-spacing-${stepIndex}`}
+                      className={`group flex items-center justify-between rounded border px-1.5 py-0.5 transition-colors hover:border-line hover:bg-ink-panel ${flashClass(`spacing-${stepIndex}`)}`}
                     >
                       <button
                         type="button"
@@ -507,24 +944,17 @@ export function StageRail() {
                   );
                 })}
               </div>
-            </div>
+            </TokenSection>
 
             {/* Radius Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between border-b border-line pb-1.5">
-                <span className="text-[12px] font-bold text-fg">Radius</span>
-                <button
-                  type="button"
-                  onClick={() => setAddingRadius(!addingRadius)}
-                  className="rounded p-0.5 hover:bg-ink-hover text-fg-mute hover:text-fg transition-colors"
-                  title="Add Radius Token"
-                >
-                  <Plus size={12} />
-                </button>
-              </div>
-
+            <TokenSection
+              title="Radius"
+              addLabel="Add radius token"
+              expanded={addingRadius}
+              onAdd={() => setAddingRadius((v) => !v)}
+            >
               {addingRadius && (
-                <form onSubmit={handleAddRadius} className="bg-ink-panel border border-line rounded p-2 space-y-2">
+                <AddForm onSubmit={handleAddRadius} onCancel={() => setAddingRadius(false)}>
                   <div className="flex gap-1.5">
                     <input
                       type="text"
@@ -533,32 +963,18 @@ export function StageRail() {
                       onChange={(e) => setRadName(e.target.value)}
                       className="w-0 flex-1 bg-ink border border-line text-[11.5px] px-1.5 py-0.5 rounded text-fg"
                       required
+                      autoFocus
                     />
                     <input
                       type="number"
-                      placeholder="Value (px)"
+                      placeholder="px"
                       value={radValue}
                       onChange={(e) => setRadValue(Number(e.target.value))}
                       className="w-16 bg-ink border border-line text-[11.5px] px-1.5 py-0.5 rounded text-fg"
                       required
                     />
                   </div>
-                  <div className="flex justify-end gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setAddingRadius(false)}
-                      className="text-[10px] px-1.5 py-0.5 rounded text-fg-mute hover:bg-ink hover:text-fg"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="text-[10px] px-2 py-0.5 rounded bg-fg text-ink font-semibold"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </form>
+                </AddForm>
               )}
 
               <div className="space-y-1 pt-1 pl-1">
@@ -570,7 +986,8 @@ export function StageRail() {
                   return (
                     <div
                       key={i}
-                      className="group flex items-center justify-between rounded px-1.5 py-0.5 hover:bg-ink-panel border border-transparent hover:border-line"
+                      id={`token-row-radius-${name}`}
+                      className={`group flex items-center justify-between rounded border px-1.5 py-0.5 transition-colors hover:border-line hover:bg-ink-panel ${flashClass(`radius-${name}`)}`}
                     >
                       <button
                         type="button"
@@ -603,24 +1020,17 @@ export function StageRail() {
                   );
                 })}
               </div>
-            </div>
+            </TokenSection>
 
             {/* Typography Families Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between border-b border-line pb-1.5">
-                <span className="text-[12px] font-bold text-fg">Font Families</span>
-                <button
-                  type="button"
-                  onClick={() => setAddingFont(!addingFont)}
-                  className="rounded p-0.5 hover:bg-ink-hover text-fg-mute hover:text-fg transition-colors"
-                  title="Add Font Role"
-                >
-                  <Plus size={12} />
-                </button>
-              </div>
-
+            <TokenSection
+              title="Font Families"
+              addLabel="Add font role"
+              expanded={addingFont}
+              onAdd={() => setAddingFont((v) => !v)}
+            >
               {addingFont && (
-                <form onSubmit={handleAddFont} className="bg-ink-panel border border-line rounded p-2 space-y-2">
+                <AddForm onSubmit={handleAddFont} onCancel={() => setAddingFont(false)}>
                   <input
                     type="text"
                     placeholder="Role (e.g. quote)"
@@ -628,31 +1038,17 @@ export function StageRail() {
                     onChange={(e) => setFontRole(e.target.value)}
                     className="w-full bg-ink border border-line text-[11.5px] px-1.5 py-0.5 rounded text-fg"
                     required
+                    autoFocus
                   />
                   <input
                     type="text"
-                    placeholder="Family family name"
+                    placeholder="Font family (e.g. Inter, sans-serif)"
                     value={fontFamily}
                     onChange={(e) => setFontFamilyName(e.target.value)}
                     className="w-full bg-ink border border-line text-[11.5px] px-1.5 py-0.5 rounded text-fg"
                     required
                   />
-                  <div className="flex justify-end gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setAddingFont(false)}
-                      className="text-[10px] px-1.5 py-0.5 rounded text-fg-mute hover:bg-ink hover:text-fg"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="text-[10px] px-2 py-0.5 rounded bg-fg text-ink font-semibold"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </form>
+                </AddForm>
               )}
 
               <div className="space-y-1.5 pt-1 pl-1">
@@ -663,7 +1059,8 @@ export function StageRail() {
                   return (
                     <div
                       key={role}
-                      className="group flex flex-col gap-0.5 rounded px-1.5 py-1 hover:bg-ink-panel border border-transparent hover:border-line"
+                      id={`token-row-font-${role}`}
+                      className={`group flex flex-col gap-0.5 rounded border px-1.5 py-1 transition-colors hover:border-line hover:bg-ink-panel ${flashClass(`font-${role}`)}`}
                     >
                       <div className="flex items-center justify-between">
                         <button
@@ -698,24 +1095,17 @@ export function StageRail() {
                   );
                 })}
               </div>
-            </div>
+            </TokenSection>
 
             {/* Typography Scale Steps Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between border-b border-line pb-1.5">
-                <span className="text-[12px] font-bold text-fg">Font Scale Steps</span>
-                <button
-                  type="button"
-                  onClick={() => setAddingScaleStep(!addingScaleStep)}
-                  className="rounded p-0.5 hover:bg-ink-hover text-fg-mute hover:text-fg transition-colors"
-                  title="Add Font Scale Step"
-                >
-                  <Plus size={12} />
-                </button>
-              </div>
-
+            <TokenSection
+              title="Font Scale Steps"
+              addLabel="Add font scale step"
+              expanded={addingScaleStep}
+              onAdd={() => setAddingScaleStep((v) => !v)}
+            >
               {addingScaleStep && (
-                <form onSubmit={handleAddScaleStep} className="bg-ink-panel border border-line rounded p-2 space-y-2">
+                <AddForm onSubmit={handleAddScaleStep} onCancel={() => setAddingScaleStep(false)}>
                   <div className="flex gap-1.5">
                     <input
                       type="text"
@@ -724,10 +1114,11 @@ export function StageRail() {
                       onChange={(e) => setScaleName(e.target.value)}
                       className="w-0 flex-1 bg-ink border border-line text-[11.5px] px-1.5 py-0.5 rounded text-fg"
                       required
+                      autoFocus
                     />
                     <input
                       type="number"
-                      placeholder="Exp (e.g. 6)"
+                      placeholder="Exp"
                       value={scaleExp}
                       onChange={(e) => setScaleExp(Number(e.target.value))}
                       className="w-16 bg-ink border border-line text-[11.5px] px-1.5 py-0.5 rounded text-fg"
@@ -742,22 +1133,7 @@ export function StageRail() {
                     className="w-full bg-ink border border-line text-[11.5px] px-1.5 py-0.5 rounded text-fg"
                     required
                   />
-                  <div className="flex justify-end gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setAddingScaleStep(false)}
-                      className="text-[10px] px-1.5 py-0.5 rounded text-fg-mute hover:bg-ink hover:text-fg"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="text-[10px] px-2 py-0.5 rounded bg-fg text-ink font-semibold"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </form>
+                </AddForm>
               )}
 
               <div className="space-y-1 pt-1 pl-1">
@@ -776,7 +1152,8 @@ export function StageRail() {
                   return (
                     <div
                       key={s.name}
-                      className="group flex items-center justify-between rounded px-1.5 py-0.5 hover:bg-ink-panel border border-transparent hover:border-line"
+                      id={`token-row-scale-${s.name}`}
+                      className={`group flex items-center justify-between rounded border px-1.5 py-0.5 transition-colors hover:border-line hover:bg-ink-panel ${flashClass(`scale-${s.name}`)}`}
                     >
                       <button
                         type="button"
@@ -809,13 +1186,18 @@ export function StageRail() {
                   );
                 })}
               </div>
-            </div>
+            </TokenSection>
 
             {/* Elevation Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between border-b border-line pb-1.5">
-                <span className="text-[12px] font-bold text-fg">Elevation (Shadows)</span>
-              </div>
+            <TokenSection
+              title="Elevation (Shadows)"
+              addLabel="Add elevation level"
+              onAdd={() => {
+                addLevel();
+                const levels = useDesignSystem.getState().primitives.elevation.light;
+                announce(`shadow-${levels[levels.length - 1]?.name ?? ""}`);
+              }}
+            >
               <div className="space-y-1 pt-1 pl-1">
                 {primitives.elevation.light.map((level, i) => {
                   const refName = `{shadows.${level.name}}`;
@@ -824,7 +1206,8 @@ export function StageRail() {
                   return (
                     <div
                       key={level.name}
-                      className="group flex items-center justify-between rounded px-1.5 py-0.5 hover:bg-ink-panel border border-transparent hover:border-line"
+                      id={`token-row-shadow-${level.name}`}
+                      className={`group flex items-center justify-between rounded border px-1.5 py-0.5 transition-colors hover:border-line hover:bg-ink-panel ${flashClass(`shadow-${level.name}`)}`}
                     >
                       <button
                         type="button"
@@ -835,24 +1218,35 @@ export function StageRail() {
                         <span className="text-[12px] font-mono text-fg-dim truncate">{level.name}</span>
                         <span className="text-[11px] font-mono text-fg-mute mr-2 truncate">y: {level.y}px</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(refName)}
-                        className="opacity-0 group-hover:opacity-100 text-fg-mute p-0.5 rounded hover:text-fg transition-opacity"
-                      >
-                        {isCopied ? <Check size={10} /> : <Copy size={10} />}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(refName)}
+                          className="opacity-0 group-hover:opacity-100 text-fg-mute p-0.5 rounded hover:text-fg transition-opacity"
+                        >
+                          {isCopied ? <Check size={10} /> : <Copy size={10} />}
+                        </button>
+                        {primitives.elevation.light.length > 1 && (
+                          <button
+                            type="button"
+                            title="Remove level"
+                            onClick={() => removeLevel(i)}
+                            className="opacity-0 group-hover:opacity-100 text-fg-mute p-0.5 rounded hover:text-red-500 transition-opacity"
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </TokenSection>
 
-            {/* Motion Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between border-b border-line pb-1.5">
-                <span className="text-[12px] font-bold text-fg">Motion</span>
-              </div>
+            {/* Motion Section — durations and easings are a fixed vocabulary
+                (fast/base/slow, four curves); their values are edited on the
+                Motion step, so there is nothing to add here. */}
+            <TokenSection title="Motion">
               <div className="space-y-2 pt-1 pl-1">
                 <div>
                   <span className="text-[10px] font-bold text-fg-mute uppercase tracking-wide">Durations</span>
@@ -915,7 +1309,7 @@ export function StageRail() {
                   })}
                 </div>
               </div>
-            </div>
+            </TokenSection>
           </div>
         )}
       </div>

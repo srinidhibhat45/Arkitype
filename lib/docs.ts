@@ -44,6 +44,11 @@ export function generateHandoffDocs(state: ArkitypeState): string {
   const lines: string[] = [];
   const push = (s = ""): number => lines.push(s);
 
+  // Every mode the file carries. The handoff has to describe the same system
+  // the app audits — a mode the contrast panel checks but the handoff omits is
+  // a mode nobody downstream knows they have to honour.
+  const docModes = modeDefsOf(semantics);
+
   push("# Arkitype Design System — Engineering Handoff");
   push();
   push(`> Generated ${new Date().toISOString()} · ${countTokens(state)} active tokens`);
@@ -53,7 +58,11 @@ export function generateHandoffDocs(state: ArkitypeState): string {
   push("Two variable collections ship in the JSON bundle:");
   push();
   push("- **Arkitype / Primitives** — raw values (color ramps, spacing, radii, type, shadows). One `Value` mode.");
-  push("- **Arkitype / Semantics** — role tokens aliased to primitives. Two modes: `Light` and `Dark`. UI code must only reference semantic tokens; primitives are an implementation detail.");
+  push(
+    `- **Arkitype / Semantics** — role tokens aliased to primitives. ${docModes.length} modes: ${docModes
+      .map((m) => `\`${m.name}\``)
+      .join(", ")}. UI code must only reference semantic tokens; primitives are an implementation detail.`
+  );
   push();
   push(
     `Import the bundle with the companion Figma plugin — [${FIGMA_PLUGIN_NAME}](${FIGMA_PLUGIN_URL}) — or map it to CSS custom properties (snippet in §6).`,
@@ -127,30 +136,26 @@ export function generateHandoffDocs(state: ArkitypeState): string {
 
   push("## 4. Accessibility Audit (WCAG 2.1)");
   push();
-  push("| Context | Pair | Light | Dark | AA (4.5:1) | AAA (7:1) |");
-  push("| --- | --- | --- | --- | --- | --- |");
+  // One ratio column per mode, and a verdict that only passes if every mode
+  // passes — the same bar the in-app audit holds the system to.
+  push(`| Context | Pair | ${docModes.map((m) => m.name).join(" | ")} | AA (4.5:1) | AAA (7:1) |`);
+  push(`| --- | --- | ${docModes.map(() => "---").join(" | ")} | --- | --- |`);
   A11Y_PAIRS.forEach(([bg, fg, context]) => {
-    const light = wcagVerdict(
-      resolveToken(state, "light", bg),
-      resolveToken(state, "light", fg)
+    const verdicts = docModes.map((m) =>
+      wcagVerdict(resolveToken(state, m.id, bg), resolveToken(state, m.id, fg))
     );
-    const dark = wcagVerdict(
-      resolveToken(state, "dark", bg),
-      resolveToken(state, "dark", fg)
-    );
-    const aa = light.aa && dark.aa;
-    const aaa = light.aaa && dark.aaa;
     push(
-      `| ${context} | \`${fg}\` on \`${bg}\` | ${light.ratio}:1 | ${dark.ratio}:1 | ${badge(
-        aa
-      )} | ${badge(aaa)} |`
+      `| ${context} | \`${fg}\` on \`${bg}\` | ${verdicts
+        .map((v) => `${v.ratio}:1`)
+        .join(" | ")} | ${badge(verdicts.every((v) => v.aa))} | ${badge(
+        verdicts.every((v) => v.aaa)
+      )} |`
     );
   });
   push();
 
   push("## 5. Token Dependency Graph");
   push();
-  const docModes = modeDefsOf(semantics);
   SEMANTIC_GROUPS.forEach((group) => {
     push(`### ${group.label}`);
     push();

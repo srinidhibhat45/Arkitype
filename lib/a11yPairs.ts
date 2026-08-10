@@ -5,6 +5,13 @@ export interface RoleContrastPair {
   bg: string;   // semantic role id used as the surface it sits on
   context: A11yContext;
   label: string; // shown in the UI, e.g. "Primary text on base surface"
+  /**
+   * When set, `bg` is a stored *value* — a hex, a ramp ref, an "@token" — and
+   * not the name of a token in the file. That is the difference between "text
+   * on our elevated surface" and "text on pure white": the second is a fixed
+   * given the designer has declared, so nothing may repair it by moving it.
+   */
+  bgIsValue?: boolean;
   /** Group the pairing belongs to in the audit UI (a token group label, or
    *  "Foundation" for the curated cross-group text-on-surface set). */
   section?: string;
@@ -158,6 +165,67 @@ export function derivePairs(groups: TokenGroupShape[]): RoleContrastPair[] {
   for (const pair of ROLE_CONTRAST_PAIRS) push({ ...pair, section: pair.section ?? "Foundation" });
   for (const pair of OPTIONAL_PAIRS) push({ ...pair, section: pair.section ?? "Foundation" });
   for (const group of groups) for (const pair of pairsWithinGroup(group)) push(pair);
+
+  return out;
+}
+
+/* ──────────────────── backgrounds the designer declares ─────────────────── */
+
+/**
+ * A background the audit checks against on top of the file's own surfaces.
+ *
+ * The derived set above can only find surfaces that *are* tokens, named with a
+ * surface suffix. That leaves out the backgrounds a design most often has to
+ * survive and least often owns: pure white, pure black, a marketing page's
+ * photo wash, a partner's brand fill. This is how one gets declared.
+ *
+ * `value` is written in the same grammar a token's value uses — "#ffffff",
+ * "brand-600", "@surface-base" — so a backdrop can track the system if you want
+ * it to, or stay pinned if you don't.
+ */
+export interface A11yBackdrop {
+  id: string;
+  label: string;
+  value: string;
+}
+
+/**
+ * Every text and border token in the file, checked against one declared
+ * background. Text is gated at the full bar; borders are advisory for the same
+ * reason they are everywhere else — a name can't say whether an edge is what
+ * identifies the control.
+ *
+ * `isColorToken` lets the caller drop tokens that hold a size or a weight; the
+ * suffix lists rarely catch one, but "add a background" is the one place a
+ * user's own naming meets this code, so the door is there.
+ */
+export function pairsAgainstBackdrop(
+  groups: TokenGroupShape[],
+  backdrop: A11yBackdrop,
+  isColorToken?: (token: string) => boolean
+): RoleContrastPair[] {
+  const seen = new Set<string>();
+  const out: RoleContrastPair[] = [];
+
+  for (const group of groups) {
+    for (const token of group.tokens) {
+      if (seen.has(token)) continue;
+      if (isColorToken && !isColorToken(token)) continue;
+      const isText = endsWithAny(token, TEXT_SUFFIX);
+      const isBorder = !isText && endsWithAny(token, BORDER_SUFFIX);
+      if (!isText && !isBorder) continue;
+      seen.add(token);
+      out.push({
+        fg: token,
+        bg: backdrop.value,
+        bgIsValue: true,
+        context: isText ? "text-normal" : "ui-component",
+        label: `${humanise(token)} on ${backdrop.label}`,
+        section: backdrop.label,
+        advisory: isBorder,
+      });
+    }
+  }
 
   return out;
 }

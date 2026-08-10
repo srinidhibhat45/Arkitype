@@ -15,6 +15,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { generateRamp, hexToRgba, isValidHex, rampStepLabels } from "@/lib/color";
 import { generateTypeScale, FontRoleId, RoundingMode, STEP_DEFS } from "@/lib/typography";
 import { matchGoogleFont } from "@/lib/googleFonts";
+import type { A11yBackdrop } from "@/lib/a11yPairs";
 import { supabase } from "@/lib/supabase/client";
 import * as db from "@/lib/persistence";
 
@@ -256,6 +257,13 @@ export interface PanelVisibility {
 
 /** The four panels the left rail switches between. */
 export type LeftTab = "layers" | "tokens" | "variables" | "docs";
+
+/**
+ * The two halves of the Colour step. The audit used to sit on top of the
+ * palette, which made the surface you *edit* on start with a report you mostly
+ * aren't reading — so it gets its own tab and the palette gets its room back.
+ */
+export type FoundationView = "colour" | "contrast";
 
 /**
  * The tabs whose surface replaces the step canvas rather than sitting beside
@@ -643,6 +651,68 @@ export function nextStep(step: StepId): StepId | null {
 export function prevStep(step: StepId): StepId | null {
   const i = STEP_ORDER.indexOf(step);
   return i > 0 ? STEP_ORDER[i - 1] : null;
+}
+
+/**
+ * Whether the top bar's Preview switch reaches the surface currently showing —
+ * and, when it doesn't, what to say instead.
+ *
+ * The switch picks which mode's column a *preview* reads, so it only means
+ * something where a preview renders one mode at a time. It used to sit fully
+ * lit on every surface in the app, including the ones that show every mode
+ * simultaneously and the ones that carry no per-mode values at all — a control
+ * whose only feedback was that pressing it changed nothing.
+ *
+ * Those surfaces get it disabled with the reason on the tooltip rather than
+ * removed: chrome that appears and disappears as you move between steps is its
+ * own kind of confusing, and "not here, and here's why" is the honest state.
+ */
+export function previewModeScope(
+  tab: LeftTab,
+  step: StepId
+): { applies: boolean; reason: string } {
+  // The canvas tabs replace the step surface entirely, so they answer first.
+  if (tab === "variables")
+    return {
+      applies: false,
+      reason:
+        "Variables carries its own mode control — the table gives every mode a column, and the map's Editing list in the rail picks the one it draws.",
+    };
+  if (tab === "docs")
+    return { applies: false, reason: "The manual isn't rendered from your tokens." };
+
+  switch (step) {
+    case "shape":
+    case "components":
+    case "preview":
+      return { applies: true, reason: "" };
+    case "colour":
+    case "roles":
+      return {
+        applies: false,
+        reason:
+          "Colour shows every mode at once — one column per mode in the token tables, one card per mode in Roles in context.",
+      };
+    case "type":
+      return {
+        applies: false,
+        reason: "Type carries no per-mode values — a scale is the same size in every mode.",
+      };
+    case "space":
+      return {
+        applies: false,
+        reason: "Spacing carries no per-mode values — the rhythm is the same in every mode.",
+      };
+    case "motion":
+      return {
+        applies: false,
+        reason: "Motion carries no per-mode values — durations and curves are the same in every mode.",
+      };
+    case "ship":
+      return { applies: false, reason: "Ship writes every mode into the bundle at once." };
+    default:
+      return { applies: true, reason: "" };
+  }
 }
 
 /* ────────────────────────────── semantic roles ────────────────────────── */
@@ -1149,6 +1219,9 @@ export interface ProjectState {
     modes: Record<string, Record<string, string>>;
     /** The modes themselves, in the order the table shows them. */
     modeDefs: ModeDef[];
+    /** Extra backgrounds the contrast audit checks every text token against —
+     *  see `A11yBackdrop`. Optional: a file that never declared one has none. */
+    backdrops?: A11yBackdrop[];
   };
   components: Record<string, ComponentConfig>;
   currentPreviewMode: PreviewMode;
@@ -1207,6 +1280,9 @@ export interface ArkitypeState {
     modes: Record<string, Record<string, string>>;
     /** The modes themselves, in the order the table shows them. */
     modeDefs: ModeDef[];
+    /** Extra backgrounds the contrast audit checks every text token against —
+     *  see `A11yBackdrop`. Optional: a file that never declared one has none. */
+    backdrops?: A11yBackdrop[];
   };
   components: Record<string, ComponentConfig>;
   currentPreviewMode: PreviewMode;
@@ -1238,6 +1314,12 @@ export interface ArkitypeState {
   hoveredPartId: string | null;
   selectedPartId: string | null;
   activeLeftTab: LeftTab;
+  /**
+   * Which half of the Colour step is showing — the palette and its tokens, or
+   * the contrast audit. Transient: it's where you were looking, not part of the
+   * system being designed.
+   */
+  foundationView: FoundationView;
   /** Variables tab view state — transient, never persisted. */
   variablesUI: VariablesUI;
   /**
@@ -1302,6 +1384,7 @@ export interface ArkitypeState {
   setHoveredPartId: (id: string | null) => void;
   setSelectedPartId: (id: string | null) => void;
   setActiveLeftTab: (tab: LeftTab) => void;
+  setFoundationView: (view: FoundationView) => void;
 
   /* variables map */
   selectVariable: (id: string | null) => void;
@@ -1413,6 +1496,12 @@ export interface ArkitypeState {
   addGroup: (label: string, kind?: "semantic" | "component") => void;
   renameGroup: (oldLabel: string, newLabel: string) => void;
   removeGroup: (label: string) => void;
+
+  /* backgrounds the contrast audit is held to, beyond the file's own surfaces */
+  /** Declare one. `value` is a token value — "#ffffff", "brand-600",
+   *  "@surface-base" — and a duplicate value is a no-op rather than a second row. */
+  addBackdrop: (value: string, label?: string) => void;
+  removeBackdrop: (id: string) => void;
 
   /* modes — the columns of the Variables table */
   /**
@@ -1751,6 +1840,19 @@ function uniqueId(base: string, taken: Set<string>): string {
   return `${base}-${i}`;
 }
 
+/**
+ * What to call a declared background when the designer didn't say. The two
+ * extremes get their plain-English names because that is what people are
+ * checking when they reach for them; everything else is named after itself.
+ */
+function defaultBackdropLabel(value: string): string {
+  const v = value.trim().toLowerCase();
+  if (v === "#fff" || v === "#ffffff") return "Pure white";
+  if (v === "#000" || v === "#000000") return "Pure black";
+  if (v.startsWith("@")) return value.trim().slice(1);
+  return value.trim().toUpperCase().startsWith("#") ? value.trim().toUpperCase() : value.trim();
+}
+
 /* ────────────────────────────── store ────────────────────────────── */
 
 /** A complete fresh semantics blob: semantic roles + the component-token tier. */
@@ -1974,6 +2076,7 @@ export const useDesignSystem = create<ArkitypeState>()(
         hoveredPartId: null,
         selectedPartId: null,
         activeLeftTab: "layers",
+        foundationView: "colour",
         variablesUI: { ...DEFAULT_VARIABLES_UI, tiers: { ...DEFAULT_VARIABLES_UI.tiers } },
         history: { past: [], future: [], checkpoint: null },
 
@@ -2266,6 +2369,8 @@ export const useDesignSystem = create<ArkitypeState>()(
        setHoveredPartId: (id) => set({ hoveredPartId: id }),
        setSelectedPartId: (id) => set({ selectedPartId: id }),
        setActiveLeftTab: (tab) => set({ activeLeftTab: tab }),
+
+      setFoundationView: (view) => set({ foundationView: view }),
 
       /* ── variables map ── */
 
@@ -3308,6 +3413,34 @@ export const useDesignSystem = create<ArkitypeState>()(
           for (const [id, map] of Object.entries(state.semantics.modes)) modes[id] = strip(map);
           return { semantics: { ...state.semantics, groups, modes } };
         }),
+
+      /* ── declared backgrounds ── */
+
+      addBackdrop: (value, label) =>
+        set((state) => {
+          const v = value.trim();
+          if (!v) return state;
+          const existing = state.semantics.backdrops ?? [];
+          // Declaring the same background twice would double every row it
+          // generates, and the second copy could never be told from the first.
+          if (existing.some((b) => b.value.toLowerCase() === v.toLowerCase())) return state;
+          const name = (label ?? "").trim() || defaultBackdropLabel(v);
+          const id = uniqueId(slugify(name) || "backdrop", new Set(existing.map((b) => b.id)));
+          return {
+            semantics: {
+              ...state.semantics,
+              backdrops: [...existing, { id, label: name, value: v }],
+            },
+          };
+        }),
+
+      removeBackdrop: (id) =>
+        set((state) => ({
+          semantics: {
+            ...state.semantics,
+            backdrops: (state.semantics.backdrops ?? []).filter((b) => b.id !== id),
+          },
+        })),
 
       /* ── modes ── */
 

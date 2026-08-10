@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Moon, Sun, Folder, BookOpen, HelpCircle, AlertTriangle, PanelLeft, PanelRight } from "lucide-react";
 import { Segmented } from "@/components/ui/controls";
-import { PanelSide, STEP_ORDER, modeDefsOf, useDesignSystem } from "@/store/useDesignSystem";
+import {
+  PanelSide,
+  STEP_ORDER,
+  modeDefsOf,
+  previewModeScope,
+  useDesignSystem,
+} from "@/store/useDesignSystem";
 import * as db from "@/lib/persistence";
 
 /**
@@ -87,6 +93,12 @@ export function TopBar() {
   const setActiveLeftTab = useDesignSystem((s) => s.setActiveLeftTab);
   const leftPanelShown = useDesignSystem((s) => s.panels.left);
   const togglePanel = useDesignSystem((s) => s.togglePanel);
+  const activeStep = useDesignSystem((s) => s.journey.activeStep);
+
+  // Whether this switch reaches whatever is on the canvas right now. Most
+  // surfaces either show every mode at once or carry no per-mode values at
+  // all, and on those it used to sit fully lit and do nothing.
+  const scope = previewModeScope(activeLeftTab, activeStep);
 
   // Docs live in the canvas with their contents in the rail, so opening them
   // with the rail put away would show the page and no way to navigate it.
@@ -223,17 +235,46 @@ export function TopBar() {
 
         <span className="h-4 w-px bg-line" aria-hidden />
 
-        {/* Preview: themes the component being designed, not the app */}
-        <div className="flex items-center gap-2">
-          <span className="hidden text-[10px] font-medium uppercase tracking-[0.08em] text-fg-mute md:block">
+        {/* Preview: themes the component being designed, not the app.
+            Disabled rather than hidden where it has nothing to act on — chrome
+            that comes and goes as you move between steps is its own kind of
+            confusing, and the tooltip says which surface answers instead. */}
+        <div className="flex items-center gap-2" title={scope.applies ? undefined : scope.reason}>
+          <span
+            className={`hidden text-[10px] font-medium uppercase tracking-[0.08em] md:block ${
+              scope.applies ? "text-fg-mute" : "text-fg-mute/50"
+            }`}
+          >
             Preview
           </span>
-          {/* Every mode the file has, not the two it used to be limited to. */}
-          <Segmented
-            options={modeDefs.map((m) => ({ label: m.name, value: m.id }))}
-            value={mode}
-            onChange={setPreviewMode}
-          />
+          {/* Every mode the file has, not the two it used to be limited to —
+              and a list rather than a row once there are more of them than a
+              segmented control can hold without eating the bar. */}
+          {modeDefs.length > 3 ? (
+            <select
+              value={mode}
+              disabled={!scope.applies}
+              aria-label="Preview mode"
+              onChange={(e) => setPreviewMode(e.target.value)}
+              className={`h-8 rounded-lg border border-line bg-ink-panel px-2 text-[12px] font-semibold text-fg-dim focus:border-line-strong focus:outline-none ${
+                scope.applies ? "" : "cursor-not-allowed opacity-40"
+              }`}
+            >
+              {modeDefs.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Segmented
+              options={modeDefs.map((m) => ({ label: m.name, value: m.id }))}
+              value={mode}
+              onChange={setPreviewMode}
+              disabled={!scope.applies}
+              title={scope.applies ? undefined : scope.reason}
+            />
+          )}
         </div>
 
         <button

@@ -11,7 +11,14 @@
  * `@role`, so the whole system stays one continuous editable chain.
  */
 import { useEffect, useMemo, useState } from "react";
-import { PreviewMode, SemanticGroup, useDesignSystem } from "@/store/useDesignSystem";
+import {
+  ModeDef,
+  PreviewMode,
+  SemanticGroup,
+  isBuiltInMode,
+  modeDefsOf,
+  useDesignSystem,
+} from "@/store/useDesignSystem";
 import {
   alphaOfValue,
   applyAlphaToValue,
@@ -21,10 +28,12 @@ import {
   tokenKind,
 } from "@/lib/tokens";
 import { KIND_LABEL, KindIcon } from "@/components/variables/VariableBits";
-import { isValidHex, stripAlpha, withAlpha } from "@/lib/color";
-import { CanvasSection, Tooltip } from "@/components/ui/controls";
+import { AddModeButton, ModeHeader } from "@/components/variables/ModeColumns";
+import { isValidHex, withAlpha } from "@/lib/color";
+import { AlphaChip, CanvasSection, ColorWell, Tooltip } from "@/components/ui/controls";
 import { checkContrast } from "@/lib/a11y";
-import { derivePairs, pairsInvolving } from "@/lib/a11yPairs";
+import { derivePairs, pairsAgainstBackdrop, pairsInvolving } from "@/lib/a11yPairs";
+import { pageBackdrop, pairBackgroundHex } from "@/lib/a11yFix";
 import { Check, Plus, Trash2 } from "lucide-react";
 
 /* ── live contrast verdict for one token, in one mode ── */
@@ -40,14 +49,26 @@ function TokenVerdict({ mode, token }: { mode: PreviewMode; token: string }) {
 
   const worst = useMemo(() => {
     const state = { primitives, semantics };
-    const pairs = pairsInvolving(token, derivePairs(semantics.groups));
+    // The same pairing set the audit holds the file to — including any
+    // background the designer declared there. A badge that ignored those would
+    // read "AA" on a token the audit is calling a failure two clicks away.
+    const isColorToken = (t: string) => tokenKind({ semantics }, t) === "color";
+    const all = [
+      ...derivePairs(semantics.groups),
+      ...(semantics.backdrops ?? []).flatMap((b) =>
+        pairsAgainstBackdrop(semantics.groups, b, isColorToken)
+      ),
+    ];
+    const pairs = pairsInvolving(token, all);
     if (pairs.length === 0) return null;
+    const backdrop = pageBackdrop(state, mode);
     return pairs
       .map((pair) => {
         const check = checkContrast(
           resolveToken(state, mode, pair.fg),
-          resolveToken(state, mode, pair.bg),
-          pair.context
+          pairBackgroundHex(state, mode, pair),
+          pair.context,
+          backdrop
         );
         return { pair, ...check };
       })
@@ -142,26 +163,14 @@ export function ModeValueEditor({ mode, token }: { mode: PreviewMode; token: str
 
   return (
     <div className="flex items-center gap-1.5">
-      {/* colour well — checkerboard shows through translucent tokens */}
-      <label
-        className="relative h-7 w-7 shrink-0 cursor-pointer overflow-hidden rounded-md border border-line-strong"
-        style={{
-          backgroundImage:
-            "linear-gradient(45deg,#8883 25%,transparent 25%,transparent 75%,#8883 75%),linear-gradient(45deg,#8883 25%,transparent 25%,transparent 75%,#8883 75%)",
-          backgroundSize: "8px 8px",
-          backgroundPosition: "0 0,4px 4px",
-        }}
-        title={`${resolved} — click to pick a raw colour`}
-      >
-        <span className="absolute inset-0" style={{ background: resolved }} />
-        <input
-          type="color"
-          aria-label={`${token} ${mode} colour`}
-          value={isValidHex(resolved) ? stripAlpha(resolved) : "#000000"}
-          onChange={(e) => setSemantic(mode, token, withAlpha(e.target.value, alpha))}
-          className="absolute inset-0 cursor-pointer opacity-0"
-        />
-      </label>
+      {/* colour well — the picker, and the only home of the opacity control */}
+      <ColorWell
+        resolved={resolved}
+        alpha={alpha}
+        label={`${token} ${mode}`}
+        onPickColor={(hex) => setSemantic(mode, token, withAlpha(hex, alpha))}
+        onAlphaChange={(pct) => setSemantic(mode, token, applyAlphaToValue(value, pct))}
+      />
 
       {/* free-text value: ramp ref, @role, or hex */}
       <input
@@ -182,21 +191,11 @@ export function ModeValueEditor({ mode, token }: { mode: PreviewMode; token: str
         }`}
       />
 
-      {/* alpha */}
-      <div className="flex shrink-0 items-center gap-1" title="Opacity">
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={alpha}
-          aria-label={`${token} ${mode} opacity`}
-          onChange={(e) => setSemantic(mode, token, applyAlphaToValue(value, Number(e.target.value)))}
-          className="h-1 w-12 cursor-pointer accent-fg"
-        />
-        <span className="w-7 text-right font-mono text-[10px] tabular-nums text-fg-mute">
-          {alpha}%
-        </span>
-      </div>
+      <AlphaChip
+        alpha={alpha}
+        label={`${token} ${mode}`}
+        onClear={() => setSemantic(mode, token, applyAlphaToValue(value, 100))}
+      />
 
       <TokenVerdict mode={mode} token={token} />
     </div>
@@ -271,7 +270,15 @@ function AddTokenRow({ groupLabel }: { groupLabel: string }) {
 
 /* ── one group of tokens ── */
 
-function TokenGroup({ group }: { group: SemanticGroup }) {
+function TokenGroup({
+  group,
+  modeDefs,
+  gridTemplate,
+}: {
+  group: SemanticGroup;
+  modeDefs: ModeDef[];
+  gridTemplate: string;
+}) {
   const removeRole = useDesignSystem((s) => s.removeRole);
   const renameGroup = useDesignSystem((s) => s.renameGroup);
   const removeGroup = useDesignSystem((s) => s.removeGroup);
@@ -310,7 +317,8 @@ function TokenGroup({ group }: { group: SemanticGroup }) {
         <div
           key={token}
           id={`role-${token}`}
-          className="group/row grid grid-cols-[minmax(120px,160px)_1fr_1fr] items-center gap-x-3 border-b border-line px-5 py-2 last:border-b-0 transition-colors hover:bg-ink-panel/40"
+          style={{ gridTemplateColumns: gridTemplate }}
+          className="group/row grid items-center gap-x-3 border-b border-line px-5 py-2 last:border-b-0 transition-colors hover:bg-ink-panel/40"
         >
           <div className="flex min-w-0 items-center gap-1">
             <TokenName token={token} />
@@ -323,8 +331,12 @@ function TokenGroup({ group }: { group: SemanticGroup }) {
               <Trash2 size={11} />
             </button>
           </div>
-          <ModeValueEditor mode="light" token={token} />
-          <ModeValueEditor mode="dark" token={token} />
+          {/* Every mode the file carries, not the two it used to be limited
+              to: a token's value in "High contrast" is edited in the same row
+              as its value in Light. */}
+          {modeDefs.map((m) => (
+            <ModeValueEditor key={m.id} mode={m.id} token={token} />
+          ))}
         </div>
       ))}
 
@@ -337,18 +349,36 @@ function TokenGroup({ group }: { group: SemanticGroup }) {
 
 export function TokenTier({ kind }: { kind: "semantic" | "component" }) {
   const groups = useDesignSystem((s) => s.semantics.groups);
+  const semantics = useDesignSystem((s) => s.semantics);
   const addGroup = useDesignSystem((s) => s.addGroup);
   const [newGroup, setNewGroup] = useState("");
+
+  const modeDefs = useMemo(() => modeDefsOf(semantics), [semantics]);
 
   const tierGroups = groups.filter((g) =>
     kind === "component" ? g.kind === "component" : g.kind !== "component"
   );
 
+  // One column per mode, each wide enough for a well, a value and an alpha
+  // slider. Two or three fit a canvas column; past that the table scrolls
+  // sideways rather than crushing every editor into unusability — the same
+  // bargain the Variables table makes. (The mode menus are viewport-positioned,
+  // so the scroller can't clip them.)
+  const gridTemplate = `minmax(120px,160px) repeat(${modeDefs.length}, minmax(240px,1fr))`;
+  const gridMinWidth =
+    modeDefs.length > 3 ? 160 + modeDefs.length * 252 + 40 : undefined;
+
   const title = kind === "component" ? "Component tokens" : "Semantic roles";
+  // The modes themselves, named, rather than the fixed "light · dark" this
+  // said back when they were the only two a file could have.
+  const modeSummary =
+    modeDefs.length > 3
+      ? `${modeDefs.length} modes`
+      : modeDefs.map((m) => m.name.toLowerCase()).join(" · ");
   const hint =
     kind === "component"
-      ? "component-level colours — bind to a role via @role, a ramp step, or a hex · light · dark"
-      : "meaning mapped onto primitives · light · dark · bind a ramp step, @role, or hex";
+      ? `component-level colours — bind to a role via @role, a ramp step, or a hex · ${modeSummary}`
+      : `meaning mapped onto primitives · ${modeSummary} · bind a ramp step, @role, or hex`;
 
   const commitGroup = () => {
     const v = newGroup.trim();
@@ -359,39 +389,68 @@ export function TokenTier({ kind }: { kind: "semantic" | "component" }) {
   };
 
   return (
-    <CanvasSection title={title} hint={hint}>
-      <div className="group/tier overflow-hidden rounded-xl border border-line">
-        <div className="grid grid-cols-[minmax(120px,160px)_1fr_1fr] gap-x-3 border-b border-line bg-ink-panel px-5 py-2.5">
-          <span className="text-[11px] font-medium text-fg-mute">
-            {kind === "component" ? "Component token" : "Role"}
-          </span>
-          <span className="text-[11px] font-medium text-fg-mute">Light</span>
-          <span className="text-[11px] font-medium text-fg-mute">Dark</span>
-        </div>
-
-        {tierGroups.map((group) => (
-          <TokenGroup key={group.label} group={group} />
-        ))}
-
-        <div className="flex items-center gap-2 border-t border-line px-5 py-2.5">
-          <input
-            type="text"
-            value={newGroup}
-            placeholder={kind === "component" ? "e.g. Table" : "e.g. Chart"}
-            onChange={(e) => setNewGroup(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitGroup();
-            }}
-            className="h-7 min-w-0 flex-1 rounded-md border border-line bg-ink-panel px-2 text-[11px] text-fg placeholder:text-fg-mute focus:border-line-strong focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={commitGroup}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line px-2.5 py-1 text-[11px] font-medium text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+    <CanvasSection
+      title={title}
+      hint={hint}
+      actions={
+        // Modes are a property of the file, not of the Variables surface —
+        // so the place that shows you the columns is a place you can add one.
+        <AddModeButton
+          label="Add mode"
+          className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] font-medium text-fg-mute transition-colors hover:border-line-strong hover:bg-ink-hover hover:text-fg"
+        />
+      }
+    >
+      <div className="group/tier overflow-x-auto rounded-xl border border-line">
+        <div style={{ minWidth: gridMinWidth }}>
+          <div
+            style={{ gridTemplateColumns: gridTemplate }}
+            className="grid items-center gap-x-3 border-b border-line bg-ink-panel px-5 py-2.5"
           >
-            <Plus size={11} />
-            Add group
-          </button>
+            <span className="text-[11px] font-medium text-fg-mute">
+              {kind === "component" ? "Component token" : "Role"}
+            </span>
+            {/* Each column names its own mode and carries that mode's controls:
+                rename it, pin how it reads, duplicate it, delete it. */}
+            {modeDefs.map((m) => (
+              <ModeHeader
+                key={m.id}
+                def={m}
+                canDelete={!isBuiltInMode(m.id)}
+                labelClassName="text-[11px] font-medium text-fg-mute"
+              />
+            ))}
+          </div>
+
+          {tierGroups.map((group) => (
+            <TokenGroup
+              key={group.label}
+              group={group}
+              modeDefs={modeDefs}
+              gridTemplate={gridTemplate}
+            />
+          ))}
+
+          <div className="flex items-center gap-2 border-t border-line px-5 py-2.5">
+            <input
+              type="text"
+              value={newGroup}
+              placeholder={kind === "component" ? "e.g. Table" : "e.g. Chart"}
+              onChange={(e) => setNewGroup(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitGroup();
+              }}
+              className="h-7 min-w-0 flex-1 rounded-md border border-line bg-ink-panel px-2 text-[11px] text-fg placeholder:text-fg-mute focus:border-line-strong focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={commitGroup}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line px-2.5 py-1 text-[11px] font-medium text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+            >
+              <Plus size={11} />
+              Add group
+            </button>
+          </div>
         </div>
       </div>
 

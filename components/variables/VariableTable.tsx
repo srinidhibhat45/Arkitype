@@ -16,7 +16,6 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ChevronDown,
   Copy,
   Check,
   Link2,
@@ -28,13 +27,11 @@ import {
   Unlink,
 } from "lucide-react";
 import {
-  ModeBase,
   ModeDef,
   PreviewMode,
   RADII_NAMES,
   TokenKind,
   isBuiltInMode,
-  modeBase,
   modeDefsOf,
   useDesignSystem,
 } from "@/store/useDesignSystem";
@@ -54,9 +51,17 @@ import {
   tokenValueFor,
   wouldCycle,
 } from "@/lib/variableGraph";
-import { describeTokenValue, resolveTokenValue, splitAlpha, splitTypedValue } from "@/lib/tokens";
+import {
+  alphaOfValue,
+  applyAlphaToValue,
+  describeTokenValue,
+  resolveTokenValue,
+  splitAlpha,
+  splitTypedValue,
+} from "@/lib/tokens";
 import { isValidHex, stripAlpha, withAlpha } from "@/lib/color";
 import { KIND_LABEL, KindIcon, Swatch, TierBadge } from "@/components/variables/VariableBits";
+import { AddModeButton, ModeHeader } from "@/components/variables/ModeColumns";
 
 /** The types a new variable can be created as, in the order they're offered. */
 const NEW_VARIABLE_KINDS: TokenKind[] = ["color", "space", "radius", "size", "weight", "font", "shadow"];
@@ -339,6 +344,28 @@ function CellEditor({
           />
         </div>
       ) : null}
+      {/* Opacity, in the picker rather than on the row. It writes a `/NN` suffix,
+          so a variable keeps whatever it points at and only changes how much of
+          it shows — and the contrast audit measures the blend that results. */}
+      {token && mode && isColor ? (
+        <div className="flex items-center gap-2 border-b border-line px-2 py-1.5">
+          <span className="shrink-0 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
+            Opacity
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={alphaOfValue(current)}
+            aria-label={`${token} ${mode} opacity`}
+            onChange={(e) => setSemantic(mode, token, applyAlphaToValue(current, Number(e.target.value)))}
+            className="h-1 min-w-0 flex-1 cursor-pointer accent-fg"
+          />
+          <span className="w-8 shrink-0 text-right font-mono text-[10px] tabular-nums text-fg-mute">
+            {alphaOfValue(current)}%
+          </span>
+        </div>
+      ) : null}
 
       {/* alias — everything this variable may legally follow */}
       <div className="flex h-7 items-center gap-1.5 border-b border-line px-2">
@@ -455,166 +482,6 @@ function ValueCell({
       </button>
       {open ? (
         <CellEditor node={node} mode={mode} graph={graph} onClose={() => setOpen(false)} />
-      ) : null}
-    </div>
-  );
-}
-
-/* ────────────────────────── mode columns ────────────────────────── */
-
-/**
- * One mode's column header, and everything you can do to that mode.
- *
- * Modes live in the header rather than in a settings panel because a mode *is*
- * a column: the place you notice you want another one is while looking at the
- * two you have, and the place you'd go to rename or drop one is the thing with
- * its name on it.
- */
-function ModeHeader({ def, canDelete }: { def: ModeDef; canDelete: boolean }) {
-  const renameVariableMode = useDesignSystem((s) => s.renameVariableMode);
-  const setVariableModeBase = useDesignSystem((s) => s.setVariableModeBase);
-  const removeVariableMode = useDesignSystem((s) => s.removeVariableMode);
-  const addVariableMode = useDesignSystem((s) => s.addVariableMode);
-  const primitives = useDesignSystem((s) => s.primitives);
-  const semantics = useDesignSystem((s) => s.semantics);
-
-  const [open, setOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const builtIn = isBuiltInMode(def.id);
-  /** How this mode reads — from its own surfaces unless someone pinned it. */
-  const reads = modeBase(semantics, def.id, primitives);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div ref={wrapRef} className="relative flex min-w-0 items-center gap-1">
-      <span className="min-w-0 truncate text-[10.5px] font-semibold text-fg-mute">{def.name}</span>
-      {!builtIn ? (
-        <span
-          title={
-            def.base
-              ? `Pinned: this mode is treated as ${def.base}`
-              : `Reads as ${reads}, from its own surface-base`
-          }
-          className={`shrink-0 rounded border px-1 font-mono text-[8px] leading-[13px] ${
-            def.base ? "border-line-strong text-fg-dim" : "border-line text-fg-mute"
-          }`}
-        >
-          {reads}
-        </span>
-      ) : null}
-      <button
-        type="button"
-        onClick={() => {
-          setOpen((o) => !o);
-          setConfirmDelete(false);
-        }}
-        title={`${def.name} — rename, duplicate${canDelete ? ", delete" : ""}`}
-        aria-label={`${def.name} options`}
-        className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:bg-ink-hover hover:text-fg"
-      >
-        <ChevronDown size={10} />
-      </button>
-
-      {open ? (
-        <div className="absolute left-0 top-6 z-40 w-[220px] overflow-hidden rounded-lg border border-line-strong bg-ink-raised p-2 shadow-2xl">
-          <EditableName
-            value={def.name}
-            title="Rename this mode"
-            onCommit={(next) => renameVariableMode(def.id, next)}
-            className="mb-2 h-7 w-full rounded border border-line bg-ink px-1.5 text-[11.5px] font-semibold text-fg focus:border-line-strong focus:outline-none"
-          />
-
-          {builtIn ? (
-            <p className="mb-2 text-[10px] leading-snug text-fg-mute">
-              Light and Dark can&apos;t be removed — they&apos;re the pair every CSS export writes
-              as <span className="font-mono">:root</span> and{" "}
-              <span className="font-mono">.dark</span>, and the pair the contrast audit reports
-              against. Every other mode stands entirely on its own.
-            </p>
-          ) : (
-            <div className="mb-2">
-              <p className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.07em] text-fg-mute">
-                Reads as
-              </p>
-              <div className="grid grid-cols-3 gap-1 rounded border border-line bg-ink p-0.5">
-                {([null, "light", "dark"] as Array<ModeBase | null>).map((b) => (
-                  <button
-                    key={b ?? "auto"}
-                    type="button"
-                    onClick={() => setVariableModeBase(def.id, b)}
-                    title={
-                      b === null
-                        ? "Work it out from this mode's own surface-base — nothing to declare"
-                        : `Treat this mode as ${b}, whatever its surfaces say`
-                    }
-                    className={`rounded py-1 text-[10px] font-bold capitalize transition-colors ${
-                      (def.base ?? null) === b ? "bg-fg text-ink" : "text-fg-mute hover:text-fg-dim"
-                    }`}
-                  >
-                    {b ?? "auto"}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1 text-[9.5px] leading-snug text-fg-mute">
-                This mode owns its values and its own shadow ramp. All this decides is which way
-                non-token chrome leans — auto reads it off your own{" "}
-                <span className="font-mono">surface-base</span> ({reads}).
-              </p>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => {
-              addVariableMode(`${def.name} copy`, def.id);
-              setOpen(false);
-            }}
-            title="A new standalone mode, its values copied from this one to start with"
-            className="mb-1 flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-[11px] text-fg-mute transition-colors hover:bg-ink-hover hover:text-fg"
-          >
-            <Copy size={10} />
-            New mode from this one
-          </button>
-
-          {canDelete ? (
-            <button
-              type="button"
-              onClick={() => {
-                if (!confirmDelete) {
-                  setConfirmDelete(true);
-                  window.setTimeout(() => setConfirmDelete(false), 4000);
-                  return;
-                }
-                removeVariableMode(def.id);
-                setOpen(false);
-              }}
-              className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-[11px] transition-colors ${
-                confirmDelete
-                  ? "bg-red-500/10 text-red-400"
-                  : "text-fg-mute hover:bg-ink-hover hover:text-red-400"
-              }`}
-            >
-              <Trash2 size={10} />
-              {confirmDelete ? "Delete — every value in it goes" : "Delete this mode"}
-            </button>
-          ) : null}
-        </div>
       ) : null}
     </div>
   );
@@ -833,7 +700,6 @@ export function VariableTable({
   const setPendingFocus = useDesignSystem((s) => s.setPendingFocus);
   const goToStep = useDesignSystem((s) => s.goToStep);
   const semantics = useDesignSystem((s) => s.semantics);
-  const addVariableMode = useDesignSystem((s) => s.addVariableMode);
 
   const modeDefs = useMemo(() => modeDefsOf(semantics), [semantics]);
 
@@ -965,17 +831,7 @@ export function VariableTable({
                 Variable
               </button>
             ) : null}
-            {isTokenSet ? (
-              <button
-                type="button"
-                onClick={() => addVariableMode(`Mode ${modeDefs.length + 1}`, "light")}
-                title="Add a mode — a new column, copied from Light, that every variable gets its own value in. Rename it from its header."
-                className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] font-semibold text-fg-mute transition-colors hover:border-line-strong hover:bg-ink-hover hover:text-fg"
-              >
-                <Plus size={11} />
-                Mode
-              </button>
-            ) : null}
+            {isTokenSet ? <AddModeButton /> : null}
             {isTokenSet && active?.source?.groupLabel ? (
               <button
                 type="button"

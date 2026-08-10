@@ -6,14 +6,18 @@
  * so what remains here is the composed preview those two are judged against:
  * one card, every role, rendered per mode.
  */
-import { PreviewMode } from "@/store/useDesignSystem";
+import { PreviewMode, modeName, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
 
 /** Live composed surface exercising the roles, rendered per mode. */
 export function RolesInContext({ mode }: { mode: PreviewMode }) {
+  // The card is labelled with the mode's own name — a file with a "High
+  // contrast" column shouldn't have it announced as "Dark".
+  const semantics = useDesignSystem((s) => s.semantics);
+
   return (
-    <ThemeFrame mode={mode} label={mode === "light" ? "Light" : "Dark"}>
+    <ThemeFrame mode={mode} label={modeName(semantics, mode)}>
       <div style={{ background: tv("surface-base"), padding: sv(4) }}>
         <div
           style={{

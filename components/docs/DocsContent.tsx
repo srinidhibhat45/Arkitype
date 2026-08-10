@@ -143,7 +143,7 @@ export function DocsSections() {
             </p>
             <Callout title="The token chain">
               Primitive scale (colour ramp / spacing / radius / type / motion) →
-              Semantic role (what a value <em>means</em>, per light/dark mode) →
+              Semantic role (what a value <em>means</em>, one value per mode) →
               Component (reads roles + scales, never a raw value) → Export
               (compiled to CSS vars, Tailwind, MUI, Figma, or docs).
             </Callout>
@@ -209,10 +209,10 @@ export function DocsSections() {
                     <>
                       Step 7 renders a whole product from your tokens — nothing in the frame is
                       hardcoded. Flip <strong className="font-medium text-fg">form factor</strong>{" "}
-                      (SaaS / Mobile / Marketing) and the top-bar{" "}
-                      <strong className="font-medium text-fg">Preview: Light / Dark</strong> toggle.
-                      This is the step that tells you whether the decisions you just made actually
-                      work. Go back and fix what doesn&apos;t.
+                      (SaaS / Mobile / Marketing) and walk the top-bar{" "}
+                      <strong className="font-medium text-fg">Preview</strong> switch through every
+                      mode your file carries. This is the step that tells you whether the decisions
+                      you just made actually work. Go back and fix what doesn&apos;t.
                     </>
                   ),
                 },
@@ -333,8 +333,8 @@ export function DocsSections() {
                   body: "Themes the tool. This is not your design system's light and dark mode, and changing it doesn't touch a single token.",
                 },
                 {
-                  label: "Preview: Light / Dark",
-                  body: "This one is your system's mode — light, dark, and any further one you've added in Variables. Everything on the canvas resolves through it. Check each while you work; a system that only looks considered in one theme isn't finished.",
+                  label: "Preview — your system's modes",
+                  body: "Every mode the file carries: light, dark, and any further one you've added. Whatever the canvas is previewing resolves through it — so it's live on Shape, Components and Preview, and dimmed everywhere else, with the reason on its tooltip. Colour and Variables dim it because they show every mode at once rather than one at a time; Type, Spacing, Motion and Ship dim it because nothing they hold changes per mode.",
                 },
                 {
                   label: "Ship",
@@ -418,9 +418,15 @@ export function DocsSections() {
           {/* ── 01 Colour & Roles ───────────────────────────────── */}
           <Section id="step-colour" eyebrow={`Step ${STEP_META.colour.n}`} title={STEP_META.colour.label}>
             <p>
-              One stop, two tabs — <strong className="font-medium text-fg">Colours</strong> (primitives)
-              and <strong className="font-medium text-fg">Roles</strong> (meaning). They&apos;re the same
-              concern: generate ramps, then decide what each shade means.
+              The canvas carries a real tab strip — <strong className="font-medium text-fg">Palette
+              &amp; tokens</strong> and <strong className="font-medium text-fg">Contrast audit</strong>.
+              Palette &amp; tokens is one stop for two concerns that used to be
+              called separate tabs and still read as one scroll — <strong className="font-medium text-fg">Colours</strong> (primitives)
+              and <strong className="font-medium text-fg">Roles</strong> (meaning): generate ramps,
+              then decide what each shade means. The audit used to sit on top of that scroll, a
+              report standing between you and the palette every time you came to change a colour —
+              it now has its own tab, reached from the strip or from <strong className="font-medium text-fg">Open
+              audit</strong> on the health score in the aside.
             </p>
 
             <SubHeading>Colours — building the ramps</SubHeading>
@@ -453,18 +459,30 @@ export function DocsSections() {
               makes light and dark &ldquo;one system&rdquo; instead of two. The default set
               is 8 groups (Surface, Text, Action, Border, and four Feedback groups) and
               34 roles, all editable — add a group, add a role to any group, or remove
-              one.
+              one. A token&apos;s colour well — the swatch beside its value, on a ramp step or a
+              role alike — opens a small picker with hue and opacity together; opacity used to
+              be a slider parked on every row and is now a{" "}
+              <span className="font-mono text-fg">67%</span> chip that only appears once a token
+              isn&apos;t fully opaque, so the rows stay readable and the value field beside it
+              still takes a typed <span className="font-mono text-fg">/NN</span> if you&apos;d
+              rather not open the picker at all.
             </p>
             <p>
               A live guard checks contrast the moment you rebind a role: if the change
               would drop a real pairing below AA, a warning names exactly which
               pairing failed and by how much, with <strong className="font-medium text-fg">Use
               anyway</strong> / <strong className="font-medium text-fg">Cancel</strong> — so
-              the tool warns, but never silently blocks a deliberate choice. A
-              contrast audit panel checks 17 curated pairings across both modes (34
-              checks total) against AA (4.5:1 body text / 3:1 large text or UI
-              components) and AAA (7:1 / 4.5:1) and surfaces a running count of
-              anything below AA.
+              the tool warns, but never silently blocks a deliberate choice. The
+              Contrast audit tab checks 17 curated pairings in every mode the file
+              carries — 34 checks on a stock light/dark system, and more the moment you
+              add one — against AA (4.5:1 body text / 3:1 large text or UI components)
+              and AAA (7:1 / 4.5:1), and surfaces a running count of anything below AA. You can
+              also declare backgrounds the derived pairings can&apos;t find — pure white, pure
+              black, a brand fill, an <span className="font-mono text-fg">@role</span> that
+              tracks the system — and every text and border token in the file is checked
+              against each one, in every mode, the same as any surface the system owns. A
+              declared background is pinned rather than derived, so a one-click repair can
+              retarget the text but never move the background you named.
             </p>
           </Section>
 
@@ -529,12 +547,12 @@ export function DocsSections() {
               Elevation is a fully structured shadow token, not a CSS string: each
               level (Flat / Low / Medium / High by default) has independent X, Y,
               Blur, Spread, Colour, and Opacity — and critically, <strong className="font-medium text-fg">
-              each level is stored separately for light and dark mode</strong>, editable
-              via a Light/Dark toggle right in the editor. The preview shows both
-              modes side by side simultaneously, regardless of which theme the tool
-              itself is in, so dark-mode depth is never invisible while you&apos;re
-              working in light mode (or vice versa). A composed preview card applies
-              radius + elevation + spacing together in one realistic surface.
+              each level is stored separately per mode</strong>, picked from the
+              editor&apos;s own mode switch. Every mode&apos;s ramp is previewed at once,
+              regardless of which theme the tool itself is in, so dark-mode depth is
+              never invisible while you&apos;re working in light mode (or vice versa).
+              A composed preview card applies radius + elevation + spacing together in
+              one realistic surface, in whichever mode the top bar is previewing.
             </p>
           </Section>
 
@@ -647,9 +665,9 @@ export function DocsSections() {
               shows every interactive state at once (default, hover, focus, active,
               loading, disabled), swap the Table / Tabs / Modal skeleton and watch the
               product reflow, and zoom the canvas. Check{" "}
-              <strong className="font-medium text-fg">both light and dark</strong> with
-              the top-bar toggle while you&apos;re here — a system that only looks
-              considered in one theme isn&apos;t finished.
+              <strong className="font-medium text-fg">every mode</strong> with the
+              top-bar Preview switch while you&apos;re here — a system that only looks
+              considered in one of them isn&apos;t finished.
             </p>
           </Section>
 
@@ -674,8 +692,8 @@ export function DocsSections() {
               untick which of the {COMPONENT_COUNT} components are included (grouped by lane, with a
               per-lane select-all), and a bundle-trace panel reports the system name,
               token count, Figma variable and collection counts, included component
-              count, generated page count, both modes, and the final payload size —
-              so you know what you&apos;re about to hand off before you do.
+              count, generated page count, every mode by name, and the final payload
+              size — so you know what you&apos;re about to hand off before you do.
             </p>
             <Callout title="Shipping to Figma">
               The bundle is meant to be run through{" "}
@@ -788,18 +806,25 @@ export function DocsSections() {
             <SubHeading>Modes are columns, and you can add them</SubHeading>
             <p>
               Light and dark are the two every system starts with, not the two it&apos;s limited to.{" "}
-              <strong className="font-medium text-fg">+ Mode</strong> in the set header adds a
-              column — a brand theme, a high-contrast pass, a print variant — and every variable in
-              the file gains its own value in it. A new mode starts as a copy of an existing one
-              rather than empty, because an empty column is every token in the file dangling at
-              once — but it is a copy, not a link: the two are independent from the moment it
-              exists, right down to their own elevation ramps.
+              <strong className="font-medium text-fg">+ Mode</strong> adds a column — a brand theme,
+              a high-contrast pass, a print variant — and every variable in the file gains its own
+              value in it. A new mode starts as a copy of an existing one rather than empty, because
+              an empty column is every token in the file dangling at once — but it is a copy, not a
+              link: the two are independent from the moment it exists, right down to their own
+              elevation ramps.
+            </p>
+            <p>
+              A mode belongs to the file, not to one surface, so it is added and edited from either
+              place that shows you columns: the set header here, and{" "}
+              <strong className="font-medium text-fg">Add mode</strong> on the Semantic roles and
+              Component tokens tables on step 1. Both write the same thing — a column that appears
+              everywhere the other one looks.
             </p>
             <FieldList
               items={[
                 {
                   label: "The column header is the mode",
-                  body: "Its chevron opens rename, duplicate and delete. That's deliberate: the place you notice you want another mode is while looking at the ones you have.",
+                  body: "Its chevron opens rename, duplicate and delete — on the Variables table and on the Colour step's tables alike. That's deliberate: the place you notice you want another mode is while looking at the ones you have.",
                 },
                 {
                   label: "Every mode stands on its own",
@@ -1034,11 +1059,23 @@ export function DocsSections() {
             <p className="!mt-6">
               Rather than checking every colour against every other colour, Arkitype
               checks a curated list of 17 real pairings — the surfaces a role
-              actually renders text or a border on in the shipped preview — across
-              both light and dark, for 34 checks in total. This runs live in the
-              Roles tab (with an inline warn-and-override on any change that would
-              fail) and again as a static audit summary you can review before
-              shipping.
+              actually renders text or a border on in the shipped preview — in every
+              mode the file carries, so a stock light/dark system is 34 checks and a
+              third mode makes it 51. This runs live in the Roles tab (with an inline
+              warn-and-override on any change that would fail) and again as a static
+              audit summary you can review before shipping.
+            </p>
+            <p>
+              Every ratio is taken between two <em>opaque</em> colours, never between whatever a
+              token literally stores. A translucent value like{" "}
+              <span className="font-mono text-fg">brand-600/40</span> is composited over what
+              actually sits behind it first — its declared background, or a white page if
+              nothing else is behind it — so a token that reads as pale pink on screen is scored
+              as pale pink, not as the saturated 600-shade its value names. Declared backgrounds
+              extend the same 17-pairing logic past the file&apos;s own surfaces: name one — a
+              hex, a ramp step, an <span className="font-mono text-fg">@role</span> — from the
+              Contrast audit tab, and every text and border token is added to the audit against
+              it, in every mode, exactly like a surface the system already owns.
             </p>
           </Section>
 
@@ -1155,7 +1192,7 @@ export function DocsSections() {
                 },
                 {
                   label: "The full token set",
-                  body: "Every primitive and every semantic role, in light and dark.",
+                  body: "Every primitive and every semantic role, in every mode the file carries.",
                 },
                 {
                   label: "A page per component",
@@ -1319,7 +1356,11 @@ export function DocsSections() {
                 },
                 {
                   label: "Does the tool's own light/dark toggle affect my design system?",
-                  body: "No — the chrome toggle (top right) only changes how the builder itself looks. Your system's light and dark modes are configured separately in Roles and Shape, and Preview lets you check both.",
+                  body: "No — the chrome toggle (top right) only changes how the builder itself looks. Your system's modes are configured separately: their values on step 1 (Colour) or in Variables, their elevation on step 4 (Shape). The Preview switch beside it walks the canvas through them, and dims itself on the surfaces that already show every mode at once.",
+                },
+                {
+                  label: "Where did the opacity slider go?",
+                  body: "Into the colour well. It used to be a slider parked on every colour row (Colour step and Variables alike), mostly sitting at 100% and costing the row its width — click the swatch and it opens a small picker with hue and opacity together. The row itself now shows a percentage chip only once a token isn't fully opaque, and the value field still takes a typed /NN if you'd rather skip the picker entirely.",
                 },
                 {
                   label: "Do I have to do the eight steps in order?",

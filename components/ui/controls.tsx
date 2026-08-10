@@ -7,7 +7,15 @@
 import * as RadixSlider from "@radix-ui/react-slider";
 import * as RadixSelect from "@radix-ui/react-select";
 import { Check, ChevronDown, Info } from "lucide-react";
-import { useCallback, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { isValidHex } from "@/lib/color";
 
@@ -241,19 +249,37 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  disabled = false,
+  title,
 }: {
   options: Array<{ label: string; value: T }>;
   value: T;
   onChange: (value: T) => void;
+  /**
+   * Inert, and visibly so. For a switch that belongs on this surface but has
+   * nothing to act on here — the honest state is a dimmed control that says
+   * why (pass `title`), not a live one that does nothing when pressed.
+   */
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
-    <div className="inline-flex flex-wrap rounded-lg border border-line bg-ink-panel p-0.5">
+    <div
+      title={title}
+      aria-disabled={disabled || undefined}
+      className={`inline-flex flex-wrap rounded-lg border border-line bg-ink-panel p-0.5 transition-opacity ${
+        disabled ? "cursor-not-allowed opacity-40" : ""
+      }`}
+    >
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
+          disabled={disabled}
           onClick={() => onChange(o.value)}
           className={`rounded-md px-2.5 py-1 text-[13.5px] font-bold transition-colors ${
+            disabled ? "pointer-events-none" : ""
+          } ${
             value === o.value
               ? "bg-ink-hover text-fg shadow-[inset_0_0_0_1px_#2e2e33]"
               : "text-fg-mute hover:text-fg-dim"
@@ -381,14 +407,19 @@ export function HexInput({
   value,
   onChange,
   size = "md",
+  hideSwatch = false,
 }: {
   value: string;
   onChange: (hex: string) => void;
   size?: "sm" | "md";
+  /** Drop the built-in swatch where a `ColorWell` is already standing beside it,
+   *  so the same colour isn't offered by two controls an inch apart. */
+  hideSwatch?: boolean;
 }) {
   const valid = isValidHex(value);
   return (
     <div className="flex items-center gap-2">
+      {hideSwatch ? null : (
       <label
         className={`relative shrink-0 cursor-pointer overflow-hidden rounded-lg border border-line ${
           size === "md" ? "h-9 w-9" : "h-7 w-7"
@@ -403,6 +434,7 @@ export function HexInput({
           className="absolute inset-0 cursor-pointer opacity-0"
         />
       </label>
+      )}
       <input
         type="text"
         spellCheck={false}
@@ -417,6 +449,227 @@ export function HexInput({
         }`}
       />
     </div>
+  );
+}
+
+/* ── Colour well (swatch → picker popover with opacity) ── */
+
+const CHECKER: CSSProperties = {
+  backgroundImage:
+    "linear-gradient(45deg,#8883 25%,transparent 25%,transparent 75%,#8883 75%),linear-gradient(45deg,#8883 25%,transparent 25%,transparent 75%,#8883 75%)",
+  backgroundSize: "8px 8px",
+  backgroundPosition: "0 0,4px 4px",
+};
+
+/**
+ * The colour swatch, and everything you can do to a colour in one place.
+ *
+ * Opacity used to be a slider parked on the row itself — one per token per
+ * mode, mostly sitting at 100% and costing the row the width it needed for a
+ * name and a value. Taking it away made the rows breathe and made opacity
+ * undiscoverable, which is a worse trade. So it lives here, in the picker,
+ * which is where you go when you want to change what a colour *is*: hue in the
+ * top half, opacity in the bottom, and the row keeps only a chip that appears
+ * when there is something to say.
+ *
+ * The popover is portalled and positioned in viewport coordinates, so a scroll
+ * container can't clip it — the same reason `Tooltip` does it.
+ */
+export function ColorWell({
+  resolved,
+  alpha,
+  onPickColor,
+  onAlphaChange,
+  label,
+  size = "md",
+}: {
+  /** The colour to paint, alpha included — an 8-digit hex shows the checkerboard. */
+  resolved: string;
+  /** 0–100. */
+  alpha: number;
+  /** A new opaque hex was picked. */
+  onPickColor: (hex: string) => void;
+  /** A new opacity was set. */
+  onAlphaChange: (pct: number) => void;
+  /** Names the control for screen readers, e.g. "surface-base light". */
+  label: string;
+  size?: "sm" | "md";
+}) {
+  const [open, setOpen] = useState(false);
+  const [box, setBox] = useState<{ top: number; left: number } | null>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  const WIDTH = 216;
+
+  const place = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setBox({
+      top: Math.min(r.bottom + 6, window.innerHeight - 132),
+      left: Math.max(8, Math.min(r.left, window.innerWidth - WIDTH - 8)),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    place();
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (anchorRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    // Reposition rather than close: the canvas scrolls under this constantly,
+    // and a picker that vanishes when the page moves is a picker you fight.
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, place]);
+
+  const opaque = stripAlphaHex(resolved);
+  const box7 = size === "md" ? "h-7 w-7" : "h-6 w-6";
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={`${label} colour and opacity`}
+        aria-expanded={open}
+        title={`${resolved} — click to pick a colour and set opacity`}
+        className={`relative shrink-0 cursor-pointer overflow-hidden rounded-md border transition-colors ${box7} ${
+          open ? "border-focus" : "border-line-strong hover:border-fg-mute"
+        }`}
+        style={CHECKER}
+      >
+        <span className="absolute inset-0" style={{ background: resolved }} />
+      </button>
+
+      {open && box
+        ? createPortal(
+            <div
+              ref={popRef}
+              style={{ top: box.top, left: box.left, width: WIDTH }}
+              className="fixed z-[120] rounded-lg border border-line-strong bg-ink-raised p-2.5 shadow-2xl"
+            >
+              <p className="mb-2 truncate font-mono text-[10px] text-fg-mute">{label}</p>
+
+              <div className="mb-2.5 flex items-center gap-2">
+                <label
+                  className="relative h-8 w-8 shrink-0 cursor-pointer overflow-hidden rounded-md border border-line-strong"
+                  style={CHECKER}
+                >
+                  <span className="absolute inset-0" style={{ background: resolved }} />
+                  <input
+                    type="color"
+                    aria-label={`${label} colour`}
+                    value={isValidHex(opaque) ? opaque : "#000000"}
+                    onChange={(e) => onPickColor(e.target.value)}
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                  />
+                </label>
+                <span className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase text-fg-dim">
+                  {opaque}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 border-t border-line pt-2">
+                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
+                  Opacity
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={alpha}
+                  aria-label={`${label} opacity`}
+                  onChange={(e) => onAlphaChange(Number(e.target.value))}
+                  className="h-1 min-w-0 flex-1 cursor-pointer accent-fg"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={alpha}
+                  aria-label={`${label} opacity percent`}
+                  onChange={(e) => onAlphaChange(Number(e.target.value))}
+                  className="w-11 shrink-0 rounded border border-line bg-ink px-1 py-0.5 text-right font-mono text-[10px] tabular-nums text-fg-dim focus:border-line-strong focus:outline-none"
+                />
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
+
+/** Drop any alpha channel for the native picker, which only speaks #RRGGBB. */
+function stripAlphaHex(hex: string): string {
+  const raw = (hex ?? "").trim().replace(/^#/, "");
+  if (raw.length === 8) return `#${raw.slice(0, 6)}`;
+  if (raw.length === 4) return `#${raw.slice(0, 3)}`;
+  return hex;
+}
+
+/* ── Alpha chip ── */
+
+/**
+ * A token's opacity, stated only when there is something to state.
+ *
+ * This replaced a slider that sat on every colour row in every mode column — a
+ * hundred-odd of them on the semantic tier alone, each costing ~80px of a row
+ * that also has to hold a name, a value and a verdict, and almost all of them
+ * parked at 100%. Opacity is still fully editable: it is part of the value
+ * grammar the field next door already takes (`brand-600/40`, `#3B82F666`), so
+ * the control was duplicating a control. What was worth keeping is the *signal*
+ * — that this one token is not opaque — which is what this is.
+ */
+export function AlphaChip({
+  alpha,
+  label,
+  onClear,
+}: {
+  /** 0–100. At 100 this renders nothing at all. */
+  alpha: number;
+  /** What the chip is describing, for the accessible name. */
+  label: string;
+  onClear: () => void;
+}) {
+  if (alpha >= 100) return null;
+  return (
+    <Tooltip
+      side="left"
+      content={
+        <>
+          <span className="font-mono text-fg">{label}</span> is at {alpha}% opacity, so
+          it renders as a blend with whatever sits behind it — which is how the
+          contrast audit measures it. Type a different <span className="font-mono text-fg">/NN</span>{" "}
+          in the value field to change it, or click here to make it opaque.
+        </>
+      }
+    >
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={`${label} opacity ${alpha}% — click to make opaque`}
+        className="inline-flex shrink-0 items-center rounded border border-line px-1 py-px font-mono text-[9px] font-bold leading-none tabular-nums text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+      >
+        {alpha}%
+      </button>
+    </Tooltip>
   );
 }
 

@@ -5,9 +5,9 @@
  * is how surfaces claim depth. Both are now fully editable:
  *  • Radius: scale the whole array with one slider, or pin any step's px.
  *  • Elevation: structured shadow definitions (offset / blur / spread / colour /
- *    opacity), per mode, add/remove levels — and, crucially, previewed in BOTH
- *    light and dark simultaneously inside real surfaces, so dark-mode depth is
- *    visible even though the tool chrome stays dark.
+ *    opacity), per mode, add/remove levels — and, crucially, previewed in EVERY
+ *    mode the file carries simultaneously inside real surfaces, so dark-mode
+ *    depth is visible even though the tool chrome stays dark.
  */
 import { useState } from "react";
 import type { PreviewMode, ShadowDef, ShadowField } from "@/store/useDesignSystem";
@@ -227,7 +227,7 @@ export function ShapeStep() {
     <StepScaffold
       step="shape"
       title="Personality lives in the corners"
-      lede="Radius is one of the strongest brand signals a system carries — architectural at 0×, balanced at 1×, friendly past 1.5×. Elevation gives surfaces depth, and it reads differently in light and dark — so both modes are shown side by side while you edit, no matter which mode the app is in."
+      lede="Radius is one of the strongest brand signals a system carries — architectural at 0×, balanced at 1×, friendly past 1.5×. Elevation gives surfaces depth, and it reads differently on every paper — so every mode's ramp is shown side by side while you edit, no matter which mode the app is in."
       aside={
         <>
           <SliderControl

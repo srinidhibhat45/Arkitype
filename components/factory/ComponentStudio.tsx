@@ -49,6 +49,7 @@ import {
   type ComponentStatus,
   PreviewMode,
   componentStatus,
+  modeBase,
   modeDefsOf,
   useDesignSystem,
 } from "@/store/useDesignSystem";
@@ -928,6 +929,7 @@ function useStudioData(id: string) {
   const currentMode = useDesignSystem((s) => s.currentPreviewMode);
   const setPreviewMode = useDesignSystem((s) => s.setPreviewMode);
   const semantics = useDesignSystem((s) => s.semantics);
+  const primitives = useDesignSystem((s) => s.primitives);
   const modeDefs = useMemo(() => modeDefsOf(semantics), [semantics]);
   const resolve = useComponentBindings(id);
   const data = useInspectorData();
@@ -954,6 +956,8 @@ function useStudioData(id: string) {
     currentMode,
     setPreviewMode,
     modeDefs,
+    semantics,
+    primitives,
     resolve,
     data,
     properties,
@@ -1005,6 +1009,8 @@ export function ComponentStudioPreview({
     currentMode: mode,
     setPreviewMode,
     modeDefs,
+    semantics,
+    primitives,
     resolve,
     size,
     radiusStep,
@@ -1195,10 +1201,13 @@ export function ComponentStudioPreview({
             </button>
           </div>
 
-          {/* Light/Dark Toggle */}
+          {/* Mode switch — every mode in the file, not a light/dark pair */}
           <div className="inline-flex rounded-lg border border-line bg-ink-panel p-0.5 h-7 items-center">
             {/* Every mode in the file — a High-contrast column is only worth
-                authoring if you can look at what it does to a component. */}
+                authoring if you can look at what it does to a component. The
+                glyph follows how each mode actually *reads*: a custom mode
+                usually declares nothing, and `base` being unset is "work it
+                out from my own surfaces", not "dark". */}
             {modeDefs.map((m) => (
               <button
                 key={m.id}
@@ -1209,7 +1218,11 @@ export function ComponentStudioPreview({
                   mode === m.id ? "bg-fg text-ink" : "text-fg-mute hover:text-fg-dim"
                 }`}
               >
-                {m.base === "light" ? <Sun size={11} /> : <Moon size={11} />}
+                {modeBase(semantics, m.id, primitives) === "light" ? (
+                  <Sun size={11} />
+                ) : (
+                  <Moon size={11} />
+                )}
                 {m.name}
               </button>
             ))}

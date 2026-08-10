@@ -27,7 +27,7 @@ import {
   tintedNeutral,
   withAlpha,
 } from "@/lib/color";
-import { CanvasSection, HexInput, InfoTip } from "@/components/ui/controls";
+import { CanvasSection, ColorWell, HexInput, InfoTip } from "@/components/ui/controls";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 
 /* ── suggestion chips (unchanged behaviour, now per dynamic family) ── */
@@ -227,31 +227,29 @@ function RampRow({ family }: { family: ColorFamily }) {
           <span className="font-mono text-[11px] text-fg-dim">
             {family.id}-{selected}
           </span>
-          <div className="w-44">
+          {/* The well is the picker: hue and opacity both live in its popover,
+              and the field beside it still takes a typed hex. */}
+          <ColorWell
+            size="sm"
+            resolved={selectedHex}
+            alpha={alphaOf(selectedHex)}
+            label={`${family.id}-${selected}`}
+            onPickColor={(hex) =>
+              setFamilyOverride(family.id, selected, withAlpha(hex, alphaOf(selectedHex)))
+            }
+            onAlphaChange={(pct) =>
+              setFamilyOverride(family.id, selected, withAlpha(selectedHex, pct))
+            }
+          />
+          <div className="w-36">
             <HexInput
               size="sm"
+              hideSwatch
               value={selectedHex}
               onChange={(hex) => {
                 if (isValidHex(hex)) setFamilyOverride(family.id, selected, hex);
               }}
             />
-          </div>
-          <div className="flex items-center gap-1.5" title="Opacity">
-            <span className="text-[11px] text-fg-mute">Alpha</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={alphaOf(selectedHex)}
-              aria-label={`${family.id}-${selected} opacity`}
-              onChange={(e) =>
-                setFamilyOverride(family.id, selected, withAlpha(selectedHex, Number(e.target.value)))
-              }
-              className="h-1 w-16 cursor-pointer accent-fg"
-            />
-            <span className="w-7 text-right font-mono text-[10px] tabular-nums text-fg-mute">
-              {alphaOf(selectedHex)}%
-            </span>
           </div>
           {selectedOverridden ? (
             <button

@@ -230,7 +230,7 @@ export function ComponentsStep() {
     <StepScaffold
       step="components"
       title="Assembled from roles, never from values"
-      lede={`${totalCount} components in four lanes, every one reading roles, scales and motion tokens exclusively — change a mapping in Roles and all of them follow. Controls and display parts render light and dark simultaneously; structural patterns keep the four-skeleton rule.`}
+      lede={`${totalCount} components in four lanes, every one reading roles, scales and motion tokens exclusively — change a mapping in Roles and all of them follow. Each renders in whichever mode the top bar is previewing, including any mode you've added; structural patterns keep the four-skeleton rule.`}
       hideHeader={true}
       aside={
         <>

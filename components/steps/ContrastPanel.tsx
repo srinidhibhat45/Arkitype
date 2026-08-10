@@ -13,19 +13,27 @@
  *    is individually reversible.
  */
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { ArkitypeState, PreviewMode, modeDefsOf, useDesignSystem } from "@/store/useDesignSystem";
-import { resolveToken } from "@/lib/tokens";
+import {
+  ArkitypeState,
+  PreviewMode,
+  modeDefsOf,
+  useDesignSystem,
+} from "@/store/useDesignSystem";
+import { resolveToken, resolveTokenValue, tokenKind } from "@/lib/tokens";
 import { checkContrast, thresholdFor, tierApplies, type A11yTier } from "@/lib/a11y";
-import { derivePairs, type RoleContrastPair } from "@/lib/a11yPairs";
+import { derivePairs, pairsAgainstBackdrop, type RoleContrastPair } from "@/lib/a11yPairs";
 import {
   buildFixContext,
+  pageBackdrop,
+  pairBackgroundHex,
   proposeContrastFix,
   terminalToken,
   type ContrastFix,
   type FixContext,
 } from "@/lib/a11yFix";
+import { isValidHex } from "@/lib/color";
 import { CanvasSection, InfoTip, Tooltip, WcagBadge } from "@/components/ui/controls";
-import { RotateCcw, Sparkles, TriangleAlert, Check } from "lucide-react";
+import { RotateCcw, Sparkles, TriangleAlert, Check, Plus, X } from "lucide-react";
 
 /* ────────────────────────── the audit itself ────────────────────────── */
 
@@ -35,8 +43,12 @@ export interface Verdict {
   pair: RoleContrastPair;
   /** The token a fix would actually write (end of the "@role" alias chain). */
   target: string;
+  /** The colours the ratio was taken between, with any alpha composited — i.e.
+   *  what the eye receives, not what the token literally stores. */
   fgHex: string;
   bgHex: string;
+  /** The opaque colour beneath this mode's surfaces. */
+  backdrop: string;
   ratio: number;
   aa: boolean;
   aaa: boolean | null;
@@ -46,8 +58,11 @@ export interface Verdict {
   fixContext: FixContext;
 }
 
+type StateSlice = Pick<ArkitypeState, "primitives" | "semantics">;
+
 /**
- * Every pairing in the system, in every mode. Recomputed whenever primitives or
+ * Every pairing the file implies, plus every pairing the designer has declared
+ * by naming a background, in every mode. Recomputed whenever primitives or
  * semantics change — which is every colour edit, rename, add or remove.
  */
 export function useContrastAudit() {
@@ -56,25 +71,37 @@ export function useContrastAudit() {
 
   return useMemo(() => {
     const state = { primitives, semantics };
-    const pairs = derivePairs(semantics.groups);
+    const backdrops = semantics.backdrops ?? [];
+    // Only colour tokens: a user's group could name something "-title" and put
+    // a font size in it, and a size has no contrast against anything.
+    const isColorToken = (token: string) => tokenKind({ semantics }, token) === "color";
+    const declaredPairs = backdrops.flatMap((b) =>
+      pairsAgainstBackdrop(semantics.groups, b, isColorToken)
+    );
+    const pairs = [...derivePairs(semantics.groups), ...declaredPairs];
     const verdicts: Verdict[] = [];
 
     // Every mode the file carries, not the two it used to be limited to: an
     // audit that quietly skips a High-contrast column is the one column it had
     // the most business checking.
     for (const { id: mode } of modeDefsOf(semantics)) {
-      const fixContext = buildFixContext(state, mode);
+      const backdrop = pageBackdrop(state, mode);
+      const fixContext = buildFixContext(state, mode, declaredPairs);
       for (const pair of pairs) {
-        const fgHex = resolveToken(state, mode, pair.fg);
-        const bgHex = resolveToken(state, mode, pair.bg);
-        const check = checkContrast(fgHex, bgHex, pair.context);
+        const check = checkContrast(
+          resolveToken(state, mode, pair.fg),
+          pairBackgroundHex(state, mode, pair),
+          pair.context,
+          backdrop
+        );
         verdicts.push({
           key: `${mode}|${pair.fg}|${pair.bg}|${pair.context}`,
           mode,
           pair,
           target: terminalToken(state, mode, pair.fg),
-          fgHex,
-          bgHex,
+          fgHex: check.fgHex,
+          bgHex: check.bgHex,
+          backdrop,
           ratio: check.ratio,
           aa: check.level === "AA" || check.level === "AAA",
           aaa: tierApplies(pair.context, "AAA") ? check.level === "AAA" : null,
@@ -166,17 +193,35 @@ function undoFix(record: FixRecord) {
   fixStore.drop(record.mode, record.token);
 }
 
+/**
+ * Every pairing the audit holds the file to — the derived ones and the declared
+ * ones together. Read fresh from state, because a fix-all pass has to re-ask
+ * after every write.
+ */
+function auditPairs(state: StateSlice): RoleContrastPair[] {
+  const isColorToken = (token: string) =>
+    tokenKind({ semantics: state.semantics }, token) === "color";
+  return [
+    ...derivePairs(state.semantics.groups),
+    ...(state.semantics.backdrops ?? []).flatMap((b) =>
+      pairsAgainstBackdrop(state.semantics.groups, b, isColorToken)
+    ),
+  ];
+}
+
 /** Gated pairings currently clearing AA, across every mode — the fix-all yardstick. */
-function gatedAaPasses(state: Pick<ArkitypeState, "primitives" | "semantics">): number {
-  const pairs = derivePairs(state.semantics.groups);
+function gatedAaPasses(state: StateSlice): number {
+  const pairs = auditPairs(state);
   let passes = 0;
   for (const { id: mode } of modeDefsOf(state.semantics)) {
+    const backdrop = pageBackdrop(state, mode);
     for (const pair of pairs) {
       if (pair.advisory) continue;
       const check = checkContrast(
         resolveToken(state, mode, pair.fg),
-        resolveToken(state, mode, pair.bg),
-        pair.context
+        pairBackgroundHex(state, mode, pair),
+        pair.context,
+        backdrop
       );
       if (check.level !== "fail") passes += 1;
     }
@@ -196,20 +241,22 @@ function gatedAaPasses(state: Pick<ArkitypeState, "primitives" | "semantics">): 
  */
 function fixAll(tier: A11yTier, scope?: PreviewMode) {
   const seed = useDesignSystem.getState();
-  const pairs = derivePairs(seed.semantics.groups);
+  const pairs = auditPairs(seed);
+  const declared = pairs.filter((p) => p.bgIsValue);
   const modes: PreviewMode[] = scope
     ? [scope]
     : modeDefsOf(seed.semantics).map((d) => d.id);
 
   for (const mode of modes) {
-    const context = buildFixContext(useDesignSystem.getState(), mode);
+    const context = buildFixContext(useDesignSystem.getState(), mode, declared);
+    const backdrop = pageBackdrop(useDesignSystem.getState(), mode);
     for (const pair of pairs) {
       // Advisory pairings are the designer's call, never a bulk rewrite.
       if (pair.advisory) continue;
       if (!tierApplies(pair.context, tier)) continue;
 
       const before = useDesignSystem.getState();
-      const fix = proposeContrastFix(before, mode, pair, tier, context);
+      const fix = proposeContrastFix(before, mode, pair, tier, context, backdrop);
       if (!fix) continue;
 
       const scoreBefore = gatedAaPasses(before);
@@ -240,9 +287,10 @@ function FixButton({ verdict, tier }: { verdict: Verdict; tier: A11yTier }) {
         verdict.mode,
         verdict.pair,
         tier,
-        verdict.fixContext
+        verdict.fixContext,
+        verdict.backdrop
       ),
-    [primitives, semantics, verdict.mode, verdict.pair, verdict.fixContext, tier]
+    [primitives, semantics, verdict.mode, verdict.pair, verdict.fixContext, verdict.backdrop, tier]
   );
 
   if (!proposal) return null;
@@ -373,6 +421,183 @@ function VerdictRow({ verdict, record }: { verdict: Verdict; record?: FixRecord 
   );
 }
 
+/* ─────────────── backgrounds the file is held to, beyond its own ────────── */
+
+/**
+ * The audit's backgrounds are normally the file's own surfaces, found by name.
+ * That covers everything the system renders on and nothing it merely *lands*
+ * on — a partner's page, a print stock, plain white. This is where those get
+ * declared, and once declared they are checked like any other surface, except
+ * that no repair may move them: that is the entire point of pinning one.
+ */
+function BackdropBar() {
+  const primitives = useDesignSystem((s) => s.primitives);
+  const semantics = useDesignSystem((s) => s.semantics);
+  const addBackdrop = useDesignSystem((s) => s.addBackdrop);
+  const removeBackdrop = useDesignSystem((s) => s.removeBackdrop);
+  const backdrops = semantics.backdrops ?? [];
+
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("#ffffff");
+
+  const state = { primitives, semantics };
+  const modeDefs = modeDefsOf(semantics);
+  // Chips are drawn in the first mode; a backdrop pinned to a hex looks the
+  // same in every one anyway, and a mode-tracking backdrop has to pick a column.
+  const swatchMode = modeDefs[0]?.id ?? "light";
+
+  const tokenNames = useMemo(
+    () => semantics.groups.flatMap((g) => g.tokens),
+    [semantics.groups]
+  );
+
+  /** A value is offerable if the token pipeline can turn it into a colour. */
+  const resolvable = (value: string): boolean => {
+    const v = value.trim();
+    if (!v) return false;
+    if (v.startsWith("#")) return isValidHex(v);
+    if (v.startsWith("@")) return tokenNames.includes(v.slice(1).split("/")[0]);
+    return resolveTokenValue(state, swatchMode, v) !== "#ff00ff";
+  };
+
+  const submit = (value: string) => {
+    if (!resolvable(value)) return;
+    addBackdrop(value);
+    setDraft("#ffffff");
+    setOpen(false);
+  };
+
+  const draftOk = resolvable(draft);
+
+  return (
+    <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+      <span className="text-[11px] text-fg-mute">Tested against</span>
+
+      <Tooltip
+        side="bottom"
+        content={
+          <>
+            Every surface token in the file — anything named{" "}
+            <span className="font-mono text-fg">…-bg</span>,{" "}
+            <span className="font-mono text-fg">…-surface</span>,{" "}
+            <span className="font-mono text-fg">…-fill</span>,{" "}
+            <span className="font-mono text-fg">…-container</span> — plus the
+            foundation surfaces, in every mode.
+          </>
+        }
+      >
+        <span className="inline-flex cursor-help items-center gap-1.5 rounded-md border border-line bg-ink px-2 py-1 text-[11px] font-semibold text-fg-dim">
+          Your surfaces
+        </span>
+      </Tooltip>
+
+      {backdrops.map((b) => (
+        <span
+          key={b.id}
+          className="inline-flex items-center gap-1.5 rounded-md border border-line bg-ink py-1 pl-1.5 pr-1 text-[11px] font-semibold text-fg-dim"
+          title={`${b.value} — every text and border token is checked against this, in every mode`}
+        >
+          <span
+            className="h-3 w-3 shrink-0 rounded-[3px] border border-line-strong"
+            style={{ background: resolveTokenValue(state, swatchMode, b.value) }}
+          />
+          {b.label}
+          <button
+            type="button"
+            onClick={() => removeBackdrop(b.id)}
+            aria-label={`Stop testing against ${b.label}`}
+            title={`Stop testing against ${b.label}`}
+            className="rounded p-0.5 text-fg-mute transition-colors hover:text-red-400"
+          >
+            <X size={10} />
+          </button>
+        </span>
+      ))}
+
+      {open ? (
+        <span className="inline-flex items-center gap-1 rounded-md border border-line-strong bg-ink-panel p-1">
+          <input
+            autoFocus
+            value={draft}
+            spellCheck={false}
+            list="a11y-backdrop-options"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit(draft);
+              if (e.key === "Escape") {
+                setDraft("#ffffff");
+                setOpen(false);
+              }
+            }}
+            placeholder="#ffffff, brand-600, @surface-base"
+            className={`h-6 w-52 rounded border bg-ink px-1.5 font-mono text-[11px] focus:outline-none ${
+              draftOk
+                ? "border-line text-fg focus:border-line-strong"
+                : "border-red-500/50 text-red-400"
+            }`}
+          />
+          <datalist id="a11y-backdrop-options">
+            {tokenNames.map((t) => (
+              <option key={t} value={`@${t}`} />
+            ))}
+          </datalist>
+          <button
+            type="button"
+            onClick={() => submit(draft)}
+            disabled={!draftOk}
+            className="rounded bg-fg px-1.5 py-0.5 text-[10px] font-semibold text-ink disabled:opacity-40"
+          >
+            Add
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft("#ffffff");
+              setOpen(false);
+            }}
+            aria-label="Cancel"
+            className="rounded p-0.5 text-fg-mute hover:text-fg"
+          >
+            <X size={11} />
+          </button>
+        </span>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-line px-2 py-1 text-[11px] font-semibold text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+          >
+            <Plus size={10} />
+            Add a background
+          </button>
+          {/* The two everyone actually reaches for, one press away. */}
+          {[
+            { value: "#ffffff", label: "White" },
+            { value: "#000000", label: "Black" },
+          ]
+            .filter((p) => !backdrops.some((b) => b.value.toLowerCase() === p.value))
+            .map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => addBackdrop(p.value)}
+                title={`Check every text token against ${p.value}`}
+                className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-fg-mute transition-colors hover:text-fg"
+              >
+                <span
+                  className="h-3 w-3 shrink-0 rounded-[3px] border border-line-strong"
+                  style={{ background: p.value }}
+                />
+                {p.label}
+              </button>
+            ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ScoreBar({ label, pass, total }: { label: string; pass: number; total: number }) {
   const pct = total === 0 ? 100 : Math.round((pass / total) * 100);
   const clear = pass === total;
@@ -401,7 +626,6 @@ function ScoreBar({ label, pass, total }: { label: string; pass: number; total: 
 export function ContrastPanel() {
   const { verdicts, total, aaPass, aaaPass, aaaTotal, failures, advisoryLow } =
     useContrastAudit();
-  const currentMode = useDesignSystem((s) => s.currentPreviewMode);
   const history = useFixHistory();
 
   // Default to the shortest actionable view: just what's broken, if anything is.
@@ -455,10 +679,13 @@ export function ContrastPanel() {
       info={
         <>
           Every text-on-surface and border-on-surface pairing your token groups
-          imply, checked in every mode on every edit. AA (4.5:1 text, 3:1
-          non-text) is the shipping bar; AAA (7:1) is worth chasing for body copy.
-          Fix retargets the foreground to the nearest ramp step that clears the
-          bar — the surface never moves.
+          imply, checked in every mode on every edit — plus any background you
+          declare below, which puts every text token in the file against it. AA
+          (4.5:1 text, 3:1 non-text) is the shipping bar; AAA (7:1) is worth
+          chasing for body copy. Fix retargets the foreground to the nearest ramp
+          step that clears the bar — the surface never moves. Opacity counts:
+          a translucent token is measured as the blend it renders as, not as the
+          colour it stores.
         </>
       }
       actions={
@@ -482,6 +709,8 @@ export function ContrastPanel() {
         </div>
       }
     >
+      <BackdropBar />
+
       <div className="overflow-hidden rounded-xl border border-line">
         {/* score header */}
         <div className="flex items-center gap-4 border-b border-line bg-ink-panel px-4 py-3">
@@ -552,9 +781,14 @@ export function ContrastPanel() {
         )}
       </div>
 
-      {modeFilter !== "all" && modeFilter !== currentMode ? (
+      {/* This used to compare against the top bar's preview mode, which no
+          longer means anything here: the Colour step renders every mode at
+          once, so the only thing worth saying is which ones this list is
+          leaving out. */}
+      {modeFilter !== "all" && modeDefs.length > 1 ? (
         <p className="mt-2 text-[11px] text-fg-mute">
-          Showing {modeNameOf(modeFilter)} — the canvas is previewing {modeNameOf(currentMode)}.
+          Showing {modeNameOf(modeFilter)} only — the other {modeDefs.length - 1} mode
+          {modeDefs.length - 1 === 1 ? " is" : "s are"} still audited, just hidden from this list.
         </p>
       ) : null}
     </CanvasSection>
@@ -595,6 +829,8 @@ function Segment<T extends string>({
 export function ContrastSummary() {
   const { total, aaPass, aaaPass, aaaTotal, failures } = useContrastAudit();
   const history = useFixHistory();
+  const foundationView = useDesignSystem((s) => s.foundationView);
+  const setFoundationView = useDesignSystem((s) => s.setFoundationView);
 
   return (
     <div className="mb-4 rounded-xl border border-line p-3">
@@ -602,9 +838,10 @@ export function ContrastSummary() {
         <span className="flex items-center gap-1.5 text-[12px] font-semibold text-fg-dim">
           Contrast
           <InfoTip label="About the contrast audit">
-            Live WCAG check across every pairing your token groups imply, in both
-            modes. It moves the moment you change a ramp, a role or a component
-            token — the full breakdown, with one-click repairs, is on the canvas.
+            Live WCAG check across every pairing your token groups imply, in
+            every mode. It moves the moment you change a ramp, a role or a
+            component token — the full breakdown, the backgrounds it is held to
+            and the one-click repairs are on the Contrast audit tab.
           </InfoTip>
         </span>
         {failures === 0 ? (
@@ -623,8 +860,18 @@ export function ContrastSummary() {
         <ScoreBar label="AAA" pass={aaaPass} total={aaaTotal} />
       </div>
 
-      {failures > 0 || history.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-3 flex flex-wrap gap-1.5">
+          {/* The audit is a tab now, so the aside has to be able to reach it —
+              otherwise the score is a number with nowhere to go. */}
+          {foundationView === "contrast" ? null : (
+            <button
+              type="button"
+              onClick={() => setFoundationView("contrast")}
+              className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] font-semibold text-fg-dim transition-colors hover:border-line-strong hover:text-fg"
+            >
+              Open audit
+            </button>
+          )}
           {failures > 0 ? (
             <button
               type="button"
@@ -649,8 +896,7 @@ export function ContrastSummary() {
               Undo all ({history.length})
             </button>
           ) : null}
-        </div>
-      ) : null}
+      </div>
     </div>
   );
 }

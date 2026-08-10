@@ -109,7 +109,7 @@ export function PreviewStep() {
                   ? " On mobile, touch targets hold a 44pt floor regardless of density: if Compact makes the rest of the screen feel cramped against them, that's the spacing scale telling you something."
                   : formFactor === "marketing"
                     ? " This form factor is the display end of the type scale under real load — a ratio that reads fine in a console can shout here, or disappear."
-                    : " Use the Light / Dark toggle in the top bar to check both modes; the product should feel equally considered in each."}
+                    : " Use the Preview switch in the top bar to walk the product through every mode your file carries; it should feel equally considered in each."}
               </>
             }
           >

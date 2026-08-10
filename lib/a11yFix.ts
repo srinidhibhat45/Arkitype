@@ -18,6 +18,7 @@
 import {
   ArkitypeState,
   PreviewMode,
+  modeBase,
 } from "@/store/useDesignSystem";
 import {
   contrastRatio,
@@ -27,9 +28,16 @@ import {
   relativeLuminance,
   rgbToHex,
   rgbToHsl,
+  type RGB,
 } from "@/lib/color";
-import { alphaOfValue, applyAlphaToValue, resolveRef, resolveToken } from "@/lib/tokens";
-import { A11yTier, thresholdFor } from "@/lib/a11y";
+import {
+  alphaOfValue,
+  applyAlphaToValue,
+  resolveRef,
+  resolveToken,
+  resolveTokenValue,
+} from "@/lib/tokens";
+import { A11yTier, flattenOver, thresholdFor } from "@/lib/a11y";
 import { derivePairs, type RoleContrastPair } from "@/lib/a11yPairs";
 
 type StateSlice = Pick<ArkitypeState, "primitives" | "semantics">;
@@ -53,6 +61,61 @@ export interface ContrastFix {
 const MAX_ALIAS_DEPTH = 16;
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * The opaque colour a mode's surfaces sit on.
+ *
+ * It matters because alpha is composited rather than discarded, and a
+ * translucent card has to be blended over *something*. `surface-base` is that
+ * something — it is the page. A mode with no such token falls back to the paper
+ * its own appearance implies, which is the only other honest answer.
+ *
+ * Every surface that measures contrast reads this, so the badge on a token row
+ * and the row in the audit can't disagree about what is behind the colour.
+ */
+export function pageBackdrop(state: StateSlice, mode: PreviewMode): string {
+  const paper =
+    modeBase(state.semantics, mode, state.primitives) === "dark" ? "#000000" : "#ffffff";
+  const stored = state.semantics.modes[mode]?.["surface-base"];
+  if (typeof stored !== "string" || !stored.trim()) return paper;
+  return flattenOver(resolveToken(state, mode, "surface-base"), paper);
+}
+
+/**
+ * The hex a pairing's background actually is. A declared background carries its
+ * value inline (see `RoleContrastPair.bgIsValue`); everything else names a token.
+ */
+export function pairBackgroundHex(
+  state: StateSlice,
+  mode: PreviewMode,
+  pair: RoleContrastPair
+): string {
+  return pair.bgIsValue
+    ? resolveTokenValue(state, mode, pair.bg)
+    : resolveToken(state, mode, pair.bg);
+}
+
+/**
+ * What a candidate colour is worth at a given opacity, on a given surface.
+ *
+ * A token at 40% that gets walked to a darker ramp step doesn't arrive at that
+ * step's ratio — it arrives at the ratio of the blend. Scoring candidates on
+ * their bare hex is how a "fix" lands on a value that still fails.
+ */
+function ratioAtAlpha(hex: string, againstHex: string, alphaPct: number): number {
+  const tinted = alphaPct >= 100 ? hex : withAlphaHex(hex, alphaPct);
+  return contrastRatio(flattenOver(tinted, againstHex), againstHex);
+}
+
+/** `hex` carrying an 0–100 alpha as #RRGGBBAA — the form `flattenOver` reads.
+ *  Goes through `hexToRgb` so a three-digit hex normalises rather than truncates. */
+function withAlphaHex(hex: string, alphaPct: number): string {
+  const base = rgbToHex(hexToRgb(hex) ?? { r: 0, g: 0, b: 0 });
+  const aa = Math.round((Math.min(Math.max(alphaPct, 0), 100) / 100) * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `${base}${aa}`;
+}
 
 /**
  * Follow an "@role" chain to the token that actually holds a value, so a fix
@@ -96,7 +159,8 @@ function lightnessForLuminance(h: number, s: number, targetY: number): number | 
 export function solveHexForContrast(
   hex: string,
   againstHex: string,
-  target: number
+  target: number,
+  alphaPct = 100
 ): { hex: string; ratio: number; short: boolean } {
   const rgb = hexToRgb(hex) ?? { r: 0, g: 0, b: 0 };
   const bg = hexToRgb(againstHex) ?? { r: 255, g: 255, b: 255 };
@@ -117,16 +181,43 @@ export function solveHexForContrast(
     // Nudge a hair past the boundary so rounding can't land a whisker short.
     const best = candidates.reduce((a, b) => (Math.abs(a - l) <= Math.abs(b - l) ? a : b));
     const nudged = best > l ? Math.min(100, best + 0.4) : Math.max(0, best - 0.4);
-    const solved = rgbToHex(hslToRgb({ h, s, l: nudged }));
-    return { hex: solved, ratio: round2(contrastRatio(solved, againstHex)), short: false };
+    const composite = hslToRgb({ h, s, l: nudged });
+    // The lightness above is what the *blend* has to be. At full opacity the
+    // token is the blend; below it, the token has to sit further out so that
+    // mixing it with the surface lands there — and past a certain opacity no
+    // colour is far enough out, which is what the clamp and the honest
+    // re-measure below are for.
+    const solvedRgb = alphaPct >= 100 ? composite : unmix(composite, bg, alphaPct / 100);
+    const solved = rgbToHex(solvedRgb);
+    const ratio = round2(ratioAtAlpha(solved, againstHex, alphaPct));
+    return { hex: solved, ratio, short: ratio < target };
   }
 
   // Unreachable on this surface — hand back the best either extreme can do.
-  const white = round2(contrastRatio("#ffffff", againstHex));
-  const black = round2(contrastRatio("#000000", againstHex));
+  const white = round2(ratioAtAlpha("#ffffff", againstHex, alphaPct));
+  const black = round2(ratioAtAlpha("#000000", againstHex, alphaPct));
   return white >= black
     ? { hex: "#ffffff", ratio: white, short: white < target }
     : { hex: "#000000", ratio: black, short: black < target };
+}
+
+/**
+ * Invert a source-over composite: the colour that, drawn at `alpha` over `bg`,
+ * produces `composite`. Channels are clamped, so an unreachable request comes
+ * back as the closest legal colour rather than as nonsense — the caller
+ * re-measures what it got instead of trusting the arithmetic.
+ */
+function unmix(composite: RGB, bg: RGB, alpha: number): RGB {
+  // A token at zero opacity has no colour that would show; anything is as good
+  // as anything else, and dividing by it is how you get NaN into a swatch.
+  if (alpha < 0.01) return composite;
+  const solve = (c: number, b: number): number =>
+    Math.min(Math.max((c - b * (1 - alpha)) / alpha, 0), 255);
+  return {
+    r: solve(composite.r, bg.r),
+    g: solve(composite.g, bg.g),
+    b: solve(composite.b, bg.b),
+  };
 }
 
 /**
@@ -140,16 +231,20 @@ export interface FixContext {
   degrees: Map<string, number>;
 }
 
-export function buildFixContext(state: StateSlice, mode: PreviewMode): FixContext {
-  const pairs = derivePairs(state.semantics.groups);
+export function buildFixContext(
+  state: StateSlice,
+  mode: PreviewMode,
+  extraPairs: RoleContrastPair[] = []
+): FixContext {
+  const pairs = [...derivePairs(state.semantics.groups), ...extraPairs];
   const degrees = new Map<string, number>();
   for (const pair of pairs) {
-    for (const token of [
-      terminalToken(state, mode, pair.fg),
-      terminalToken(state, mode, pair.bg),
-    ]) {
-      degrees.set(token, (degrees.get(token) ?? 0) + 1);
-    }
+    const tokens = [terminalToken(state, mode, pair.fg)];
+    // A declared background is a value, not a token — there is nothing there to
+    // hold a commitment, and counting it would give the foreground a phantom
+    // rival for "which side moves".
+    if (!pair.bgIsValue) tokens.push(terminalToken(state, mode, pair.bg));
+    for (const token of tokens) degrees.set(token, (degrees.get(token) ?? 0) + 1);
   }
   return { pairs, degrees };
 }
@@ -181,7 +276,8 @@ function nearestPassingStep(
   currentStep: number,
   againstHex: string,
   target: number,
-  avoid: Set<string>
+  avoid: Set<string>,
+  alphaPct = 100
 ): { ref: string; ratio: number } | null {
   const fam = state.primitives.colorFamilies.find((f) => f.id === familyId);
   if (!fam) return null;
@@ -195,7 +291,7 @@ function nearestPassingStep(
   for (let idx = 0; idx < labels.length; idx++) {
     const ref = `${familyId}-${labels[idx]}`;
     if (avoid.has(ref)) continue;
-    const ratio = contrastRatio(resolveRef(state.primitives, ref), againstHex);
+    const ratio = ratioAtAlpha(resolveRef(state.primitives, ref), againstHex, alphaPct);
     if (ratio < target) continue;
     const distance = Math.abs(idx - from);
     if (distance < bestDistance || (distance === bestDistance && ratio > bestRatio)) {
@@ -241,17 +337,23 @@ export function proposeContrastFix(
   mode: PreviewMode,
   pair: RoleContrastPair,
   tier: A11yTier,
-  context?: FixContext
+  context?: FixContext,
+  backdrop = "#ffffff"
 ): ContrastFix | null {
   const target = thresholdFor(pair.context, tier);
-  const bgHex = resolveToken(state, mode, pair.bg);
-  const fgHex = resolveToken(state, mode, pair.fg);
+  // Both sides are measured as they render: a translucent surface over the page
+  // beneath it, then the foreground over that.
+  const bgHex = flattenOver(pairBackgroundHex(state, mode, pair), backdrop);
+  const fgHex = flattenOver(resolveToken(state, mode, pair.fg), bgHex);
   if (contrastRatio(fgHex, bgHex) >= target) return null;
 
   const { degrees } = context ?? buildFixContext(state, mode);
   const fgToken = terminalToken(state, mode, pair.fg);
   const bgToken = terminalToken(state, mode, pair.bg);
-  const moveBackground = (degrees.get(bgToken) ?? 0) < (degrees.get(fgToken) ?? 0);
+  // A declared background is a fixed given — the whole point of saying "this
+  // has to work on white" is that white doesn't get to move.
+  const moveBackground =
+    !pair.bgIsValue && (degrees.get(bgToken) ?? 0) < (degrees.get(fgToken) ?? 0);
 
   const token = moveBackground ? bgToken : fgToken;
   const movingHex = moveBackground ? bgHex : fgHex;
@@ -272,7 +374,8 @@ export function proposeContrastFix(
       ramp.step,
       anchorHex,
       target,
-      avoid
+      avoid,
+      alpha
     );
     if (step) {
       const to = applyAlphaToValue(step.ref, alpha);
@@ -281,7 +384,7 @@ export function proposeContrastFix(
     }
   }
 
-  const solved = solveHexForContrast(movingHex, anchorHex, target);
+  const solved = solveHexForContrast(movingHex, anchorHex, target, alpha);
   const to = applyAlphaToValue(solved.hex, alpha);
   if (to === from) return null;
   return { mode, token, from, to, via: "hex", ratio: solved.ratio, short: solved.short };

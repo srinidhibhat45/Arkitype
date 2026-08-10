@@ -187,6 +187,13 @@ export interface VarCollection {
    * of names, one click from their rows. Unfolding sticks (see `VariablesUI`).
    */
   defaultCollapsed?: boolean;
+  /**
+   * A generated scale that nothing in the file points at yet, kept on the map
+   * with "hide unused primitives" on rather than dropped from it. Losing a few
+   * ramp steps to that setting is a tidy-up; losing Motion entirely is the map
+   * telling you your file has no motion scale, which isn't true.
+   */
+  unreferenced?: boolean;
 }
 
 /**
@@ -1243,6 +1250,26 @@ export interface CardBox {
 }
 
 /**
+ * The horizontal territory one tier's columns occupy.
+ *
+ * Read off the arrangement rather than off the cards, and that's the point:
+ * lanes computed this way are disjoint by construction, so the tinted plates
+ * behind them can never grow into each other however far a card inside one has
+ * been nudged. Measuring them from live card positions is what used to let two
+ * bands overlap into an unreadable stack the moment anything was dragged.
+ */
+export interface LaneSpan {
+  tier: VarTier;
+  x: number;
+  w: number;
+}
+
+export interface LayoutResult {
+  boxes: Record<string, CardBox>;
+  lanes: LaneSpan[];
+}
+
+/**
  * Whether a card draws a footer strip — "New variable" on a set you author, the
  * way out to its editor on a generated scale. One predicate, because the height
  * the layout reserves and the row the card renders have to agree or every wire
@@ -1264,13 +1291,73 @@ export const cardHeight = (c: VarCollection, collapsed?: ReadonlySet<string>): n
 /** Gap between the sub-columns a packed band wraps itself into. */
 export const PACK_GAP_X = 24;
 
+/** The canvas shape assumed when nobody has measured one yet. */
+const PACK_FALLBACK_ASPECT = 1.6;
+
 /**
- * How deep a packed band is allowed to run before it wraps into another
- * sub-column. Deep enough that a tall card (a 10-step ramp, a 30-token set)
- * never sits alone in a column of its own, shallow enough that four bands fit
- * a screen at a readable zoom.
+ * How deep a packed band should run before wrapping — chosen for *this* screen.
+ *
+ * Packed exists to put a whole system in front of you at once, and a fixed
+ * wrap depth can't do that: hold every band to 780px and a file with fifty-odd
+ * component cards lays itself out four thousand pixels wide, which fits a
+ * 900px canvas at 20% — below the floor where anything has a name. The map
+ * then didn't fit *and* couldn't be read, which is the worst of both.
+ *
+ * So the depth is solved for instead. Wrapping is simulated at a range of
+ * candidate depths and the one whose resulting bounding box comes closest to
+ * the shape of the canvas wins — deep and narrow for a tall panel, shallow and
+ * wide for a letterbox. Same cards, same order, same reading direction; only
+ * the fold changes, and it changes to the one that leaves the most pixels per
+ * card once the whole thing is on screen.
+ *
+ * `aspect` is quantised by the caller, so nudging a panel a few pixels can't
+ * re-flow the map underneath you.
  */
-const PACK_TARGET_H = 780;
+function packTargetHeight(
+  perTier: number[][],
+  aspect: number
+): number {
+  const tallest = Math.max(0, ...perTier.flat());
+  const floor = Math.max(420, tallest);
+
+  // What a given wrap depth actually produces, walked the same way the real
+  // layout walks it — so the estimate and the result agree.
+  const shape = (target: number): { w: number; h: number } => {
+    let w = 0;
+    let h = 0;
+    for (const heights of perTier) {
+      if (heights.length === 0) continue;
+      let columns = 1;
+      let y = 0;
+      let deepest = 0;
+      for (const cardH of heights) {
+        if (y > 0 && y + cardH > target) {
+          columns += 1;
+          y = 0;
+        }
+        y += cardH + CARD_GAP_Y;
+        deepest = Math.max(deepest, y);
+      }
+      w += columns * (CARD_W + PACK_GAP_X) - PACK_GAP_X + TIER_GAP;
+      h = Math.max(h, deepest);
+    }
+    return { w: Math.max(1, w - TIER_GAP), h: Math.max(1, h) };
+  };
+
+  let best = floor;
+  let bestScore = Infinity;
+  for (let target = floor; target <= floor * 24; target *= 1.1) {
+    const { w, h } = shape(target);
+    // Compared in log space: a box twice as wide as it should be and one half
+    // as wide are equally wrong, and only the ratio matters to the fit.
+    const score = Math.abs(Math.log(w / h / aspect));
+    if (score < bestScore) {
+      bestScore = score;
+      best = target;
+    }
+  }
+  return best;
+}
 
 /**
  * Tier-banded auto-layout, in one of two shapes.
@@ -1281,52 +1368,103 @@ const PACK_TARGET_H = 780;
  * depth — a full system is several thousand pixels of scroll, which is a poor
  * way to see the shape of a system.
  *
- * **Packed** wraps each band into as many sub-columns as it needs to stay
- * roughly {@link PACK_TARGET_H} deep, so the whole file fits a screen. It reads
- * in the same order — down a column, then across — so it's the same map at a
- * different aspect ratio, not a different one.
+ * **Packed** wraps each band into as many sub-columns as it takes to land the
+ * whole file on the screen it's being read on — the fold depth is solved for
+ * the canvas's own shape (see {@link packTargetHeight}) rather than fixed. It
+ * reads in the same order as Lanes — down a column, then across — so it's the
+ * same map at a different aspect ratio, not a different one.
  *
  * The order either way is the order the graph was built in — colour ramps then
  * scales, then the file's own groups in the order the file lists them — because
  * that's the order the table's sets list and the rail use. One order everywhere.
+ *
+ * **Which column a card lives in doesn't depend on what you have open.** This
+ * matters more than it sounds. Packing used to wrap on live heights, so
+ * unfolding one card — Component properties, say, which is fifty-odd sets —
+ * grew the band past its target and re-flowed every card after it into
+ * different columns. You opened one card and the whole map rearranged itself
+ * around you, which reads as a glitch even when the arrangement is correct.
+ *
+ * So the wrap is decided on each card's *resting* height — folded if the file
+ * opens it folded, full height if not — and folding is then purely local: a
+ * card grows or shrinks, the cards below it in its own column move, and nothing
+ * changes column. The cost is a column that runs long when you unfold several
+ * cards in it, which is a far smaller surprise than the map reshuffling.
  */
 export function autoLayout(
   collections: VarCollection[],
   collapsed?: ReadonlySet<string>,
-  layout: "lanes" | "packed" = "lanes"
-): Record<string, CardBox> {
+  layout: "lanes" | "packed" = "lanes",
+  /** Width ÷ height of the canvas the result has to fit. Packed only. */
+  aspect?: number
+): LayoutResult {
   const boxes: Record<string, CardBox> = {};
+  const lanes: LaneSpan[] = [];
   let xCursor = 0;
+
+  // A card's *resting* height — the file's own idea of how it opens, not the
+  // one you're currently looking at. Everything about where a card lands is
+  // decided on these, so unfolding one can never move another (see below).
+  const restingOf = (c: VarCollection) => (c.defaultCollapsed ? CARD_HEAD_H : cardHeight(c));
+  const packTarget =
+    layout === "packed"
+      ? packTargetHeight(
+          TIER_ORDER.map((t) => collections.filter((c) => c.tier === t).map(restingOf)),
+          aspect && aspect > 0 ? aspect : PACK_FALLBACK_ASPECT
+        )
+      : Number.POSITIVE_INFINITY;
 
   for (const tier of TIER_ORDER) {
     const inTier = collections.filter((c) => c.tier === tier);
     if (inTier.length === 0) continue;
 
+    const heights = inTier.map((c) => cardHeight(c, collapsed));
+    const restingHeights = inTier.map(restingOf);
     // Never wrap below the tallest card — a column shorter than its own
     // contents would put every card in a column of its own.
-    const heights = inTier.map((c) => cardHeight(c, collapsed));
     const target =
       layout === "packed"
-        ? Math.max(PACK_TARGET_H, ...heights)
+        ? Math.max(packTarget, ...restingHeights)
         : Number.POSITIVE_INFINITY;
 
-    let y = 0;
+    // Column assignment first, off the resting heights, so it's stable…
+    const columnOf: number[] = [];
+    let restY = 0;
     let column = 0;
-    inTier.forEach((c, i) => {
-      const h = heights[i];
-      // Wrap once this card would overrun the target — but never on the first
-      // card of a column, which has to go somewhere.
-      if (y > 0 && y + h > target) {
+    inTier.forEach((_, i) => {
+      if (restY > 0 && restY + restingHeights[i] > target) {
         column += 1;
-        y = 0;
+        restY = 0;
       }
-      boxes[c.id] = { id: c.id, x: xCursor + column * (CARD_W + PACK_GAP_X), y, w: CARD_W, h };
-      y += h + CARD_GAP_Y;
+      columnOf[i] = column;
+      restY += restingHeights[i] + CARD_GAP_Y;
     });
 
-    xCursor += (column + 1) * (CARD_W + PACK_GAP_X) - PACK_GAP_X + TIER_GAP;
+    // …then stack each column on the heights the cards actually have now, so
+    // folding a card really does reclaim its space.
+    const yOf: number[] = [];
+    const columnY: number[] = [];
+    inTier.forEach((_, i) => {
+      const col = columnOf[i];
+      yOf[i] = columnY[col] ?? 0;
+      columnY[col] = yOf[i] + heights[i] + CARD_GAP_Y;
+    });
+
+    inTier.forEach((c, i) => {
+      boxes[c.id] = {
+        id: c.id,
+        x: xCursor + columnOf[i] * (CARD_W + PACK_GAP_X),
+        y: yOf[i],
+        w: CARD_W,
+        h: heights[i],
+      };
+    });
+
+    const laneW = (column + 1) * (CARD_W + PACK_GAP_X) - PACK_GAP_X;
+    lanes.push({ tier, x: xCursor, w: laneW });
+    xCursor += laneW + TIER_GAP;
   }
-  return boxes;
+  return { boxes, lanes };
 }
 
 /** The row index of a node inside its card — the y offset of its anchor. */
@@ -1366,16 +1504,26 @@ function trunkX(a: Point, b: Point): number {
 const canElbow = (a: Point, b: Point): boolean => b.x - a.x >= 76;
 
 /**
- * How every connection is drawn: out of the source, along a shared vertical
- * trunk, and into the consumer, with rounded corners. One routing rather than a
- * choice of two — wires that share a trunk are the ones you can actually trace,
- * and asking someone to pick a spline style before they can read their own
- * tokens was a setting pretending to be a feature.
+ * How a connection is routed. Both readings of the same graph, and which one
+ * reads better genuinely depends on the file in front of you:
  *
- * Falls back to a curve when the anchors are too close (or the wire runs
+ * **Curved** is a horizontal-tangent cubic — it leaves and lands flat, so the
+ * row it belongs to is unambiguous at both ends, and a hundred of them fan out
+ * rather than stacking into a single black trunk. This is the default; it's
+ * what a dense band of aliases wants.
+ *
+ * **Elbow** runs out, along a shared vertical trunk, and in, with rounded
+ * corners. Wires between the same two cards share that trunk, which makes a
+ * handful of them far easier to trace individually — but a few hundred sharing
+ * it turns the trunk into a wall.
+ */
+export type WireStyle = "curved" | "elbow";
+
+/**
+ * An elbow route, or a curve when the anchors are too close (or the wire runs
  * backwards, past a card someone dragged) for an elbow to have room to turn.
  */
-export function wirePath(a: Point, b: Point): string {
+function elbowPath(a: Point, b: Point): string {
   const dy = b.y - a.y;
   if (!canElbow(a, b)) return curvedPath(a, b);
   if (Math.abs(dy) < 1) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
@@ -1392,9 +1540,17 @@ export function wirePath(a: Point, b: Point): string {
   ].join(" ");
 }
 
+export function wirePath(a: Point, b: Point, style: WireStyle = "curved"): string {
+  return style === "elbow" ? elbowPath(a, b) : curvedPath(a, b);
+}
+
+/** Whether a route between these two anchors actually turns a corner. */
+const isStepped = (a: Point, b: Point, style: WireStyle): boolean =>
+  style === "elbow" && canElbow(a, b);
+
 /** Where a wire's own controls sit — its visual middle, in graph coordinates. */
-export function wireMid(a: Point, b: Point): Point {
-  if (canElbow(a, b)) return { x: trunkX(a, b), y: (a.y + b.y) / 2 };
+export function wireMid(a: Point, b: Point, style: WireStyle = "curved"): Point {
+  if (isStepped(a, b, style)) return { x: trunkX(a, b), y: (a.y + b.y) / 2 };
   const r = curveReach(a, b);
   const c1 = { x: a.x + r, y: a.y };
   const c2 = { x: b.x - r, y: b.y };
@@ -1444,7 +1600,8 @@ export interface WireBundle {
  */
 export function bundleWires(
   wires: Array<{ id: string; from: string; to: string; a: Point; b: Point }>,
-  collectionOf: (nodeId: string) => string | null
+  collectionOf: (nodeId: string) => string | null,
+  style: WireStyle = "curved"
 ): WireBundle[] {
   const groups = new Map<string, { from: string; to: string; members: string[]; a: Point[]; b: Point[] }>();
   for (const w of wires) {
@@ -1476,8 +1633,8 @@ export function bundleWires(
       count: g.members.length,
       a,
       b,
-      mid: wireMid(a, b),
-      d: wirePath(a, b),
+      mid: wireMid(a, b, style),
+      d: wirePath(a, b, style),
     });
   });
   return out;
@@ -1491,10 +1648,10 @@ export function bundleWires(
  * number. Walking outwards from the middle finds the nearest stretch of the
  * same ribbon that's actually in the open.
  */
-export function wireSamples(a: Point, b: Point, n = 13): Point[] {
+export function wireSamples(a: Point, b: Point, n = 13, style: WireStyle = "curved"): Point[] {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const stepped = canElbow(a, b) && Math.abs(dy) >= 1;
+  const stepped = isStepped(a, b, style) && Math.abs(dy) >= 1;
 
   const at = (t: number): Point => {
     if (stepped) {

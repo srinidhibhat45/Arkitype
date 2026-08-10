@@ -254,8 +254,17 @@ export interface PanelVisibility {
   right: boolean;
 }
 
-/** The three panels the left rail switches between. */
-export type LeftTab = "layers" | "tokens" | "variables";
+/** The four panels the left rail switches between. */
+export type LeftTab = "layers" | "tokens" | "variables" | "docs";
+
+/**
+ * The tabs whose surface replaces the step canvas rather than sitting beside
+ * it. Both span all eight steps — the Variables map is every step's tokens at
+ * once, the documentation is every step's manual — so neither has a step to
+ * live inside, and anything that navigates to a step has to put the step
+ * surface back or the click looks like it did nothing.
+ */
+export const CANVAS_TABS: LeftTab[] = ["variables", "docs"];
 
 /** Tier bands on the Variables map — kept as a literal union (rather than
  *  imported from lib/variableGraph) so the store stays dependency-free. */
@@ -273,19 +282,37 @@ export interface VariablesUI {
   hiddenCollections: string[];
   tiers: Record<VarTierKey, boolean>;
   /**
-   * Which mode a link edit writes, and which aliases the map draws. "all" —
-   * the default — writes every mode at once, which is what someone wiring a
-   * system almost always means.
+   * Which mode a link edit writes, and which aliases the map draws.
+   *
+   * Light is the default — one mode, so the picture is definite: a token whose
+   * modes disagree contributes one wire rather than one per mode, and the wire
+   * you're looking at is the wire you're editing. "All modes" is still there
+   * for wiring a system in one pass, and a single-mode edit offers to spread
+   * itself to the others from its own confirmation.
    */
   editMode: PreviewMode | "all";
   /** Hide primitives nothing references yet — the ramps are 60 rows otherwise. */
   connectedOnly: boolean;
+  /**
+   * Draw the wires for component properties that are still on the binding
+   * their schema ships with.
+   *
+   * Off by default, and it is the single biggest thing between this map and a
+   * hairball: on a stock file three quarters of every wire on the canvas is a
+   * default nobody chose, all of them crossing the whole picture to reach a
+   * lane of folded cards. The cards and their rows stay — the inventory is
+   * always complete — and the wires come straight back the moment you point at
+   * a card, select a role, or press the toggle in the band's own header.
+   */
+  showDefaultWires: boolean;
   /** Which surface the Variables workspace shows — the table, or the map. */
   view: VarView;
   /** How the map arranges each band's cards. */
   layout: VarLayout;
-  /** How much of the wiring the map draws at rest. */
+  /** How much of the wiring the map draws at rest — see VarLinkView. */
   links: VarLinkView;
+  /** How a connection is routed — see VarWireStyle. */
+  wireStyle: VarWireStyle;
   /**
    * Which collections are folded to their header on the map — held as two
    * exception lists rather than one, because the map has two starting points.
@@ -333,25 +360,53 @@ export type VarView = "table" | "map";
 /**
  * How much of the wiring the map draws when you aren't pointing at anything.
  *
- * A full system is several hundred aliases, and one hairline per alias is a
- * weave you can't read at any opacity. So "summary" is the default: one ribbon
- * per pair of sets, coloured by where its values come from, thick in proportion
- * to how many run along it, and openable — click one and it lists its links.
- * The individual wires draw themselves for whatever you point at or select.
- * "all" draws every wire at once, for when you want the whole weave.
+ * A full system is several hundred aliases. Drawing them costs twice: one
+ * hairline per alias is a weave you can't read at any opacity, and two thousand
+ * live SVG nodes under the pointer is a canvas that pans at eighteen frames a
+ * second. Both bills come due at rest, for a picture nobody asked for.
+ *
+ * So "selected" is the default, and it draws *nothing* until you pick a
+ * variable — then it draws that one chain, in full, with every other row faded
+ * behind it. The map at rest is the cards; the wiring is an answer to a
+ * question you asked.
+ *
+ * "summary" keeps the overview: one ribbon per pair of sets, coloured by where
+ * its values come from, thick in proportion to how many run along it, and
+ * openable — click one and it lists its links. "all" draws every wire at once,
+ * for when you want the whole weave and will pay for it.
  */
-export type VarLinkView = "summary" | "all";
+export type VarLinkView = "selected" | "summary" | "all";
+
+/**
+ * How a connection is routed on the map.
+ *
+ * "curved" is a horizontal-tangent cubic: it leaves and lands flat, so which
+ * row each end belongs to is unambiguous, and a dense band fans out instead of
+ * stacking into one black trunk. "elbow" runs out, down a shared vertical
+ * trunk, and in, with rounded corners — much easier to trace when there are a
+ * handful of wires, much worse when there are three hundred sharing the trunk.
+ *
+ * Which one reads better genuinely depends on the file, which is why it's a
+ * control and not a decision made for you.
+ */
+export type VarWireStyle = "curved" | "elbow";
 
 export const DEFAULT_VARIABLES_UI: VariablesUI = {
   selected: null,
   focus: null,
   hiddenCollections: [],
   tiers: { primitive: true, semantic: true, component: true, usage: true },
-  editMode: "all",
-  connectedOnly: false,
+  // One mode, always the same one. A map drawing every mode's aliases at once
+  // doubles the wiring of exactly the tokens that are hardest to read — the
+  // ones whose modes disagree — to say something the row's two swatches
+  // already say.
+  editMode: "light",
+  connectedOnly: true,
+  showDefaultWires: false,
   view: "table",
   layout: "lanes",
-  links: "summary",
+  links: "all",
+  wireStyle: "curved",
   collapsed: [],
   expanded: [],
   activeCollection: null,
@@ -1256,8 +1311,11 @@ export interface ArkitypeState {
   toggleVariableTier: (tier: VarTierKey) => void;
   setVariableEditMode: (mode: VariablesUI["editMode"]) => void;
   setVariablesConnectedOnly: (only: boolean) => void;
+  setVariablesShowDefaultWires: (show: boolean) => void;
   setVariableView: (view: VarView) => void;
   setVariableLinkView: (links: VarLinkView) => void;
+  /** Curved or elbow routing for every wire on the map. */
+  setVariableWireStyle: (wireStyle: VarWireStyle) => void;
   /** One column per band, or each band packed into as many as it needs. */
   setVariableLayout: (layout: VarLayout) => void;
   /** Fold a map card to its header, or unfold it — wires re-anchor there. The
@@ -1878,7 +1936,7 @@ export const useDesignSystem = create<ArkitypeState>()(
           primitives: freshPrimitives(),
           semantics: freshSemantics(),
           components: JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)) as Record<string, ComponentConfig>,
-          currentPreviewMode: "dark",
+          currentPreviewMode: "light",
           canvasZoom: 1,
         };
       };
@@ -1900,7 +1958,7 @@ export const useDesignSystem = create<ArkitypeState>()(
           string,
           ComponentConfig
         >,
-        currentPreviewMode: "dark",
+        currentPreviewMode: "light",
         chromeTheme: "light",
         panels: { left: true, right: true },
         canvasZoom: 1,
@@ -2250,11 +2308,17 @@ export const useDesignSystem = create<ArkitypeState>()(
       setVariablesConnectedOnly: (only) =>
         set((state) => ({ variablesUI: { ...state.variablesUI, connectedOnly: only } })),
 
+      setVariablesShowDefaultWires: (show) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, showDefaultWires: show } })),
+
       setVariableView: (view) =>
         set((state) => ({ variablesUI: { ...state.variablesUI, view } })),
 
       setVariableLinkView: (links) =>
         set((state) => ({ variablesUI: { ...state.variablesUI, links } })),
+
+      setVariableWireStyle: (wireStyle) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, wireStyle } })),
 
       setVariableLayout: (layout) =>
         set((state) => ({ variablesUI: { ...state.variablesUI, layout } })),
@@ -2375,11 +2439,12 @@ export const useDesignSystem = create<ArkitypeState>()(
               activeStep: target,
               visited: { ...state.journey.visited, [target]: true },
             },
-            // The Variables map takes over the canvas, so a step can't be shown
-            // underneath it. Anything that navigates to a step — the top bar's
-            // Ship button, the tutorial, a jump-to-token — has to bring the
-            // step surface back, or it would look like the click did nothing.
-            ...(state.activeLeftTab === "variables" ? { activeLeftTab: "layers" as LeftTab } : {}),
+            // Variables and Docs take over the canvas, so a step can't be shown
+            // underneath either. Anything that navigates to a step — the top
+            // bar's Ship button, the tutorial, a jump-to-token — has to bring
+            // the step surface back, or it would look like the click did
+            // nothing.
+            ...(CANVAS_TABS.includes(state.activeLeftTab) ? { activeLeftTab: "layers" as LeftTab } : {}),
           };
         }),
 
@@ -2394,7 +2459,7 @@ export const useDesignSystem = create<ArkitypeState>()(
               done,
               visited: { ...state.journey.visited, [landing]: true },
             },
-            ...(state.activeLeftTab === "variables" ? { activeLeftTab: "layers" as LeftTab } : {}),
+            ...(CANVAS_TABS.includes(state.activeLeftTab) ? { activeLeftTab: "layers" as LeftTab } : {}),
           };
         }),
 
@@ -3668,7 +3733,7 @@ export const useDesignSystem = create<ArkitypeState>()(
               modes: { light: { ...DEFAULT_LIGHT }, dark: { ...DEFAULT_DARK } },
             },
             components: state.components || JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)),
-            currentPreviewMode: state.currentPreviewMode || "dark",
+            currentPreviewMode: state.currentPreviewMode || "light",
             canvasZoom: state.canvasZoom || 1,
           };
           

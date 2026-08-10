@@ -9,14 +9,36 @@
  * them. Each lane is one column of cards in a fixed order, so a set is always
  * where you last saw it, and each carries its tier's accent and ordinal (1–4).
  *
- * Reading the wiring: a full system is several hundred aliases, and one
- * hairline per alias is a weave rather than a map. So at rest the map draws one
- * **ribbon per pair of sets** — coloured by the tier the values come from,
- * thick in proportion to how many run along it, and *openable*: click a ribbon
- * and it lists its links by name, each one a jump to that variable or a button
- * to cut it. Point at a card or a row and the ribbons step back so the actual
- * wires of that one chain can be drawn on top. (All draws the whole weave at
- * once, for when that's what you want.)
+ * Reading the wiring: **All** is the default, and what makes that survivable is
+ * what it declines to draw. Three quarters of a stock file's aliases are
+ * component properties sitting on the binding their schema shipped with — four
+ * hundred wires nobody authored, every one of them crossing the whole canvas to
+ * land on a folded card. Those are off at rest (`showDefaultWires`) and come
+ * back the instant you point at the card, select a role that feeds them, or
+ * press the toggle in the band's own header. Every row stays either way: the
+ * inventory is never the thing being hidden, only the ink.
+ *
+ * What's left is contrast rather than subtraction — pick a variable and its
+ * chain goes opaque and thick while everything else drops to a twelfth, so one
+ * chain is legible *through* a hundred others. **Summary** trades the
+ * individual wires for one ribbon per pair of sets, openable into its list;
+ * **Selected** draws nothing at all until you pick something.
+ *
+ * Picking is sticky, and there are three things to pick. A click pins a row, a
+ * whole card, or a single wire, and *nothing* takes that away — not crossing
+ * forty rows on your way to the scroll bar, not pointing at a card to compare.
+ * Hover only previews while nothing is pinned, and the pill at the top of the
+ * canvas says what's held and lets go of it.
+ *
+ * A held wire is the narrowest of the three on purpose: it lights its own two
+ * variables and drops everything else back, including the cards those two sit
+ * on. That's the question a link is picked to answer — *which two rows does
+ * this one join* — and it's what makes its Detach button findable, which is
+ * the other half of why you'd pick it. It stays put where the hover version
+ * lasted as long as a pointer could hold a 14px band.
+ *
+ * Wires route curved by default and elbow on request — see `VarWireStyle`.
+ * Neither is right for every file, which is why it's a control.
  *
  * Wiring it: grab a row's handle and either drag onto a target or let go and
  * click one — both work, and while you're connecting every row that *can*
@@ -26,8 +48,9 @@
  * the file to how it stood when you opened Variables.
  *
  * The canvas holds no token state of its own. It owns exactly two things:
- * where the cards sit (per project, in localStorage — a view preference, not
- * part of the design system) and where the viewport is.
+ * how far each card has been nudged off its slot (per project *and*
+ * arrangement, in localStorage — a view preference, not part of the design
+ * system) and where the viewport is.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -35,14 +58,19 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  CornerDownRight,
+  Eye,
+  EyeOff,
   Focus,
   FoldVertical,
   Maximize,
   Minus,
+  Pin,
   Plus,
   Redo2,
   RotateCcw,
   SlidersHorizontal,
+  Spline,
   Undo2,
   Unlink,
   UnfoldVertical,
@@ -60,12 +88,14 @@ import {
   BAND_PAD,
   CARD_HEAD_H,
   CARD_W,
+  LaneSpan,
   Point,
   ROW_H,
   TIER_META,
   TIER_ORDER,
   VarCollection,
   VarEdge,
+  VarNode,
   VarTier,
   VariableGraph,
   autoLayout,
@@ -98,6 +128,8 @@ interface Placed extends Point {
   collection: VarCollection;
   h: number;
   collapsed: boolean;
+  /** Sitting off its slot because someone dragged it there. */
+  nudged: boolean;
 }
 
 /** A connection in progress — dragged from a handle, or armed by a click. */
@@ -109,6 +141,12 @@ interface Connecting {
   /** True once the button is up and the next click is the drop. */
   armed: boolean;
 }
+
+/** What the map is holding, for the pill that names it and lets go of it. */
+type Held =
+  | { kind: "variable"; label: string }
+  | { kind: "set"; label: string }
+  | { kind: "link"; edge: VarEdge; from: VarNode; to: VarNode };
 
 /* ────────────────────────── geometry helpers ────────────────────────── */
 
@@ -157,6 +195,49 @@ function ToolButton({
       }`}
     >
       {children}
+    </button>
+  );
+}
+
+/**
+ * A control in a band's own header, in the band's own colour.
+ *
+ * Every one of these says what its lane is currently *not* showing you and
+ * undoes it in a press. That's the whole contract behind a map calm enough to
+ * read: nothing is quietly left out — it's left out, named, and one click from
+ * coming back, where you're already looking when you notice it's missing.
+ */
+function BandToggle({
+  tier,
+  onClick,
+  title,
+  icon,
+  label,
+  active,
+}: {
+  tier: VarTier;
+  onClick: () => void;
+  title: string;
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className="pointer-events-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none transition-colors"
+      style={{
+        color: tierColor(tier),
+        background: tierColor(tier, active ? 0.2 : 0.1),
+        border: `1px solid ${tierColor(tier, active ? 0.5 : 0.26)}`,
+      }}
+    >
+      {icon}
+      {label}
     </button>
   );
 }
@@ -230,8 +311,11 @@ export function VariableCanvas({
   const clearComponentBinding = useDesignSystem((s) => s.clearComponentBinding);
   const addRole = useDesignSystem((s) => s.addRole);
   const setLinkView = useDesignSystem((s) => s.setVariableLinkView);
+  const setWireStyle = useDesignSystem((s) => s.setVariableWireStyle);
   const setLayout = useDesignSystem((s) => s.setVariableLayout);
   const setEditMode = useDesignSystem((s) => s.setVariableEditMode);
+  const setShowDefaultWires = useDesignSystem((s) => s.setVariablesShowDefaultWires);
+  const setConnectedOnly = useDesignSystem((s) => s.setVariablesConnectedOnly);
   const setCollapsed = useDesignSystem((s) => s.setVariableCollapsed);
   const setCollapsedAll = useDesignSystem((s) => s.setVariableCollapsedAll);
   const undo = useDesignSystem((s) => s.undo);
@@ -245,18 +329,60 @@ export function VariableCanvas({
   const components = useDesignSystem((s) => s.components);
 
   const [view, setView] = useState({ x: 40, y: 32, scale: 0.85 });
-  const [drag, setDrag] = useState<Record<string, Point>>({});
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef(view);
+  /**
+   * How far each card has been nudged *off its own slot* — never where it sits.
+   *
+   * Storing the absolute point is what made switching arrangements ugly: a card
+   * parked at (2144, 291) because that was a sensible spot among the lanes is
+   * nowhere in particular once the same band is wrapped into five columns, and
+   * it would sit there anyway, on top of whatever the packer had put there. An
+   * offset travels with its slot, so a nudge means the same thing in both
+   * arrangements and a card can only ever collide with something you dragged it
+   * onto yourself.
+   */
+  const [nudge, setNudge] = useState<Record<string, Point>>({});
   const [hovered, setHovered] = useState<string | null>(null);
   /** Pointing at a card lights everything it touches — the collapsed-card case. */
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  /**
+   * A whole card, held. The row-level equivalent is `ui.selected`, which is
+   * shared with the rail, the table and the inspector; this one is the map's
+   * own, because "show me everything Button touches" is a question only the map
+   * can answer and only the map has a place to put the answer.
+   */
+  const [pinnedCard, setPinnedCard] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
+  /**
+   * One wire, held — the same bargain as a pinned row or card, made for the
+   * thing between them.
+   *
+   * A wire was the one object on the map you could only ever *hover*: its two
+   * ends and its cut button existed for exactly as long as the pointer stayed
+   * inside a 14px band, which on a canvas carrying three hundred of them meant
+   * the answer moved every time you did. Holding one keeps the wire lit, keeps
+   * the two variables it joins lit, and keeps its Detach button where you can
+   * reach it — and drops everything else back, because a link is the one
+   * selection where "which two rows" is the entire question.
+   */
+  const [pinnedEdge, setPinnedEdge] = useState<string | null>(null);
   /** Pointing at a ribbon previews the wires it stands for. */
   const [hoveredBundle, setHoveredBundle] = useState<string | null>(null);
   /** Clicking one opens it: the ribbon stays lit and lists its links. */
   const [openBundle, setOpenBundle] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<Connecting | null>(null);
+  // Read by the Escape handler, which is bound once and must not be re-bound
+  // sixty times a second as the loose end of a link follows the cursor.
+  const connectingRef = useRef<Connecting | null>(null);
+  connectingRef.current = connecting;
   const [dropTarget, setDropTarget] = useState<{ id: string; ok: boolean } | null>(null);
-  const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
+  const [toast, setToast] = useState<{
+    text: string;
+    ok: boolean;
+    /** An offer attached to the result — "…and in the other modes too". */
+    action?: { label: string; run: () => void };
+  } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [addingIn, setAddingIn] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -272,12 +398,40 @@ export function VariableCanvas({
       return !open;
     });
 
-  const flash = useCallback((text: string, ok: boolean) => {
-    setToast({ text, ok });
-    window.setTimeout(() => setToast((t) => (t?.text === text ? null : t)), 2600);
-  }, []);
+  const flash = useCallback(
+    (text: string, ok: boolean, action?: { label: string; run: () => void }) => {
+      setToast({ text, ok, action });
+      // An offer needs long enough to be read and taken; a bare result doesn't.
+      window.setTimeout(
+        () => setToast((t) => (t?.text === text ? null : t)),
+        action ? 6000 : 2600
+      );
+    },
+    []
+  );
 
   const linkView = ui.links;
+  const wireStyle = ui.wireStyle;
+
+  /**
+   * Whether pointing at something previews its chain. Summary and All are
+   * already drawing every wire, so lighting one costs a re-render and nothing
+   * else. Selected view is built on drawing none, and a preview that fires per
+   * 22px row would put the cost straight back — so there, the selection is the
+   * only thing that draws.
+   */
+  const previews = linkView !== "selected";
+
+  // Leaving a view behind means letting go of what only that view could have
+  // set — otherwise a ribbon opened in Summary keeps a popover floating over
+  // a canvas that no longer draws ribbons.
+  useEffect(() => {
+    if (previews) return;
+    setHovered(null);
+    setHoveredCard(null);
+    setHoveredBundle(null);
+    setOpenBundle(null);
+  }, [previews]);
 
   /**
    * Hit areas are in graph coordinates, so a fixed 14px band is 14px of
@@ -316,16 +470,24 @@ export function VariableCanvas({
   /* ── visible slice of the graph ── */
 
   const visible = useMemo(() => {
+    // "Referenced" is read off the whole graph, not off the wires currently
+    // drawn: a ramp step is in use whether or not this view happens to be
+    // showing the wire that uses it.
     const referenced = new Set(graph.edges.map((e) => e.from));
+    let hiddenPrimitives = 0;
     const collections = graph.collections
       .filter((c) => ui.tiers[c.tier] && !ui.hiddenCollections.includes(c.id))
-      .map((c) => ({
-        ...c,
-        nodes:
-          ui.connectedOnly && c.tier === "primitive"
-            ? c.nodes.filter((n) => referenced.has(n.id))
-            : c.nodes,
-      }))
+      .map((c) => {
+        if (!ui.connectedOnly || c.tier !== "primitive") return c;
+        const nodes = c.nodes.filter((n) => referenced.has(n.id));
+        hiddenPrimitives += c.nodes.length - nodes.length;
+        // A scale with nothing pointing at it yet keeps its card and folds to
+        // its name. Dropping it outright is how "hide the unused ramp steps"
+        // quietly became "your file has no Motion scale" — a tidy-up that
+        // removes a whole scale from the inventory has overstepped.
+        if (nodes.length === 0) return { ...c, defaultCollapsed: true, unreferenced: true };
+        return { ...c, nodes };
+      })
       .filter((c) => c.nodes.length > 0);
 
     const rowOf: Record<string, { collectionId: string; index: number }> = {};
@@ -334,72 +496,136 @@ export function VariableCanvas({
         rowOf[n.id] = { collectionId: c.id, index: i };
       })
     );
-    return { collections, rowOf };
+    return { collections, rowOf, hiddenPrimitives };
   }, [graph, ui.tiers, ui.hiddenCollections, ui.connectedOnly]);
+
+  /**
+   * How much of the component-properties lane is your own work. The band header
+   * reports both numbers, because "376 properties, 2 of them wired by you" is
+   * the sentence that explains why the lane is quiet — a lane that just *looked*
+   * unwired would be a lie about a file with four hundred live bindings in it.
+   */
+  const usageStats = useMemo(() => {
+    let total = 0;
+    let authored = 0;
+    for (const c of visible.collections) {
+      if (c.tier !== "usage") continue;
+      for (const n of c.nodes) {
+        total += 1;
+        if (n.usage?.overridden) authored += 1;
+      }
+    }
+    return { total, authored };
+  }, [visible.collections]);
 
   /* ── card placement: auto-layout, then user drags on top ── */
 
+  /**
+   * The canvas's own shape, for Packed to fold itself to — quantised to
+   * quarters so that dragging the inspector a few pixels wider can't re-flow
+   * every card on the map while you're looking at it.
+   */
+  const [aspect, setAspect] = useState(1.6);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return;
+      setAspect(Math.round((r.width / r.height) * 4) / 4);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const auto = useMemo(
-    () => autoLayout(visible.collections, collapsed, ui.layout),
-    [visible.collections, collapsed, ui.layout]
+    () => autoLayout(visible.collections, collapsed, ui.layout, aspect),
+    [visible.collections, collapsed, ui.layout, aspect]
   );
 
   const placed = useMemo(() => {
     const out: Record<string, Placed> = {};
     for (const c of visible.collections) {
-      const box = auto[c.id];
+      const box = auto.boxes[c.id];
       if (!box) continue;
-      const moved = drag[c.id];
+      const off = nudge[c.id];
       const isCollapsed = collapsed.has(c.id);
       out[c.id] = {
         collection: c,
-        x: moved?.x ?? box.x,
-        y: moved?.y ?? box.y,
+        x: box.x + (off?.x ?? 0),
+        y: box.y + (off?.y ?? 0),
         h: isCollapsed
           ? CARD_HEAD_H
           : CARD_HEAD_H + c.nodes.length * ROW_H + (hasCardFooter(c) ? FOOT_H : 6),
         collapsed: isCollapsed,
+        // A pixel isn't a move. Anything smaller than this is either rounding
+        // or a stored offset from before drags had a threshold.
+        nudged: !!off && Math.abs(off.x) + Math.abs(off.y) > 2,
       };
     }
     return out;
-  }, [visible.collections, auto, drag, collapsed]);
+  }, [visible.collections, auto, nudge, collapsed]);
 
   /**
-   * The four plates, measured from where the cards actually are — so a band
-   * still wraps its cards after they've been dragged.
+   * The four plates.
    *
-   * Each one stops at its own last card rather than running to the deepest
-   * lane's floor. Squaring them off looked tidier in a mockup and reads as a
-   * mistake in practice: a lane with eleven cards in it drew a thousand pixels
-   * of empty tinted nothing under them because an unrelated lane happened to be
-   * longer, which says "something belongs here and is missing" about a lane
-   * that is in fact complete.
+   * Across, a plate is its lane's own territory — decided by the arrangement,
+   * so two bands can never grow into each other. They used to be measured from
+   * live card positions, which meant one card dragged a lane to the left slid
+   * a whole tinted plate under its neighbour and the map stopped having four
+   * readable columns. A card dragged clear of its plate now simply sits clear
+   * of it, which says what actually happened.
+   *
+   * Down, a plate follows its cards and stops at its own last one rather than
+   * running to the deepest lane's floor. Squaring them off looked tidier in a
+   * mockup and reads as a mistake in practice: a lane with eleven cards in it
+   * drew a thousand pixels of empty tinted nothing under them because an
+   * unrelated lane happened to be longer, which says "something belongs here
+   * and is missing" about a lane that is in fact complete.
    */
   const bands = useMemo(() => {
-    const out: Array<{ tier: VarTier; x: number; y: number; w: number; h: number; count: number }> = [];
-    for (const tier of TIER_ORDER) {
-      const cards = Object.values(placed).filter((p) => p.collection.tier === tier);
+    const out: Array<{
+      tier: VarTier;
+      lane: LaneSpan;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      count: number;
+    }> = [];
+    for (const lane of auto.lanes) {
+      const cards = Object.values(placed).filter((p) => p.collection.tier === lane.tier);
       if (cards.length === 0) continue;
-      const x = Math.min(...cards.map((p) => p.x)) - BAND_PAD;
-      const y = Math.min(...cards.map((p) => p.y)) - BAND_HEAD_H;
-      const right = Math.max(...cards.map((p) => p.x + CARD_W)) + BAND_PAD;
+      const slots = Object.values(auto.boxes).filter(
+        (b) => placed[b.id]?.collection.tier === lane.tier
+      );
+      // Top from the slots, not the cards: a card nudged upwards shouldn't drag
+      // its band's title up out of alignment with the other three.
+      const y = Math.min(...slots.map((b) => b.y)) - BAND_HEAD_H;
       const bottom = Math.max(...cards.map((p) => p.y + p.h)) + BAND_PAD;
       out.push({
-        tier,
-        x,
+        tier: lane.tier,
+        lane,
+        x: lane.x - BAND_PAD,
         y,
-        w: right - x,
+        w: lane.w + BAND_PAD * 2,
         h: bottom - y,
         count: cards.reduce((s, p) => s + p.collection.nodes.length, 0),
       });
     }
     return out;
-  }, [placed]);
+  }, [placed, auto]);
 
-  /** Drives the fold-all toggle: it only offers "unfold" once nothing is open. */
+  /** Greys out whichever of expand-all / collapse-all has nothing left to do. */
   const allFolded = useMemo(() => {
     const ids = Object.keys(placed);
     return ids.length > 0 && ids.every((id) => collapsed.has(id));
+  }, [placed, collapsed]);
+  const noneFolded = useMemo(() => {
+    const ids = Object.keys(placed);
+    return ids.length > 0 && ids.every((id) => !collapsed.has(id));
   }, [placed, collapsed]);
 
   const bounds = useMemo(() => {
@@ -414,23 +640,44 @@ export function VariableCanvas({
 
   /* ── card positions persist per project (a view preference, not file data) ── */
 
-  // Keyed by layout as well as project: a card dragged somewhere sensible in
-  // one arrangement is nowhere in particular in the other, and carrying the
-  // positions across would make switching look like a bug.
-  const storageKey = activeProjectId ? `arkitype-varmap-${activeProjectId}-${ui.layout}` : null;
+  // Keyed by layout as well as project. An offset means much the same thing in
+  // either arrangement, but "I pulled this one out to the side" is still a
+  // statement about the arrangement it was made in.
+  //
+  // `nudge` rather than `varmap` in the key: the entries under the old name are
+  // absolute points, which this reads as offsets, so they're a different format
+  // rather than an older one. A stale key would silently fling every card it
+  // named a couple of thousand pixels off its slot.
+  const storageKey = activeProjectId ? `arkitype-varnudge-${activeProjectId}-${ui.layout}` : null;
   useEffect(() => {
-    if (!storageKey) return;
+    // A file with no id yet still gets a clean slate per arrangement — the
+    // early return that used to sit here is exactly what let one layout's drags
+    // leak into the other and pile cards on top of each other.
+    if (!storageKey) {
+      setNudge({});
+      return;
+    }
     try {
       const raw = localStorage.getItem(storageKey);
-      setDrag(raw ? (JSON.parse(raw) as Record<string, Point>) : {});
+      setNudge(raw ? (JSON.parse(raw) as Record<string, Point>) : {});
     } catch {
-      setDrag({});
+      setNudge({});
     }
   }, [storageKey]);
 
-  const persistDrag = useCallback(
+  // One sweep for the absolute-position keys this replaced. They're view
+  // preferences, they can't be read any more, and leaving them would keep the
+  // old shape of the bug one refactor away.
+  useEffect(() => {
+    if (!activeProjectId) return;
+    for (const suffix of ["", "-lanes", "-packed"]) {
+      localStorage.removeItem(`arkitype-varmap-${activeProjectId}${suffix}`);
+    }
+  }, [activeProjectId]);
+
+  const persistNudge = useCallback(
     (next: Record<string, Point>) => {
-      setDrag(next);
+      setNudge(next);
       if (storageKey) localStorage.setItem(storageKey, JSON.stringify(next));
     },
     [storageKey]
@@ -451,51 +698,78 @@ export function VariableCanvas({
 
   /* ── viewport: pan, zoom, fit, focus ── */
 
-  const toGraph = useCallback(
-    (clientX: number, clientY: number): Point => {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return { x: 0, y: 0 };
-      return {
-        x: (clientX - rect.left - view.x) / view.scale,
-        y: (clientY - rect.top - view.y) / view.scale,
-      };
-    },
-    [view]
-  );
+  /**
+   * Move the viewport without going through React.
+   *
+   * Pan and zoom are gestures: sixty events a second, each asking for a new
+   * transform on one wrapper div. Routed through state, every one of them
+   * re-reconciles every card, every row and every wire on the canvas in order
+   * to move that wrapper two pixels — which is most of what made this surface
+   * feel slow, and it got worse the more of a system you had.
+   *
+   * So the ref is the truth and the transform is written straight onto the
+   * node. React is told when the gesture *ends* (`commitView`), which is soon
+   * enough for the handful of things that really do re-render on zoom: the
+   * percentage readout, the counter-scaled ribbon labels, and the hit-area
+   * widths that compensate for scale.
+   */
+  const applyView = useCallback((next: { x: number; y: number; scale: number }) => {
+    viewRef.current = next;
+    const el = sceneRef.current;
+    if (el) el.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.scale})`;
+  }, []);
+
+  const commitView = useCallback(() => setView(viewRef.current), []);
+
+  const toGraph = useCallback((clientX: number, clientY: number): Point => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    const v = viewRef.current;
+    return { x: (clientX - rect.left - v.x) / v.scale, y: (clientY - rect.top - v.y) / v.scale };
+  }, []);
 
   // Native listener so the wheel can be pre-empted — React's synthetic handler
   // is passive, and a passive handler can't stop the page from scrolling.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    // A wheel has no "up": the gesture is over when the events stop. A short
+    // idle is what stands in for the mouseup, so the readout catches up the
+    // moment you let go of the trackpad rather than on every notch.
+    let idle = 0;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      const v = viewRef.current;
       if (e.ctrlKey || e.metaKey) {
         const rect = el.getBoundingClientRect();
         const px = e.clientX - rect.left;
         const py = e.clientY - rect.top;
-        setView((v) => {
-          const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * Math.exp(-e.deltaY / 260)));
-          const k = scale / v.scale;
-          return { scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
-        });
+        const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * Math.exp(-e.deltaY / 260)));
+        const k = scale / v.scale;
+        applyView({ scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k });
       } else {
-        setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
+        applyView({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY });
       }
+      window.clearTimeout(idle);
+      idle = window.setTimeout(commitView, 90);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+    return () => {
+      window.clearTimeout(idle);
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [applyView, commitView]);
 
-  const zoomBy = (factor: number) =>
-    setView((v) => {
-      const rect = containerRef.current?.getBoundingClientRect();
-      const px = (rect?.width ?? 800) / 2;
-      const py = (rect?.height ?? 600) / 2;
-      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * factor));
-      const k = scale / v.scale;
-      return { scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
-    });
+  const zoomBy = (factor: number) => {
+    const v = viewRef.current;
+    const rect = containerRef.current?.getBoundingClientRect();
+    const px = (rect?.width ?? 800) / 2;
+    const py = (rect?.height ?? 600) / 2;
+    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * factor));
+    const k = scale / v.scale;
+    applyView({ scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k });
+    commitView();
+  };
 
   /**
    * The opening view: every lane on screen across, parked at the top.
@@ -517,8 +791,9 @@ export function VariableCanvas({
     const scale = Math.min(1, Math.max(0.3, raw));
     // Clear the floating toolbars as well as the band headers — a lane whose
     // name is parked behind the undo button may as well not have one.
-    setView({ scale, x: 28, y: Math.max(92, (BAND_HEAD_H + 26) * scale) });
-  }, [bounds, ui.layout]);
+    applyView({ scale, x: 28, y: Math.max(92, (BAND_HEAD_H + 26) * scale) });
+    commitView();
+  }, [bounds, ui.layout, applyView, commitView]);
 
   // Frame it once, as soon as there's something to frame — and again whenever
   // the arrangement changes shape underneath the viewport.
@@ -529,12 +804,38 @@ export function VariableCanvas({
     fitWidth();
   }, [placed, fitWidth]);
 
+  /**
+   * Switching arrangement is a cross-fade, not a jump.
+   *
+   * Not decoration: every card lands somewhere new and the viewport re-frames
+   * underneath them, and both happening at full opacity in one frame is what
+   * read as the map falling apart. Fading is the honest transition for it —
+   * *animating* the cards would be worse, because the wires can't animate with
+   * them and you'd spend a third of a second watching a hundred connections
+   * detached from both their ends.
+   */
+  const [reflowing, setReflowing] = useState(false);
   const firstLayout = useRef(ui.layout);
+  // Through a ref, and the effect keyed on the layout alone. `fitWidth` closes
+  // over `bounds`, which changes the moment the new arrangement is measured —
+  // naming it as a dependency re-ran this effect one tick later, the cleanup
+  // cancelled the timer that was going to fade the scene back in, and the
+  // guard above then returned early. The map stayed invisible.
+  const fitRef = useRef(fitWidth);
+  fitRef.current = fitWidth;
   useEffect(() => {
     if (firstLayout.current === ui.layout) return;
     firstLayout.current = ui.layout;
-    window.setTimeout(fitWidth, 0);
-  }, [ui.layout, fitWidth]);
+    setReflowing(true);
+    const settle = window.setTimeout(() => {
+      fitRef.current();
+      setReflowing(false);
+    }, 130);
+    return () => {
+      window.clearTimeout(settle);
+      setReflowing(false);
+    };
+  }, [ui.layout]);
 
   // "Show me this one" — from the rail's search, or the inspector's links.
   const focusTick = ui.focus?.tick;
@@ -543,11 +844,13 @@ export function VariableCanvas({
     const a = anchor(ui.focus.id, "in");
     const rect = containerRef.current?.getBoundingClientRect();
     if (!a || !rect) return;
-    setView((v) => ({
+    const v = viewRef.current;
+    applyView({
       ...v,
       x: rect.width / 2 - (a.x + CARD_W / 2) * v.scale,
       y: rect.height / 2 - a.y * v.scale,
-    }));
+    });
+    commitView();
     // `anchor` changes identity whenever the layout does; keying the effect on
     // the focus tick alone is what makes this fire once per request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -557,22 +860,38 @@ export function VariableCanvas({
 
   const startPan = (e: React.MouseEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
+    // A wire's hit area is a transparent stroke lying on the canvas, so its
+    // mousedown is the canvas's mousedown — which is what makes dragging the
+    // background still work when the drag happens to start on top of a link.
+    // The click at the end of that gesture is the one that has to tell them
+    // apart: on bare canvas it lets go of everything, on a wire it takes hold
+    // of that wire. (Swallowing the mousedown instead would have been simpler
+    // and would have made most of an All-view canvas unpannable — at a
+    // zoomed-out scale the hit areas are 30px wide and there are hundreds.)
+    const wireId =
+      (e.target as Element | null)?.closest?.<HTMLElement>("[data-var-wire]")?.dataset.varWire ??
+      null;
     const start = { x: e.clientX, y: e.clientY };
-    const origin = { x: view.x, y: view.y };
+    const origin = { x: viewRef.current.x, y: viewRef.current.y };
     let moved = false;
     const move = (ev: MouseEvent) => {
       if (Math.abs(ev.clientX - start.x) + Math.abs(ev.clientY - start.y) > 3) moved = true;
-      setView((v) => ({ ...v, x: origin.x + (ev.clientX - start.x), y: origin.y + (ev.clientY - start.y) }));
+      applyView({
+        ...viewRef.current,
+        x: origin.x + (ev.clientX - start.x),
+        y: origin.y + (ev.clientY - start.y),
+      });
     };
     const up = () => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
+      if (moved) commitView();
       // A click on bare canvas lets go of everything — otherwise the last row
       // or ribbon you touched keeps the whole map dimmed around it, with no
-      // obvious way out.
+      // obvious way out. A click that landed on a wire takes hold of it.
       if (!moved) {
-        selectVariable(null);
-        setOpenBundle(null);
+        if (wireId) holdEdge(wireId);
+        else release();
       }
     };
     window.addEventListener("mousemove", move);
@@ -581,31 +900,55 @@ export function VariableCanvas({
 
   /* ── card drag ── */
 
+  /**
+   * Set while a card is being dragged, so the mouseup that ends the drag isn't
+   * also read as the click that pins the card.
+   */
+  const draggedRef = useRef(false);
+
   const startCardDrag = (e: React.MouseEvent, collectionId: string) => {
     e.stopPropagation();
     if (e.button !== 0) return;
     const p = placed[collectionId];
     if (!p) return;
+    const slot = auto.boxes[collectionId];
+    if (!slot) return;
     const start = { x: e.clientX, y: e.clientY };
-    const origin = { x: p.x, y: p.y };
-    let next = drag;
+    const origin = { x: p.x - slot.x, y: p.y - slot.y };
+    let next = nudge;
+    draggedRef.current = false;
     const move = (ev: MouseEvent) => {
+      const dx = ev.clientX - start.x;
+      const dy = ev.clientY - start.y;
+      // Nothing is recorded until this is unmistakably a drag. A mouse moves a
+      // pixel or two during any real click, and writing that pixel down gave
+      // every card you had merely *clicked* a permanent one-pixel offset — with
+      // a "put it back" button to match, and a slot it no longer sat on.
+      if (!draggedRef.current) {
+        if (Math.abs(dx) + Math.abs(dy) <= 3) return;
+        draggedRef.current = true;
+      }
+      const scale = viewRef.current.scale;
       next = {
         ...next,
-        [collectionId]: {
-          x: origin.x + (ev.clientX - start.x) / view.scale,
-          y: origin.y + (ev.clientY - start.y) / view.scale,
-        },
+        [collectionId]: { x: origin.x + dx / scale, y: origin.y + dy / scale },
       };
-      setDrag(next);
+      setNudge(next);
     };
     const up = () => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
-      persistDrag(next);
+      if (draggedRef.current) persistNudge(next);
     };
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
+  };
+
+  /** Put one card back on its slot, without disturbing anyone else's nudge. */
+  const resetCard = (collectionId: string) => {
+    const next = { ...nudge };
+    delete next[collectionId];
+    persistNudge(next);
   };
 
   /* ── connecting ── */
@@ -623,15 +966,48 @@ export function VariableCanvas({
         flash(plan.reason, false);
         return;
       }
-      if (plan.kind === "token") {
-        for (const m of plan.modes) setSemantic(m, plan.token, plan.value);
-      } else {
+      if (plan.kind === "binding") {
+        // A binding resolves to a var(), which flips per mode on its own —
+        // there's no other mode for it to also land in.
         setComponentBinding(plan.componentId, plan.storageKey, plan.binding);
+        selectVariable(consumerId);
+        flash(`Linked ${plan.label}`, true);
+        return;
       }
+
+      for (const m of plan.modes) setSemantic(m, plan.token, plan.value);
       selectVariable(consumerId);
-      flash(`Linked ${plan.label}`, true);
+
+      // The map reads one mode at a time, so a link made on it lands in one
+      // mode — which is right, and is also exactly the thing you'd want to
+      // undo-by-widening a second later. The offer sits in the confirmation
+      // rather than in a preference, so it costs nothing until it's the answer.
+      const others = modeDefs.map((d) => d.id).filter((id) => !plan.modes.includes(id));
+      const only = modeDefs.find((d) => d.id === plan.modes[0])?.name;
+      if (others.length === 0) {
+        flash(`Linked ${plan.label}`, true);
+        return;
+      }
+      flash(`Linked ${plan.label} in ${only ?? plan.modes[0]}`, true, {
+        label: `Every mode (${modeDefs.length})`,
+        run: () => {
+          for (const m of others) setSemantic(m, plan.token, plan.value);
+          flash(`${plan.label} — in all ${modeDefs.length} modes`, true);
+        },
+      });
     },
-    [graph, primitives, semantics, components, editModes, setSemantic, setComponentBinding, selectVariable, flash]
+    [
+      graph,
+      primitives,
+      semantics,
+      components,
+      editModes,
+      modeDefs,
+      setSemantic,
+      setComponentBinding,
+      selectVariable,
+      flash,
+    ]
   );
 
   /**
@@ -642,22 +1018,29 @@ export function VariableCanvas({
    * useful moment to tell them: the rule (a colour takes a colour, a primitive
    * holds literals, a link can't loop) is knowable up front, so the map lights
    * what will work and fades what won't while there's still time to aim.
+   *
+   * Keyed on the *source* of the link rather than on `connecting` itself: the
+   * loose end moves with the cursor, so the whole object is a new one sixty
+   * times a second, and depending on it re-planned every variable in the file
+   * per frame to answer a question whose answer hadn't changed.
    */
+  const connectFrom = connecting?.from ?? null;
+  const connectSide = connecting?.side ?? null;
   const validTargets = useMemo(() => {
-    if (!connecting) return null;
+    if (!connectFrom || !connectSide) return null;
     const out = new Set<string>();
     for (const c of visible.collections) {
       for (const n of c.nodes) {
-        if (n.id === connecting.from) continue;
-        const provider = connecting.side === "out" ? connecting.from : n.id;
-        const consumer = connecting.side === "out" ? n.id : connecting.from;
+        if (n.id === connectFrom) continue;
+        const provider = connectSide === "out" ? connectFrom : n.id;
+        const consumer = connectSide === "out" ? n.id : connectFrom;
         if (planConnection(graph, { primitives, semantics, components }, provider, consumer, editModes).ok) {
           out.add(n.id);
         }
       }
     }
     return out;
-  }, [connecting, visible.collections, graph, primitives, semantics, components, editModes]);
+  }, [connectFrom, connectSide, visible.collections, graph, primitives, semantics, components, editModes]);
 
   /** The row under a pointer position, if any. */
   const nodeAt = (clientX: number, clientY: number): string | null => {
@@ -687,6 +1070,10 @@ export function VariableCanvas({
     e.preventDefault();
     setConnecting({ from: nodeId, side, at: toGraph(e.clientX, e.clientY), armed: false });
     setOpenBundle(null);
+    // A held wire dims every row that isn't one of its two ends, which is the
+    // opposite of what a link in flight needs: there, the map's job is to
+    // light every row that could legally take the drop.
+    setPinnedEdge(null);
 
     const start = { x: e.clientX, y: e.clientY };
     let moved = false;
@@ -730,20 +1117,31 @@ export function VariableCanvas({
 
   // The armed half of the gesture: the wire follows the cursor until a click
   // lands it (or misses, which cancels — a click on nothing means "never mind").
+  //
+  // Keyed on what's being connected rather than on `connecting`, whose loose
+  // end moves with the cursor: depending on the object tore down and re-bound
+  // both window listeners on every mouse move for the length of the gesture.
+  // `validTargets` is read through a ref for the same reason — it's only
+  // consulted inside the handler, and naming it as a dependency would put the
+  // re-binding straight back.
+  const armed = connecting?.armed ?? false;
+  const validTargetsRef = useRef(validTargets);
+  validTargetsRef.current = validTargets;
   useEffect(() => {
-    if (!connecting?.armed) return;
-    const { from, side } = connecting;
+    if (!armed || !connectFrom || !connectSide) return;
     const move = (ev: MouseEvent) => {
       setConnecting((c) => (c && c.armed ? { ...c, at: toGraph(ev.clientX, ev.clientY) } : c));
       const target = nodeAt(ev.clientX, ev.clientY);
       setDropTarget(
-        !target || target === from ? null : { id: target, ok: !!validTargets?.has(target) }
+        !target || target === connectFrom
+          ? null
+          : { id: target, ok: !!validTargetsRef.current?.has(target) }
       );
     };
     const down = (ev: MouseEvent) => {
       ev.preventDefault();
       ev.stopPropagation();
-      finishConnect(from, side, nodeAt(ev.clientX, ev.clientY));
+      finishConnect(connectFrom, connectSide, nodeAt(ev.clientX, ev.clientY));
     };
     window.addEventListener("mousemove", move);
     // Capture, so the click lands the link rather than starting a pan.
@@ -752,18 +1150,48 @@ export function VariableCanvas({
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mousedown", down, true);
     };
-  }, [connecting, validTargets, toGraph, finishConnect]);
+  }, [armed, connectFrom, connectSide, toGraph, finishConnect]);
+
+  /** Let go of everything the map is holding — one gesture, four sources. */
+  const release = useCallback(() => {
+    selectVariable(null);
+    setPinnedCard(null);
+    setPinnedEdge(null);
+    setOpenBundle(null);
+  }, [selectVariable]);
+
+  /**
+   * Hold a wire — or let go of the one already held by clicking it again, the
+   * same toggle a row has. The three pins are exclusive on purpose: they answer
+   * different questions ("what does this variable reach", "what does this set
+   * touch", "what does this one link join") and lighting two answers at once
+   * is how you end up unable to read either.
+   */
+  const holdEdge = useCallback(
+    (edgeId: string) => {
+      setPinnedEdge((cur) => (cur === edgeId ? null : edgeId));
+      selectVariable(null);
+      setPinnedCard(null);
+      setOpenBundle(null);
+    },
+    [selectVariable]
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      setConnecting(null);
-      setDropTarget(null);
-      setOpenBundle(null);
+      // A link in flight is the nearer thing to cancel; the selection survives
+      // it, so escaping a mis-started drag doesn't also lose your place.
+      if (connectingRef.current) {
+        setConnecting(null);
+        setDropTarget(null);
+        return;
+      }
+      release();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [release]);
 
   /* ── unlink an edge ── */
 
@@ -815,7 +1243,23 @@ export function VariableCanvas({
     );
   };
 
-  const focusId = hovered ?? ui.selected;
+  /**
+   * The row whose chain is lit — and the rule that makes the map usable:
+   * **what you picked wins.**
+   *
+   * Hover used to take precedence, which meant a selection survived exactly
+   * until the pointer crossed anything else. Reading a chain that runs the
+   * width of the canvas involves crossing a great deal of anything else, so in
+   * practice the answer you asked for vanished on the way to looking at it. Now
+   * hover only previews while nothing is held, and letting go is a deliberate
+   * act: Escape, the pill at the top, or a click on bare canvas.
+   *
+   * Preview itself stays out of Selected view, where a chain rebuilt for every
+   * twenty-two-pixel row you happen to cross is the whole cost that view exists
+   * to avoid.
+   */
+  const holding = ui.selected ?? pinnedCard ?? pinnedEdge;
+  const focusId = ui.selected ?? (holding ? null : previews ? hovered : null);
 
   const copyRef = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -823,11 +1267,105 @@ export function VariableCanvas({
     window.setTimeout(() => setCopied((c) => (c === text ? null : c)), 1400);
   };
 
+  /* ── highlight, worked out before the wires that depend on it ── */
+
+  /**
+   * The chain a row (or a whole card) lights: everything upstream and
+   * downstream of it. A hovered card lights the union of its rows' chains,
+   * which is how a folded card stays useful — you can ask what it feeds
+   * without unfolding it.
+   *
+   * This is computed *ahead* of the wires, because in Selected view it's the
+   * only thing that decides which wires exist at all.
+   */
+  const chain = useMemo(() => {
+    if (focusId && graph.nodes[focusId]) return relatedNodes(graph, focusId);
+    // A held wire lights two rows and no more: its own ends. Deliberately not
+    // the chain those rows sit in and not the cards they live on — a link is
+    // picked precisely when you want it separated from everything around it,
+    // and answering with its whole neighbourhood puts it straight back in the
+    // crowd it was picked out of.
+    if (pinnedEdge) {
+      const edge = graph.edges.find((e) => e.id === pinnedEdge);
+      if (edge) return new Set([edge.from, edge.to]);
+    }
+    // A pinned card outranks a hovered one for the same reason a pinned row
+    // outranks a hovered row: you said so.
+    const cardId = pinnedCard ?? (ui.selected || pinnedEdge ? null : hoveredCard);
+    if (cardId) {
+      const card = graph.collections.find((c) => c.id === cardId);
+      if (!card) return null;
+      const out = new Set<string>();
+      for (const n of card.nodes) relatedNodes(graph, n.id).forEach((id) => out.add(id));
+      return out;
+    }
+    return null;
+  }, [focusId, pinnedCard, pinnedEdge, ui.selected, hoveredCard, graph]);
+
+  /**
+   * The wire being read right now — the held one, or the one under the pointer.
+   *
+   * Hover still previews (it's how you find the wire you're about to take hold
+   * of), and both states light the same two rows; only the held one dims the
+   * rest of the map, because only the held one is going to stay.
+   */
+  const activeWire = useMemo(() => {
+    const id = pinnedEdge ?? hoveredEdge;
+    if (!id) return null;
+    const edge = graph.edges.find((e) => e.id === id);
+    if (!edge) return null;
+    const from = graph.nodes[edge.from];
+    const to = graph.nodes[edge.to];
+    return from && to ? { edge, from, to, held: id === pinnedEdge } : null;
+  }, [pinnedEdge, hoveredEdge, graph]);
+
   /* ── edges, resolved to concrete geometry ── */
 
+  /**
+   * A wire nobody chose: a component property still on the binding its schema
+   * ships with. Real wiring — it's what the component renders from — but it's
+   * the same wiring every file starts with, and there are hundreds of them.
+   */
+  const isDefaultWire = useCallback(
+    (e: VarEdge): boolean => {
+      const to = graph.nodes[e.to];
+      return to?.tier === "usage" && to.usage?.overridden === false;
+    },
+    [graph.nodes]
+  );
+
+  /**
+   * Which edges get geometry built for them at all.
+   *
+   * Two jobs. The first is the performance story of the map: every edge used to
+   * be resolved to a path, a midpoint and an SVG group on every render — several
+   * hundred of them — even in Summary, where at rest they were drawn as empty
+   * groups nobody could see. Selected view narrows this to one chain, which is
+   * usually a dozen wires and often none, and the cost stops scaling with the
+   * size of the system.
+   *
+   * The second is the readability story. On a stock file, three quarters of
+   * every wire on the canvas is an untouched schema default running the full
+   * width of the picture into a folded card — a weave that says nothing about
+   * *this* system, drawn over everything that does. Those sit out at rest.
+   * They aren't gone: anything in the lit chain draws regardless, so pointing
+   * at a component, or at the role that feeds it, brings its real wiring back
+   * immediately, and the band header turns them all on with one press.
+   */
+  const drawnEdges = useMemo(() => {
+    const inMode = (e: VarEdge) =>
+      e.binding || ui.editMode === "all" || e.modes.includes(ui.editMode);
+    const lit = (e: VarEdge) => !!chain && chain.has(e.from) && chain.has(e.to);
+    const wanted = (e: VarEdge) =>
+      inMode(e) && (ui.showDefaultWires || !isDefaultWire(e) || lit(e));
+
+    if (linkView !== "selected") return graph.edges.filter(wanted);
+    if (!chain) return [];
+    return graph.edges.filter((e) => wanted(e) && lit(e));
+  }, [graph.edges, ui.editMode, ui.showDefaultWires, isDefaultWire, linkView, chain]);
+
   const wires = useMemo(() => {
-    const resolved = graph.edges
-      .filter((e) => e.binding || ui.editMode === "all" || e.modes.includes(ui.editMode))
+    const resolved = drawnEdges
       .map((e) => {
         const a = anchor(e.from, "out");
         const b = anchor(e.to, "in");
@@ -850,14 +1388,14 @@ export function VariableCanvas({
         edge: e,
         a,
         b,
-        d: wirePath(a, b),
-        mid: wireMid(a, b),
+        d: wirePath(a, b, wireStyle),
+        mid: wireMid(a, b, wireStyle),
         // The tier of what this wire *carries* — a chain you trace changes
         // colour as it crosses lanes.
         tier: (graph.nodes[e.from]?.tier ?? "primitive") as VarTier,
       };
     });
-  }, [graph.edges, graph.nodes, anchor, ui.editMode]);
+  }, [drawnEdges, graph.nodes, anchor, wireStyle]);
 
   const wireById = useMemo(() => {
     const out: Record<string, (typeof wires)[number]> = {};
@@ -867,10 +1405,15 @@ export function VariableCanvas({
 
   /* ── the same edges, gathered into one ribbon per pair of sets ── */
 
+  // Only Summary draws ribbons, and only Summary should pay for them: bundling
+  // walks every wire, and placing each label walks thirteen points along a
+  // ribbon against every card on the canvas looking for clear air.
   const bundles = useMemo(() => {
+    if (linkView !== "summary") return [];
     const ribbons = bundleWires(
       wires.map((w) => ({ id: w.edge.id, from: w.edge.from, to: w.edge.to, a: w.a, b: w.b })),
-      (nodeId) => visible.rowOf[nodeId]?.collectionId ?? null
+      (nodeId) => visible.rowOf[nodeId]?.collectionId ?? null,
+      wireStyle
     );
     const max = ribbons.reduce((m, r) => Math.max(m, r.count), 1);
 
@@ -882,7 +1425,7 @@ export function VariableCanvas({
       cards.some((c) => p.x > c.x - 9 && p.x < c.x + CARD_W + 9 && p.y > c.y - 9 && p.y < c.y + c.h + 9);
 
     return ribbons.map((r) => {
-      const clear = wireSamples(r.a, r.b).find((p) => !covered(p));
+      const clear = wireSamples(r.a, r.b, 13, wireStyle).find((p) => !covered(p));
       return {
         ...r,
         width: bundleWidth(r.count, max),
@@ -895,7 +1438,7 @@ export function VariableCanvas({
         toLabel: graph.collections.find((c) => c.id === r.to)?.label ?? r.to,
       };
     });
-  }, [wires, visible.rowOf, placed, graph.collections]);
+  }, [linkView, wires, visible.rowOf, placed, graph.collections, wireStyle]);
 
   const bundleById = useMemo(() => {
     const out: Record<string, (typeof bundles)[number]> = {};
@@ -912,17 +1455,12 @@ export function VariableCanvas({
   /** The ribbon being read right now: opened by a click, or under the cursor. */
   const activeBundleId = openBundle ?? hoveredBundle;
 
-  /* ── highlight ── */
-
   /**
-   * What's currently "lit". A hovered row (or the selection) lights its whole
-   * chain; a hovered card lights the union of its rows' chains, which is how a
-   * collapsed card stays useful — you can still ask what it feeds without
-   * expanding it. Taking a ribbon lights everything it carries, which is how a
-   * summary opens back up into the wires it stands for.
+   * What's currently "lit" — the chain above, or everything a taken ribbon
+   * carries, which is how a summary opens back up into the wires it stands for.
    */
   const related = useMemo(() => {
-    if (focusId && graph.nodes[focusId]) return relatedNodes(graph, focusId);
+    if (focusId && graph.nodes[focusId]) return chain;
     if (activeBundleId && bundleById[activeBundleId]) {
       const { from, to } = bundleById[activeBundleId];
       const out = new Set<string>();
@@ -932,15 +1470,8 @@ export function VariableCanvas({
       }
       return out;
     }
-    if (hoveredCard) {
-      const card = graph.collections.find((c) => c.id === hoveredCard);
-      if (!card) return null;
-      const out = new Set<string>();
-      for (const n of card.nodes) relatedNodes(graph, n.id).forEach((id) => out.add(id));
-      return out;
-    }
-    return null;
-  }, [focusId, activeBundleId, bundleById, hoveredCard, graph]);
+    return chain;
+  }, [chain, focusId, activeBundleId, bundleById, graph]);
 
   /** Wires the ribbon under the pointer stands for — drawn on top of it. */
   const bundleMembers = useMemo(
@@ -950,6 +1481,55 @@ export function VariableCanvas({
 
   const liveAnchor = connecting ? anchor(connecting.from, connecting.side === "out" ? "out" : "in") : null;
   const connectingNode = connecting ? graph.nodes[connecting.from] : undefined;
+
+  /**
+   * What the map is holding, named — and how much of the file it reaches.
+   *
+   * A pinned selection changes what every other row on the canvas looks like,
+   * so it has to be legible as a *state* rather than only as a highlight
+   * somewhere off-screen. The count is the useful half: "Action · 41 variables
+   * in its chain" is the blast radius, which is the question the map exists to
+   * answer.
+   */
+  const held = useMemo((): Held | null => {
+    if (ui.selected && graph.nodes[ui.selected]) {
+      return { kind: "variable", label: graph.nodes[ui.selected].path };
+    }
+    if (pinnedCard) {
+      const c = graph.collections.find((x) => x.id === pinnedCard);
+      if (c) return { kind: "set", label: c.label };
+    }
+    // A link says both its ends rather than a count: "41 in its chain" is the
+    // useful half of holding a variable and the useless half of holding a
+    // wire, whose chain is two by construction.
+    if (pinnedEdge && activeWire?.held) {
+      return { kind: "link", edge: activeWire.edge, from: activeWire.from, to: activeWire.to };
+    }
+    return null;
+  }, [ui.selected, pinnedCard, pinnedEdge, activeWire, graph]);
+
+  /**
+   * The held wire's ends that are currently folded away inside a card. Offering
+   * to open them is the honest fix for the one case this selection can't show
+   * you: a link whose variable is on a card collapsed to its header.
+   */
+  const foldedEnds = useMemo(() => {
+    if (held?.kind !== "link") return [];
+    const ids: string[] = [];
+    for (const nodeId of [held.edge.from, held.edge.to]) {
+      const cid = visible.rowOf[nodeId]?.collectionId;
+      // Both ends can live on the same folded card — one entry, one unfold.
+      if (cid && collapsed.has(cid) && !ids.includes(cid)) ids.push(cid);
+    }
+    return ids;
+  }, [held, visible.rowOf, collapsed]);
+
+  // A wire whose link was cut (or whose cards have been hidden) has nothing
+  // left to hold — let go rather than dimming the map around a wire that
+  // isn't there.
+  useEffect(() => {
+    if (pinnedEdge && !wireById[pinnedEdge]) setPinnedEdge(null);
+  }, [pinnedEdge, wireById]);
 
   const resetSession = () => {
     if (!confirmReset) {
@@ -972,8 +1552,21 @@ export function VariableCanvas({
       style={{ cursor: connecting ? "crosshair" : "grab" }}
     >
       <div
+        ref={sceneRef}
         className="absolute left-0 top-0 origin-top-left"
-        style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
+        style={{
+          transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+          // Hand the pan to the compositor. Without this the browser re-rasters
+          // the cards (and, in Summary, a thousand-odd SVG nodes) on every
+          // frame of a drag; with it, panning is a matrix on a layer that's
+          // already drawn, and every link view sits at the refresh rate
+          // instead of a third of it.
+          willChange: "transform",
+          // Blank instantly on a re-arrangement, fade back once the cards have
+          // landed and the viewport has re-framed around them.
+          opacity: reflowing ? 0 : 1,
+          transition: reflowing ? "none" : "opacity 220ms ease-out",
+        }}
       >
         {/* ── tier plates, behind everything ── */}
         {bands.map((b) => {
@@ -1005,6 +1598,47 @@ export function VariableCanvas({
                   {meta.plural}
                 </span>
                 <span className="font-mono text-[10px] leading-none text-fg-mute">{b.count}</span>
+
+                {/* What this band is leaving out, and the way back. Both of
+                    these are the price of a readable map, and a price nobody
+                    is told about is just a missing feature. */}
+                {b.tier === "primitive" && ui.connectedOnly && visible.hiddenPrimitives > 0 ? (
+                  <BandToggle
+                    tier={b.tier}
+                    onClick={() => setConnectedOnly(false)}
+                    title={`${visible.hiddenPrimitives} generated steps aren't referenced by anything yet — show them anyway`}
+                    icon={<EyeOff size={10} />}
+                    label={`${visible.hiddenPrimitives} unused hidden`}
+                  />
+                ) : null}
+                {b.tier === "primitive" && !ui.connectedOnly ? (
+                  <BandToggle
+                    tier={b.tier}
+                    onClick={() => setConnectedOnly(true)}
+                    title="Hide the generated steps nothing points at yet"
+                    icon={<Eye size={10} />}
+                    label="Showing unused"
+                  />
+                ) : null}
+                {b.tier === "usage" ? (
+                  <BandToggle
+                    tier={b.tier}
+                    onClick={() => setShowDefaultWires(!ui.showDefaultWires)}
+                    active={ui.showDefaultWires}
+                    title={
+                      ui.showDefaultWires
+                        ? "Stop drawing the properties still on the binding their schema ships with — point at any card to see its own wiring"
+                        : `${usageStats.total - usageStats.authored} of these properties are on the binding they ship with. Their wires are off so the ones you chose can be seen; point at a card to see any of them`
+                    }
+                    icon={ui.showDefaultWires ? <Eye size={10} /> : <EyeOff size={10} />}
+                    label={
+                      ui.showDefaultWires
+                        ? "Default wiring shown"
+                        : `${usageStats.authored} wired by you`
+                    }
+                  />
+                ) : null}
+
                 {addKind ? (
                   // In the band's own header, in the band's own colour: the
                   // place you're already looking when you decide you want
@@ -1080,6 +1714,7 @@ export function VariableCanvas({
                         e.stopPropagation();
                         setOpenBundle((o) => (o === r.id ? null : r.id));
                         selectVariable(null);
+                        setPinnedEdge(null);
                       }}
                     />
                   </g>
@@ -1091,11 +1726,17 @@ export function VariableCanvas({
             const inActiveBundle = bundleMembers.has(edge.id);
             const dim = related !== null && !(related.has(edge.from) && related.has(edge.to));
             const lit = inActiveBundle || (related !== null && !dim);
+            const isHeld = pinnedEdge === edge.id;
+            // A parallel alias — the same two rows joined again in another mode
+            // — passes the `related` test on a held wire's two-node chain and
+            // would light identically. It's a different link with its own cut
+            // button, so it stays a shade back: one wire is held, not two.
             const isHovered = hoveredEdge === edge.id;
+            const isActive = isHeld || isHovered;
 
             // In Summary, a wire that isn't part of what you're reading isn't
             // drawn at all — that's the whole bargain the ribbons buy.
-            const hidden = !lit && !isHovered && linkView === "summary";
+            const hidden = !lit && !isActive && linkView === "summary";
 
             // Its hit area normally stays anyway, so the map never becomes a
             // surface you can't grab a wire on. Summary is the exception twice
@@ -1112,28 +1753,44 @@ export function VariableCanvas({
             const grabbable =
               !connecting && (linkView === "all" || (!hidden && !hoveredBundle));
 
-            const stroke = isHovered ? "rgb(var(--c-focus))" : tierColor(tier);
-            const opacity = isHovered || lit ? 1 : related !== null ? 0.2 : 0.5;
-            const width = isHovered || lit ? 2.2 : 1.2;
+            const stroke = isActive ? "rgb(var(--c-focus))" : tierColor(tier);
+            // Three states, and the gap between them is the point. A wire at
+            // rest has to be followable on its own — 1.2px at half opacity was
+            // a suggestion of a wire — while the one you've asked for has to
+            // win against three hundred of them, which it does by going opaque
+            // and thick rather than by everything else going invisible.
+            const opacity = isActive || lit ? 1 : related !== null ? 0.12 : 0.72;
+            // The held one takes another notch on top of that, so it stays the
+            // wire you picked even where a parallel alias runs the same route.
+            const width = isHeld ? 3.4 : isActive || lit ? 2.6 : 1.5;
 
             // Dashes carry real information — that this alias doesn't hold in
             // every mode — but at rest they read as buzz rather than as a
             // legend. So they're spelled out where you can act on them: on the
-            // lit chain, on hover, and whenever you've asked for All.
+            // lit chain, on hover, and at rest only when the map is showing
+            // every mode at once.
+            //
+            // Keyed on the *mode* selector, not the links one. Reading a single
+            // mode, "doesn't hold in all of them" is true of most of the wires
+            // on screen and describes modes you aren't looking at — so at rest
+            // it dashed nearly the whole canvas to say nothing about it.
             const partial = !isEveryMode(edge, modeDefs.length);
-            const dash = partial && (isHovered || lit || linkView === "all") ? "5 4" : undefined;
+            const dash =
+              partial && (isActive || lit || ui.editMode === "all") ? "5 4" : undefined;
 
             return (
               <g key={edge.id}>
                 {!hidden ? (
                   <>
-                    {lit ? (
+                    {/* A halo under the lit wire, so a chain stays traceable
+                        where it crosses the ones it isn't part of. */}
+                    {lit || isActive ? (
                       <path
                         d={d}
                         fill="none"
                         stroke={stroke}
-                        strokeWidth={7}
-                        strokeOpacity={0.16}
+                        strokeWidth={isHeld ? 11 : 8}
+                        strokeOpacity={isHeld ? 0.28 : 0.2}
                         strokeLinecap="round"
                       />
                     ) : null}
@@ -1147,36 +1804,58 @@ export function VariableCanvas({
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
-                    {/* Terminals. At rest a wire ends in a dot at each end —
-                        enough to find where it lands without the visual weight
-                        of three hundred arrowheads. Direction is already in the
-                        layout; the arrow appears once the wire is the one
-                        you're reading. */}
-                    {isHovered || lit ? (
-                      <path
-                        d={`M ${b.x} ${b.y} L ${b.x - 6} ${b.y - 3.4} L ${b.x - 6} ${b.y + 3.4} Z`}
-                        fill={stroke}
-                        fillOpacity={opacity}
-                      />
+                    {/* Terminals. On a wire you're actually reading, the two
+                        things worth finding at a glance are where it leaves
+                        and where it lands — so it gets a plug at the source
+                        and an arrow at the consumer, which is direction and
+                        both endpoints in two marks. At rest (All view, nothing
+                        selected) a dot at each end does the same job without
+                        three hundred arrowheads' worth of weight. */}
+                    {isActive || lit ? (
+                      <>
+                        <rect
+                          x={a.x - 3.4}
+                          y={a.y - 3.4}
+                          width={6.8}
+                          height={6.8}
+                          rx={2.2}
+                          fill={stroke}
+                          fillOpacity={opacity}
+                        />
+                        <path
+                          d={`M ${b.x} ${b.y} L ${b.x - 6} ${b.y - 3.4} L ${b.x - 6} ${b.y + 3.4} Z`}
+                          fill={stroke}
+                          fillOpacity={opacity}
+                        />
+                      </>
                     ) : (
                       <>
-                        <circle cx={a.x} cy={a.y} r={1.7} fill={stroke} fillOpacity={opacity} />
-                        <circle cx={b.x} cy={b.y} r={1.7} fill={stroke} fillOpacity={opacity} />
+                        <circle cx={a.x} cy={a.y} r={2.1} fill={stroke} fillOpacity={opacity} />
+                        <circle cx={b.x} cy={b.y} r={2.1} fill={stroke} fillOpacity={opacity} />
                       </>
                     )}
                   </>
                 ) : null}
-                {/* Fat invisible stroke: the actual hover target for unlinking. */}
+                {/* Fat invisible stroke: the hover target, and the thing a
+                    click lands on to take hold of the wire. The pointer-down
+                    is deliberately left to the canvas — see `startPan`. */}
                 {grabbable ? (
                   <path
                     d={d}
+                    data-var-wire={edge.id}
                     fill="none"
                     stroke="transparent"
                     strokeWidth={14 * grabScale}
                     style={{ pointerEvents: "stroke", cursor: "pointer" }}
                     onMouseEnter={() => setHoveredEdge(edge.id)}
                     onMouseLeave={() => setHoveredEdge((h) => (h === edge.id ? null : h))}
-                  />
+                  >
+                    <title>
+                      {`${graph.nodes[edge.from]?.path ?? edge.from} → ${
+                        graph.nodes[edge.to]?.path ?? edge.to
+                      } — click to hold this link`}
+                    </title>
+                  </path>
                 ) : null}
               </g>
             );
@@ -1186,8 +1865,8 @@ export function VariableCanvas({
             <path
               d={
                 connecting.side === "out"
-                  ? wirePath(liveAnchor, connecting.at)
-                  : wirePath(connecting.at, liveAnchor)
+                  ? wirePath(liveAnchor, connecting.at, wireStyle)
+                  : wirePath(connecting.at, liveAnchor, wireStyle)
               }
               fill="none"
               stroke="rgb(var(--c-focus))"
@@ -1222,6 +1901,7 @@ export function VariableCanvas({
                       e.stopPropagation();
                       setOpenBundle((o) => (o === r.id ? null : r.id));
                       selectVariable(null);
+                      setPinnedEdge(null);
                     }}
                     className={`absolute z-10 flex h-[17px] items-center gap-1 rounded-full border px-1.5 font-mono text-[9px] font-semibold leading-none tabular-nums shadow-sm transition-colors ${
                       isActive
@@ -1350,54 +2030,118 @@ export function VariableCanvas({
           </div>
         ) : null}
 
-        {/* Unlink control, parked on the hovered wire's midpoint. */}
+        {/* Unlink control, parked on the wire's midpoint — for the one under
+            the pointer, and for the one being held.
+
+            Held, it spells itself out. The compact circle is right for a
+            hover, where it's already under the cursor that summoned it; it's
+            wrong for the thing you deliberately picked out of three hundred
+            wires *in order to* cut it, where a 20px unlabelled dot on a canvas
+            you may have panned since is the button going missing again. */}
         {!connecting
           ? wires
-              .filter((w) => w.edge.id === hoveredEdge && !openBundle && canUnlink(w.edge))
-              .map(({ edge, mid }) => (
-                <button
-                  key={`cut-${edge.id}`}
-                  type="button"
-                  title={`Detach ${graph.nodes[edge.to]?.path ?? ""} from ${graph.nodes[edge.from]?.path ?? ""}`}
-                  onMouseEnter={() => setHoveredEdge(edge.id)}
-                  onMouseLeave={() => setHoveredEdge((h) => (h === edge.id ? null : h))}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={() => unlink(edge)}
-                  className="absolute z-20 flex h-5 w-5 items-center justify-center rounded-full border border-line-strong bg-ink-raised text-fg-mute shadow transition-colors hover:border-red-500/60 hover:text-red-400"
-                  style={{ left: mid.x - 10, top: mid.y - 10 }}
-                >
-                  <Unlink size={10} />
-                </button>
-              ))
+              .filter(
+                (w) =>
+                  (w.edge.id === pinnedEdge || w.edge.id === hoveredEdge) &&
+                  !openBundle &&
+                  canUnlink(w.edge)
+              )
+              .map(({ edge, mid }) => {
+                const isHeld = edge.id === pinnedEdge;
+                return (
+                  <button
+                    key={`cut-${edge.id}`}
+                    type="button"
+                    title={`Detach ${graph.nodes[edge.to]?.path ?? ""} from ${graph.nodes[edge.from]?.path ?? ""}`}
+                    onMouseEnter={() => setHoveredEdge(edge.id)}
+                    onMouseLeave={() => setHoveredEdge((h) => (h === edge.id ? null : h))}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => {
+                      unlink(edge);
+                      setPinnedEdge((cur) => (cur === edge.id ? null : cur));
+                    }}
+                    className={
+                      isHeld
+                        ? "absolute z-20 flex items-center gap-1 rounded-full border border-focus bg-ink-raised px-2 py-1 text-[10px] font-bold text-fg shadow-lg transition-colors hover:border-red-500/70 hover:text-red-400"
+                        : "absolute z-20 flex h-5 w-5 items-center justify-center rounded-full border border-line-strong bg-ink-raised text-fg-mute shadow transition-colors hover:border-red-500/60 hover:text-red-400"
+                    }
+                    style={
+                      isHeld
+                        ? {
+                            left: mid.x,
+                            top: mid.y,
+                            // Counter-scaled like the ribbon chips: the point of
+                            // this button is to be reachable at the zoom you were
+                            // already reading the map at.
+                            transform: `translate(-50%, -50%) scale(${Math.min(2.4, Math.max(0.8, 1 / view.scale))})`,
+                          }
+                        : { left: mid.x - 10, top: mid.y - 10 }
+                    }
+                  >
+                    <Unlink size={isHeld ? 11 : 10} />
+                    {isHeld ? "Detach" : null}
+                  </button>
+                );
+              })
           : null}
 
         {/* Cards */}
         {Object.values(placed).map((p) => {
           const c = p.collection;
           const accent = tierColor(c.tier);
+          const isPinned = pinnedCard === c.id;
+          // One end of the wire being read lives in here, and the card is
+          // folded — so the row that would have shown it isn't drawn. Marking
+          // the header is the least that can be said instead: a wire landing on
+          // a folded card otherwise arrives at forty variables at once.
+          const holdsWireEnd =
+            !!activeWire &&
+            p.collapsed &&
+            c.nodes.some((n) => n.id === activeWire.edge.from || n.id === activeWire.edge.to);
           return (
             <div
               key={c.id}
-              className={`group/card absolute rounded-lg bg-ink-raised shadow-xl ${p.collapsed ? "" : "pb-px"}`}
+              className={`group/card absolute rounded-lg bg-ink-raised ${
+                isPinned ? "shadow-2xl" : "shadow-xl"
+              } ${p.collapsed ? "" : "pb-px"}`}
               style={{
                 left: p.x,
                 top: p.y,
                 width: CARD_W,
-                border: `1px solid ${tierColor(c.tier, 0.42)}`,
+                // A held card is outlined in its own tier's colour rather than
+                // in the focus blue: which set you're holding is the fact worth
+                // carrying, and it's the same colour it wears everywhere else.
+                border: `1px solid ${
+                  holdsWireEnd ? "rgb(var(--c-focus))" : tierColor(c.tier, isPinned ? 1 : 0.42)
+                }`,
+                ...(isPinned ? { outline: `2px solid ${tierColor(c.tier, 0.3)}` } : null),
               }}
               onMouseDown={(e) => e.stopPropagation()}
-              onMouseEnter={() => setHoveredCard(c.id)}
-              onMouseLeave={() => setHoveredCard((h) => (h === c.id ? null : h))}
+              // Nothing to preview in Selected view, so nothing to record —
+              // and a state write here re-renders every card on the canvas.
+              onMouseEnter={previews ? () => setHoveredCard(c.id) : undefined}
+              onMouseLeave={previews ? () => setHoveredCard((h) => (h === c.id ? null : h)) : undefined}
             >
               <header
                 onMouseDown={(e) => startCardDrag(e, c.id)}
+                // A click on the header holds the whole set: every wire in and
+                // out of it, lit and staying lit. The drag that just ended
+                // isn't one (`draggedRef`), and neither is the second half of
+                // the double-click that folds it (`detail`).
+                onClick={(e) => {
+                  if (draggedRef.current || e.detail > 1) return;
+                  selectVariable(null);
+                  setPinnedEdge(null);
+                  setOpenBundle(null);
+                  setPinnedCard((cur) => (cur === c.id ? null : c.id));
+                }}
                 onDoubleClick={() => setCollapsed(c.id, !p.collapsed)}
-                title="Drag to move · double-click to fold"
+                title={`${c.label} — click to hold its wiring · drag to move · double-click to fold`}
                 className={`flex h-[34px] cursor-grab items-center gap-1.5 px-2 active:cursor-grabbing ${
                   p.collapsed ? "rounded-lg" : "rounded-t-lg"
                 }`}
                 style={{
-                  background: tierColor(c.tier, 0.12),
+                  background: tierColor(c.tier, isPinned ? 0.26 : 0.12),
                   borderBottom: p.collapsed ? undefined : `1px solid ${tierColor(c.tier, 0.3)}`,
                 }}
               >
@@ -1418,7 +2162,18 @@ export function VariableCanvas({
                 </button>
                 <TierBadge tier={c.tier} size={14} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[11px] font-bold leading-none text-fg">{c.label}</p>
+                  <p
+                    className={`truncate text-[11px] font-bold leading-none ${
+                      c.unreferenced ? "text-fg-mute" : "text-fg"
+                    }`}
+                    title={
+                      c.unreferenced
+                        ? `${c.label} — nothing in the file points at this scale yet`
+                        : undefined
+                    }
+                  >
+                    {c.label}
+                  </p>
                   {c.note && !p.collapsed ? (
                     <p
                       className="mt-0.5 truncate text-[8.5px] font-semibold uppercase tracking-[0.07em]"
@@ -1428,6 +2183,27 @@ export function VariableCanvas({
                     </p>
                   ) : null}
                 </div>
+                {/* Off its slot, and the way back onto it. A card you moved
+                    yourself is the only card that can now be anywhere awkward,
+                    so it's the only one that needs this. */}
+                {p.nudged ? (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      resetCard(c.id);
+                    }}
+                    title={`Put ${c.label} back in its lane`}
+                    aria-label={`Put ${c.label} back in its lane`}
+                    className="shrink-0 rounded p-0.5 text-fg-mute opacity-0 transition-colors hover:bg-ink-hover hover:text-fg group-hover/card:opacity-100"
+                  >
+                    <Focus size={10} />
+                  </button>
+                ) : null}
+                {isPinned ? (
+                  <Pin size={10} className="shrink-0" style={{ color: accent }} aria-hidden />
+                ) : null}
                 <span className="shrink-0 font-mono text-[9px] text-fg-mute">{c.nodes.length}</span>
               </header>
 
@@ -1444,21 +2220,50 @@ export function VariableCanvas({
                 // it's what the component renders from — but it's the one the
                 // schema chose, so it reads a shade back from the ones you did.
                 const onDefault = node.tier === "usage" && node.usage?.overridden === false;
+                // One end of the wire being read. Which end matters and is
+                // free to show: the marker sits on the side the wire actually
+                // touches — right for the variable being followed, left for
+                // the one doing the following — so a link reads as a direction
+                // without having to trace it across the canvas.
+                const wireEnd = !activeWire
+                  ? null
+                  : activeWire.edge.from === node.id
+                    ? "from"
+                    : activeWire.edge.to === node.id
+                      ? "to"
+                      : null;
                 return (
                   <div
                     key={node.id}
                     data-var-node={node.id}
-                    onMouseEnter={() => setHovered(node.id)}
-                    onMouseLeave={() => setHovered((h) => (h === node.id ? null : h))}
+                    onMouseEnter={previews ? () => setHovered(node.id) : undefined}
+                    onMouseLeave={previews ? () => setHovered((h) => (h === node.id ? null : h)) : undefined}
                     onClick={() => {
                       if (connecting) return; // the armed click lands the link
-                      selectVariable(node.id);
+                      // Clicking the same row twice lets go of it, so the
+                      // gesture that holds a chain is also the one that
+                      // releases it — no hunting for bare canvas.
+                      selectVariable(isSelected ? null : node.id);
+                      setPinnedCard(null);
+                      setPinnedEdge(null);
                       setOpenBundle(null);
                     }}
+                    role="button"
+                    aria-pressed={isSelected}
+                    aria-label={`${node.path}${node.detail ? ` — ${node.detail}` : ""}`}
                     style={{
                       height: ROW_H,
                       ...(isSelected && !isDrop
                         ? { background: tierColor(c.tier, 0.18), boxShadow: `inset 2px 0 0 ${accent}` }
+                        : null),
+                      ...(wireEnd && !isDrop
+                        ? {
+                            background: "rgb(var(--c-focus) / 0.16)",
+                            boxShadow:
+                              wireEnd === "from"
+                                ? "inset -2px 0 0 rgb(var(--c-focus))"
+                                : "inset 2px 0 0 rgb(var(--c-focus))",
+                          }
                         : null),
                       ...(validTargets && !illegal && !isDrop
                         ? { boxShadow: `inset 2px 0 0 rgb(var(--c-focus) / 0.5)` }
@@ -1477,9 +2282,21 @@ export function VariableCanvas({
                     <RowMark node={node} mode={displayMode} />
                     <span
                       className={`min-w-0 flex-1 truncate font-mono text-[10px] leading-none ${
-                        isSelected ? "text-fg" : onDefault ? "text-fg-mute" : "text-fg-dim"
+                        isSelected || wireEnd
+                          ? "text-fg"
+                          : onDefault
+                            ? "text-fg-mute"
+                            : "text-fg-dim"
                       }`}
-                      title={onDefault ? `${node.path} — on its default binding` : node.path}
+                      title={
+                        wireEnd === "from"
+                          ? `${node.path} — followed by ${activeWire?.to.path}`
+                          : wireEnd === "to"
+                            ? `${node.path} — follows ${activeWire?.from.path}`
+                            : onDefault
+                              ? `${node.path} — on its default binding`
+                              : node.path
+                      }
                     >
                       {node.label}
                     </span>
@@ -1619,16 +2436,16 @@ export function VariableCanvas({
       {/* ── which mode is being edited, and how much wiring is drawn ── */}
       <div
         onMouseDown={(e) => e.stopPropagation()}
-        className="absolute right-3 top-3 flex items-center gap-1 rounded-lg border border-line bg-ink-raised/95 p-1 shadow-lg backdrop-blur"
+        className="absolute right-3 top-3 flex max-w-[calc(100%-24px)] flex-wrap items-center justify-end gap-1 rounded-lg border border-line bg-ink-raised/95 p-1 shadow-lg backdrop-blur"
       >
         <label className="flex items-center gap-1 pl-1">
           <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-fg-mute">
-            Editing
+            Mode
           </span>
           <select
             value={ui.editMode}
             onChange={(e) => setEditMode(e.target.value)}
-            title="Which mode a new link writes to — and which links the map draws"
+            title="Which mode's wiring the map draws — and where a new link lands. One mode is the clearer picture: a token whose modes disagree draws one wire instead of two. A single-mode link offers to spread to the others the moment it's made"
             className="h-6 rounded border border-line bg-ink px-1 text-[10.5px] font-semibold text-fg-dim focus:border-line-strong focus:outline-none"
           >
             <option value="all">All modes</option>
@@ -1646,11 +2463,20 @@ export function VariableCanvas({
         {(
           [
             {
+              id: "selected",
+              label: "Selected",
+              hint: "Nothing drawn until you pick a variable — then its whole chain, upstream and down, with the rest of the map faded behind it. The fastest of the three by a wide margin",
+            },
+            {
               id: "summary",
               label: "Summary",
               hint: "One ribbon per pair of sets, coloured by where its values come from and thick with how many there are. Click a ribbon to list its links; point at a card or row to see its own wires",
             },
-            { id: "all", label: "All", hint: "Every link drawn separately — the whole weave at once" },
+            {
+              id: "all",
+              label: "All",
+              hint: "Every link drawn separately — the whole weave at once, and the slowest on a big system",
+            },
           ] as const
         ).map((d) => (
           <button
@@ -1668,49 +2494,83 @@ export function VariableCanvas({
 
         <span className="mx-0.5 h-4 w-px bg-line" />
 
-        <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-fg-mute">Layout</span>
+        {/* Wires and Layout are two pairs of icons rather than four labelled
+            buttons. Both are settings you pick once and leave, and spelling
+            them out cost more than a third of the toolbar's width — enough
+            that on a laptop with the inspector open the Links control, which
+            you *do* keep reaching for, was the thing being squeezed. Each
+            still names itself in full on hover and to a screen reader. */}
         {(
           [
             {
-              id: "lanes",
-              label: "Lanes",
-              Icon: Rows3,
-              hint: "One column per tier — every set at a fixed place in a single list you scroll",
+              id: "curved",
+              label: "Curved wires",
+              Icon: Spline,
+              hint: "Curved wires — they leave and land flat, so which row each end belongs to is unambiguous, and a dense band fans out instead of stacking into one trunk",
             },
             {
-              id: "packed",
-              label: "Packed",
-              Icon: Columns3,
-              hint: "Each tier wrapped into as many columns as it needs, so the whole system fits on screen without scrolling",
+              id: "elbow",
+              label: "Elbow wires",
+              Icon: CornerDownRight,
+              hint: "Elbow wires — out, down a shared vertical trunk, and in, with rounded corners. Easiest to trace when there are a handful between two cards",
             },
           ] as const
         ).map((d) => (
-          <button
+          <ToolButton
             key={d.id}
-            type="button"
-            onClick={() => setLayout(d.id)}
             title={d.hint}
-            aria-pressed={ui.layout === d.id}
-            className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10.5px] font-semibold transition-colors ${
-              ui.layout === d.id ? "bg-fg text-ink" : "text-fg-mute hover:bg-ink-hover hover:text-fg"
-            }`}
+            onClick={() => setWireStyle(d.id)}
+            active={wireStyle === d.id}
           >
-            <d.Icon size={11} />
-            {d.label}
-          </button>
+            <d.Icon size={13} />
+          </ToolButton>
         ))}
 
         <span className="mx-0.5 h-4 w-px bg-line" />
 
+        {(
+          [
+            {
+              id: "lanes",
+              Icon: Rows3,
+              hint: "Lanes — one column per tier, every set at a fixed place in a single list you scroll",
+            },
+            {
+              id: "packed",
+              Icon: Columns3,
+              hint: "Packed — each tier wrapped into as many columns as it needs, so the whole system fits on screen without scrolling",
+            },
+          ] as const
+        ).map((d) => (
+          <ToolButton
+            key={d.id}
+            title={d.hint}
+            onClick={() => setLayout(d.id)}
+            active={ui.layout === d.id}
+          >
+            <d.Icon size={13} />
+          </ToolButton>
+        ))}
+
+        <span className="mx-0.5 h-4 w-px bg-line" />
+
+        {/* Two buttons rather than one that changes meaning. A single toggle
+            had to guess which way you meant from whether *everything* happened
+            to be folded, so with one card open it offered "fold all" and there
+            was no way to ask for the opposite without folding first. */}
         <ToolButton
-          title={
-            allFolded
-              ? "Unfold every card"
-              : "Fold every card to its header — the fastest way to see the shape of the system"
-          }
-          onClick={() => setCollapsedAll(Object.keys(placed), !allFolded)}
+          title="Expand every card — every variable in the file, on screen"
+          onClick={() => setCollapsedAll(Object.keys(placed), false)}
+          disabled={noneFolded}
         >
-          {allFolded ? <UnfoldVertical size={12} /> : <FoldVertical size={12} />}
+          <UnfoldVertical size={12} />
+        </ToolButton>
+        <ToolButton
+          title="Collapse every card to its header — the fastest way to see the shape of the system"
+          onClick={() => setCollapsedAll(Object.keys(placed), true)}
+          disabled={allFolded}
+        >
+          <FoldVertical size={12} />
         </ToolButton>
       </div>
 
@@ -1749,11 +2609,12 @@ export function VariableCanvas({
           <Maximize size={12} />
         </ToolButton>
         <ToolButton
-          title="Reset card layout — puts the cards back in their lanes (no tokens change)"
+          title="Tidy up — every card back on its own slot, and the view re-framed (no tokens change)"
           onClick={() => {
-            persistDrag({});
+            persistNudge({});
             window.setTimeout(fitWidth, 0);
           }}
+          disabled={Object.keys(nudge).length === 0}
         >
           <Focus size={12} />
         </ToolButton>
@@ -1783,10 +2644,13 @@ export function VariableCanvas({
               ))}
             </div>
             <div className="space-y-1 border-t border-line pt-1.5">
-              {[
-                { label: "A few links", w: 2.4 },
-                { label: "Many links", w: 7 },
-              ].map((l) => (
+              {(linkView === "selected"
+                ? [{ label: "The chain you picked", w: 2.4 }]
+                : [
+                    { label: "A few links", w: 2.4 },
+                    { label: "Many links", w: 7 },
+                  ]
+              ).map((l) => (
                 <div key={l.label} className="flex items-center gap-1.5">
                   <svg width="24" height="10" className="shrink-0">
                     <line
@@ -1820,9 +2684,25 @@ export function VariableCanvas({
                 <span className="text-[9.5px] text-fg-mute">Not in every mode</span>
               </div>
               <p className="pt-0.5 text-[9.5px] leading-snug text-fg-mute">
-                A ribbon carries every link between two sets, in the colour of the tier those values
-                come from. Click one to list them. Point at a card or a row to draw its own wires.
+                {linkView === "selected"
+                  ? "Click any row to draw its chain — everything it follows, and everything that follows it. It stays until you press Esc."
+                  : linkView === "summary"
+                    ? "A ribbon carries every link between two sets, in the colour of the tier those values come from. Click one to list them. Point at a card or a row to draw its own wires."
+                    : "Click a row or a card header and its chain comes forward while the rest drops back — and stays there. Esc lets go."}
               </p>
+              {/* The wire gesture is the one that isn't guessable from the
+                  others: rows and cards look clickable, a 1.5px line doesn't. */}
+              <p className="text-[9.5px] leading-snug text-fg-mute">
+                Click a <span className="text-fg-dim">wire</span> to hold that one link — its two
+                variables light up and its Detach button stays put.
+              </p>
+              {!ui.showDefaultWires ? (
+                <p className="text-[9.5px] leading-snug text-fg-mute">
+                  Component properties on their shipped binding aren&apos;t drawn at rest — point
+                  at one, or turn them on in the{" "}
+                  <span style={{ color: tierColor("usage") }}>{TIER_META.usage.plural}</span> header.
+                </p>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -1830,7 +2710,11 @@ export function VariableCanvas({
 
       {/* ── a link in flight: what's happening, and how to stop ── */}
       {connecting ? (
-        <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center">
+        // Below the two toolbars, not across them. Centred at top-3 these
+        // banners sat straight on top of the Links and Wires controls on any
+        // laptop-width canvas — covering the switches at exactly the moment
+        // something was happening you might want to switch away from.
+        <div className="pointer-events-none absolute inset-x-0 top-[52px] z-30 flex justify-center">
           <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-focus bg-ink-raised/95 px-3 py-1.5 text-[11px] shadow-lg backdrop-blur">
             <span className="text-fg">
               {connecting.side === "out" ? "Point something at " : "Point "}
@@ -1860,7 +2744,8 @@ export function VariableCanvas({
       {/* ── result of the last connection attempt ── */}
       {toast && !connecting ? (
         <div
-          className={`absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-lg border px-3 py-1.5 text-[11px] shadow-lg backdrop-blur ${
+          onMouseDown={(e) => e.stopPropagation()}
+          className={`absolute left-1/2 top-[52px] z-30 flex -translate-x-1/2 items-center gap-2 rounded-lg border px-3 py-1.5 text-[11px] shadow-lg backdrop-blur ${
             toast.ok
               ? "border-line-strong bg-ink-raised/95 text-fg"
               : "border-red-500/50 bg-ink-raised/95 text-red-400"
@@ -1870,6 +2755,108 @@ export function VariableCanvas({
             {toast.ok ? <Check size={11} /> : <X size={11} />}
             {toast.text}
           </span>
+          {toast.action ? (
+            <button
+              type="button"
+              onClick={() => {
+                const run = toast.action?.run;
+                setToast(null);
+                run?.();
+              }}
+              className="rounded border border-focus/60 bg-focus/15 px-1.5 py-0.5 text-[10px] font-semibold text-fg transition-colors hover:bg-focus/30"
+            >
+              {toast.action.label}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* ── what the map is holding ──
+          A pinned chain changes how every other row on the canvas reads, so it
+          has to be visible as a state and not only as a highlight that may well
+          be off-screen. This is also the answer to "how do I get out of this". */}
+      {held && !connecting && !toast ? (
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute left-1/2 top-[52px] z-20 flex max-w-[min(560px,calc(100%-24px))] -translate-x-1/2 items-center gap-2 rounded-lg border border-line-strong bg-ink-raised/95 py-1.5 pl-2.5 pr-1.5 shadow-lg backdrop-blur"
+        >
+          <Pin size={11} className="shrink-0 text-fg-mute" />
+          {held.kind === "link" ? (
+            <span className="min-w-0 truncate text-[11px] text-fg-mute">
+              Holding the link{" "}
+              <span className="font-mono font-semibold text-fg">{held.from.path}</span>{" "}
+              <span className="text-fg-mute">→</span>{" "}
+              <span className="font-mono font-semibold text-fg">{held.to.path}</span>
+              {!isEveryMode(held.edge, modeDefs.length) ? (
+                <span className="text-fg-mute">
+                  {" "}
+                  · only in{" "}
+                  {held.edge.modes
+                    .map((m) => modeDefs.find((d) => d.id === m)?.name ?? m)
+                    .join(", ")}
+                </span>
+              ) : null}
+            </span>
+          ) : (
+            <span className="min-w-0 truncate text-[11px] text-fg-mute">
+              Holding {held.kind === "set" ? "the set" : ""}{" "}
+              <span className="font-mono font-semibold text-fg">{held.label}</span>
+              {related ? (
+                <span className="text-fg-mute">
+                  {" "}
+                  · {related.size} in its chain
+                </span>
+              ) : null}
+            </span>
+          )}
+          {/* The two ways out of a held link, in the one place that's certain
+              to be on screen: open the card that's hiding an end of it, or cut
+              it. Both were previously only reachable by finding the wire again
+              on a canvas dimmed around it. */}
+          {held.kind === "link" && foldedEnds.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => foldedEnds.forEach((id) => setCollapsed(id, false))}
+              title={
+                foldedEnds.length > 1
+                  ? "Both ends of this link are on folded cards — unfold them"
+                  : "One end of this link is on a folded card — unfold it"
+              }
+              className="shrink-0 rounded border border-line px-1.5 py-0.5 text-[10px] font-semibold text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+            >
+              <UnfoldVertical size={10} className="mr-0.5 inline" />
+              Unfold {foldedEnds.length > 1 ? "both ends" : "the end"}
+            </button>
+          ) : null}
+          {held.kind === "link" && canUnlink(held.edge) ? (
+            <button
+              type="button"
+              onClick={() => {
+                unlink(held.edge);
+                setPinnedEdge(null);
+              }}
+              title={`Detach ${held.to.path} from ${held.from.path}`}
+              className="shrink-0 rounded border border-line px-1.5 py-0.5 text-[10px] font-semibold text-fg-mute transition-colors hover:border-red-500/60 hover:text-red-400"
+            >
+              <Unlink size={10} className="mr-0.5 inline" />
+              Detach
+            </button>
+          ) : held.kind === "link" ? (
+            // Nothing to cut: every component property is wired to something,
+            // and one still on its shipped binding has no stored value to
+            // remove. Saying so beats a dead button.
+            <span className="shrink-0 text-[10px] font-semibold text-fg-mute">
+              on its default
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={release}
+            title="Let go (Esc)"
+            className="rounded border border-line px-1.5 py-0.5 text-[10px] font-semibold text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+          >
+            Esc
+          </button>
         </div>
       ) : null}
 

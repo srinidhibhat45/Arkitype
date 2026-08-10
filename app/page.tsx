@@ -8,6 +8,7 @@
  * Welcome (name a system) → seven ordered steps, each with its live canvas.
  */
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useDesignSystem } from "@/store/useDesignSystem";
 import { AuthProvider } from "@/components/ui/AuthProvider";
 import { LandingPage } from "@/components/marketing/LandingPage";
@@ -29,6 +30,19 @@ import { ShipStep } from "@/components/steps/ShipStep";
 import { VariablesView } from "@/components/variables/VariablesView";
 import { FontLoader } from "@/components/ui/FontLoader";
 
+/**
+ * The manual, fetched when it's opened rather than shipped with the builder.
+ *
+ * It's the one surface here that is almost entirely prose — a hundred-odd
+ * kilobytes of it — and most sessions never open it. Everything the rail needs
+ * to *offer* it (the contents list) is a separate module, so nothing drags this
+ * back into the first load.
+ */
+const DocsView = dynamic(() => import("@/components/docs/DocsView").then((m) => m.DocsView), {
+  ssr: false,
+  loading: () => <div className="h-full bg-ink" />,
+});
+
 /** The guided builder — shown once a file is open (view === "workspace"). */
 function Workspace() {
   const started = useDesignSystem((s) => s.meta.started);
@@ -44,12 +58,15 @@ function Workspace() {
       <div className="flex min-h-0 flex-1">
         <StageRail />
         <main className="min-h-0 min-w-0 flex-1">
-          {/* The Variables map spans every step's tokens at once, so it takes
-              over the canvas rather than living inside one step. The step you
-              were on is untouched — switching back to Layers or Tokens returns
-              to it exactly as it was. */}
+          {/* The Variables map spans every step's tokens at once, and the
+              documentation spans every step full stop, so both take over the
+              canvas rather than living inside one step. The step you were on is
+              untouched — switching back to Layers or Tokens returns to it
+              exactly as it was. */}
           {activeLeftTab === "variables" ? (
             <VariablesView />
+          ) : activeLeftTab === "docs" ? (
+            <DocsView />
           ) : activeStep === "colour" || activeStep === "roles" ? (
             <FoundationStep initialTab={activeStep === "roles" ? "roles" : "colour"} />
           ) : activeStep === "type" ? (

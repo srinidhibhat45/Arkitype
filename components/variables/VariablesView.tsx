@@ -128,7 +128,7 @@ export function VariablesView() {
           <p className="truncate text-[10.5px] text-fg-mute">
             {view === "table"
               ? "Every variable in the file, by set — click a value to point it somewhere else."
-              : "Click a ribbon to list the links it carries — or take a row's handle onto anything to its right to make one."}
+              : "Click a variable, a card, or a single wire to hold it forward until you press Esc. Take a row's handle onto anything to its right to make a new one."}
           </p>
         </div>
 

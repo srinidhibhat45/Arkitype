@@ -322,8 +322,9 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
           </h2>
           <p className="mt-3 text-[12px] leading-relaxed text-fg-dim">
             Value flows left to right through four lanes, each with its own colour and number, and
-            each one a single column you can scan. Between them, one ribbon per pair of sets —
-            coloured by where its values come from and as thick as how many there are.
+            each one a single column you can scan. Click any variable and its chain — everything it
+            follows and everything that follows it — comes forward while the rest of the map drops
+            back, so one thread stays legible through the whole weave.
           </p>
 
           <div className="mt-3 space-y-1.5 rounded-lg border border-line bg-ink p-3">
@@ -342,10 +343,10 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
 
           <div className="mt-3 space-y-2 rounded-lg border border-line bg-ink p-3">
             {[
-              ["Click any row", "to edit it here — value, source, name"],
-              ["Click a ribbon", "to list every link it carries, and cut any of them"],
+              ["Click any row", "to edit it here — and to bring its chain forward on the map"],
+              ["Links · Summary", "to swap the weave for one ribbon per pair of sets, openable link by link"],
               ["Drag a handle", "onto a target — or let go and click one. Only rows that can take the link stay lit"],
-              ["Hover a wire", "to detach it · Esc cancels a link in flight"],
+              ["Click a wire", "to hold that one link — both its variables light up, and Detach stays put"],
               ["⌘Z / ⇧⌘Z", "to undo and redo · Reset returns to how you found it"],
               ["⌘ + scroll", "to zoom · drag the background to pan"],
             ].map(([k, v]) => (

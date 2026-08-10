@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Moon, Sun, Folder, HelpCircle, AlertTriangle, PanelLeft, PanelRight } from "lucide-react";
+import { Moon, Sun, Folder, BookOpen, HelpCircle, AlertTriangle, PanelLeft, PanelRight } from "lucide-react";
 import { Segmented } from "@/components/ui/controls";
 import { PanelSide, STEP_ORDER, modeDefsOf, useDesignSystem } from "@/store/useDesignSystem";
 import * as db from "@/lib/persistence";
@@ -83,6 +83,17 @@ export function TopBar() {
 
   const setView = useDesignSystem((s) => s.setView);
   const setTutorialStep = useDesignSystem((s) => s.setTutorialStep);
+  const activeLeftTab = useDesignSystem((s) => s.activeLeftTab);
+  const setActiveLeftTab = useDesignSystem((s) => s.setActiveLeftTab);
+  const leftPanelShown = useDesignSystem((s) => s.panels.left);
+  const togglePanel = useDesignSystem((s) => s.togglePanel);
+
+  // Docs live in the canvas with their contents in the rail, so opening them
+  // with the rail put away would show the page and no way to navigate it.
+  const openDocs = () => {
+    setActiveLeftTab("docs");
+    if (!leftPanelShown) togglePanel("left");
+  };
 
   const readyToShip = STEP_ORDER.slice(0, -1).every((id) => done[id]);
 
@@ -170,6 +181,24 @@ export function TopBar() {
             {saveStatus === "saving" ? "Saving…" : "Autosaved"}
           </span>
         )}
+
+        {/* Docs — the same manual as /docs, in the canvas. Here as well as in
+            the rail because the rail is the one thing a reader might have put
+            away, and "where is the documentation" shouldn't require knowing
+            that. It opens the panel it needs rather than failing quietly. */}
+        <button
+          type="button"
+          onClick={openDocs}
+          aria-pressed={activeLeftTab === "docs"}
+          title="Documentation — read it here, without leaving the file"
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+            activeLeftTab === "docs"
+              ? "border-line-strong bg-ink-hover text-fg"
+              : "border-line text-fg-mute hover:border-line-strong hover:text-fg"
+          }`}
+        >
+          <BookOpen size={14} />
+        </button>
 
         {/* Guided Tour Launcher */}
         <button

@@ -2,6 +2,70 @@
 
 > Compressed memory checkpoint. Update after every compiled module.
 
+## Status: ✅ A WIRE CAN BE HELD + DOCS INSIDE THE FILE — implemented (2026-08-10)
+
+**A wire was the one thing on the map you could only hover.** Rows pin, cards
+pin; a link's two ends and its cut button existed for exactly as long as the
+pointer stayed inside a 14px band, on a canvas carrying three hundred of them.
+So the answer moved every time you did, and "disconnect *this* one" meant
+re-finding a hairline among its neighbours. `pinnedEdge` joins `ui.selected` and
+`pinnedCard` as a third, mutually exclusive pin (`VariableCanvas`):
+
+- **Two rows lit, and no more.** `chain` returns `{edge.from, edge.to}` for a
+  held wire — deliberately not `relatedNodes`, and not the cards those rows sit
+  on: a link is picked precisely to be separated from its neighbourhood, so
+  answering with the neighbourhood puts it back in the crowd. Each end is marked
+  on the side the wire actually touches (`inset -2px` on the source, `inset 2px`
+  on the consumer), which is direction without tracing.
+- **Detach stays put, and spells itself out.** The midpoint control renders as a
+  labelled pill for the held wire (counter-scaled against the zoom, like the
+  ribbon chips) and keeps the 20px circle for a hover. The pill at the top names
+  both ends, carries the same cut, says `only in <mode>` for a partial alias, and
+  — when an end sits on a folded card — offers to unfold it.
+- **The gesture is a click, not a swallowed mousedown.** The hit stroke is
+  tagged `data-var-wire`; `startPan` reads it and, on a click that never moved,
+  holds that wire instead of releasing everything. Stopping the mousedown on the
+  path would have been one line and would have made most of an All-view canvas
+  unpannable — at a zoomed-out scale those hit areas are 30px wide.
+- Survives the views: in Selected, holding a wire leaves that single link on the
+  canvas (the two-node chain is what `drawnEdges` filters against). Starting a
+  connection drops the pin, since a held wire dims exactly the rows a drop needs
+  lit. A cut link, or one whose cards get hidden, releases itself.
+
+**The documentation moved into the file.** It was a separate route, so looking
+up what *Elbow* does cost you a tab and your place in a canvas you'd panned,
+zoomed and half-wired. `LeftTab` gains `"docs"` and it takes over the canvas the
+way Variables does (`CANVAS_TABS` now names both, and both are restored to
+`layers` by anything that navigates to a step).
+
+- One source of words: `components/docs/DocsContent` holds every `<Section>` and
+  is rendered by both `/docs` and the in-file view. Two copies would have been
+  one copy and one lie inside a week.
+- The rail becomes the contents (`DocsPanel`): grouped section list, a filter
+  over section names, and an active row read off the page as it scrolls — the
+  last section whose top has passed a reading line, coalesced to a frame. (An
+  IntersectionObserver ratio contest flickered between neighbours the whole way
+  down sections that run for several screens.)
+- `DocsView` is `next/dynamic`, `ssr: false`. The contents list lives in its own
+  `docsNav` module so the rail can offer the manual without importing it: `/`
+  first load **399 kB**, down from the 420 kB a static import cost.
+- Reachable two ways — the rail tab, and a book in the top bar that also opens
+  the rail if you'd put it away, because the contents live in it.
+
+**Docs caught up with everything since the last pass**: holding a wire, the
+four-tab rail, the top bar's book, and cutting a link (including why a property
+on its shipped binding offers no cut). New FAQ entry for "how do I disconnect
+one particular link". The two in-app hint lists that still said *hover a wire*
+now say *click* one.
+
+Verified live: clicking `secondary-200 → feedback-info-border` holds it, dims
+122 rows, marks both ends on the correct sides and parks Detach on it; a second
+click lets go; a drag from the same wire still pans; a link into a folded Button
+card offers *Unfold the end* and lands on `label · colour` when taken; in
+Selected view the held link is the only wire drawn. Docs tab renders in the
+canvas in both chrome themes, jumps to `#figma-plugin` on a contents click, and
+follows the scroll. `tsc` clean, `next build` clean.
+
 ## Status: ✅ THE WHOLE COMPONENT LIBRARY IS ON THE MAP — implemented (2026-08-10)
 
 **The lanes ran to a shared floor, and three of the four were mostly empty.**

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  BookOpen,
   Check,
   Plus,
   Trash2,
@@ -15,6 +16,7 @@ import {
   EyeOff,
   TriangleAlert,
 } from "lucide-react";
+import { DOCS_NAV, DOCS_SCROLL_ID } from "@/components/docs/docsNav";
 import { rampStepLabels } from "@/lib/color";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 import {
@@ -119,6 +121,137 @@ function AddForm({
 }
 
 /**
+ * The contents of the documentation, and the thing that navigates it.
+ *
+ * The rail is a table of contents in all four of its tabs, and this is the one
+ * where that's literal. Filtering matches section titles rather than their
+ * prose — the sections are few enough to scan, and a rail returning paragraph
+ * fragments would be a search engine living in 240 pixels.
+ *
+ * Which section is highlighted is read off the page as it scrolls, so the list
+ * follows your reading and not only your clicking: scrolling into the Figma
+ * section and glancing left tells you where you are.
+ */
+function DocsPanel() {
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState<string | null>(null);
+  const q = query.trim().toLowerCase();
+
+  const groups = useMemo(() => {
+    if (!q) return DOCS_NAV;
+    return DOCS_NAV.map((g) => ({
+      ...g,
+      items: g.items.filter((it) => it.label.toLowerCase().includes(q)),
+    })).filter((g) => g.items.length > 0);
+  }, [q]);
+
+  // The page mounts in the same commit as this panel, so by the time effects
+  // run its sections are in the document. The scroller is the canvas's, not the
+  // window's, which is why this listens to an element rather than to scroll.
+  //
+  // The rule is "the last section whose top has passed the reading line", not
+  // "the section with the most of itself on screen" — the sections here run for
+  // several screens each, so a ratio contest between two of them swaps back and
+  // forth the whole way down one of them and reads as the list flickering.
+  useEffect(() => {
+    const root = document.getElementById(DOCS_SCROLL_ID);
+    if (!root) return;
+    const ids = DOCS_NAV.flatMap((g) => g.items.map((it) => it.id));
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const line = root.getBoundingClientRect().top + 80;
+      let current = ids[0];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        if (el.getBoundingClientRect().top > line) break;
+        current = id;
+      }
+      setActive((prev) => (prev === current ? prev : current));
+    };
+    // Coalesced to a frame: a scroll fires far faster than the list can
+    // usefully change, and this reads geometry, which forces layout.
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    update();
+    root.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  const jump = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActive(id);
+  };
+
+  return (
+    <div className="space-y-3 px-3 py-3">
+      <div className="flex items-center gap-1.5 rounded-md border border-line bg-ink-panel px-2 py-1.5">
+        <Search size={11} className="shrink-0 text-fg-mute" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setQuery("");
+          }}
+          placeholder="Find a section…"
+          className="min-w-0 flex-1 bg-transparent text-[11.5px] text-fg placeholder:text-fg-mute focus:outline-none"
+        />
+        {query ? (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            aria-label="Clear"
+            className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
+          >
+            <X size={10} />
+          </button>
+        ) : null}
+      </div>
+
+      {groups.length === 0 ? (
+        <p className="px-1 py-2 text-[11.5px] leading-snug text-fg-mute">
+          No section called &ldquo;{query}&rdquo;.
+        </p>
+      ) : null}
+
+      {groups.map((group) => (
+        <div key={group.heading}>
+          <p className="mb-1 px-1 text-[9.5px] font-bold uppercase tracking-[0.1em] text-fg-mute">
+            {group.heading}
+          </p>
+          <div className="space-y-0.5">
+            {group.items.map((item) => {
+              const isActive = active === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => jump(item.id)}
+                  aria-current={isActive ? "true" : undefined}
+                  className={`block w-full truncate rounded px-1.5 py-1 text-left text-[11.5px] transition-colors ${
+                    isActive
+                      ? "bg-ink-hover font-semibold text-fg"
+                      : "text-fg-dim hover:bg-ink-panel hover:text-fg"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * The Variables tab's rail — the navigator for whichever surface is showing.
  * Search finds any variable in the file and goes to it, in either view.
  *
@@ -141,6 +274,7 @@ function VariablesPanel() {
   const toggleVariableTier = useDesignSystem((s) => s.toggleVariableTier);
   const setVariableEditMode = useDesignSystem((s) => s.setVariableEditMode);
   const setVariablesConnectedOnly = useDesignSystem((s) => s.setVariablesConnectedOnly);
+  const setVariablesShowDefaultWires = useDesignSystem((s) => s.setVariablesShowDefaultWires);
   const setActiveVariableCollection = useDesignSystem((s) => s.setActiveVariableCollection);
   const setVariablesCreating = useDesignSystem((s) => s.setVariablesCreating);
   const isMap = ui.view === "map";
@@ -265,12 +399,14 @@ function VariablesPanel() {
                 </option>
               ))}
             </select>
-            {/* One control, two jobs — worth saying, because "All" draws a
-                separate link for every mode a token disagrees in. */}
+            {/* One control, two jobs — worth saying, because a token that
+                disagrees across modes has a separate link for each of them.
+                Phrased as *which* links, not whether any are drawn: that's the
+                Links control's business, and it starts out drawing none. */}
             <p className="mt-1 text-[10px] leading-snug text-fg-mute">
               {ui.editMode === "all"
-                ? `Every link is drawn; a new one lands in all ${modeDefs.length} modes.`
-                : `Only ${modeDefs.find((m) => m.id === ui.editMode)?.name ?? ui.editMode} links are drawn; a new one lands there alone.`}
+                ? `Chains show all ${modeDefs.length} modes' links; a new one lands in every mode.`
+                : `Chains show only ${modeDefs.find((m) => m.id === ui.editMode)?.name ?? ui.editMode} links; a new one lands there alone, and offers to spread.`}
             </p>
           </div>
 
@@ -308,6 +444,9 @@ function VariablesPanel() {
                 </button>
               );
             })}
+            {/* The two things the map leaves out by default, both stated as
+                what they are rather than as jargon, and both reversible here as
+                well as in the band's own header on the canvas. */}
             <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 transition-colors hover:bg-ink-panel">
               <input
                 type="checkbox"
@@ -315,7 +454,26 @@ function VariablesPanel() {
                 onChange={(e) => setVariablesConnectedOnly(e.target.checked)}
                 className="h-3 w-3 accent-fg"
               />
-              <span className="text-[11.5px] text-fg-dim">Hide unused primitives</span>
+              <span
+                className="text-[11.5px] text-fg-dim"
+                title="A generated scale carries every step whether or not anything points at one yet. Off, the ramps are sixty rows of mostly nothing"
+              >
+                Hide unused primitives
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 transition-colors hover:bg-ink-panel">
+              <input
+                type="checkbox"
+                checked={ui.showDefaultWires}
+                onChange={(e) => setVariablesShowDefaultWires(e.target.checked)}
+                className="h-3 w-3 accent-fg"
+              />
+              <span
+                className="text-[11.5px] text-fg-dim"
+                title="Component properties still on the binding their schema ships with. Every card and row stays on the map either way — this is only whether their wires are drawn when you aren't asking about them"
+              >
+                Draw default wiring
+              </span>
             </label>
           </div>
 
@@ -652,20 +810,23 @@ export function StageRail() {
       style={{ width: `${width}px` }}
       className="relative flex shrink-0 flex-col border-r border-line bg-ink select-none"
     >
-      {/* Top Figma Tab Switcher — three panels now, so on a narrow rail only the
-          active tab keeps its label and the other two fall back to their icon. */}
+      {/* Top Figma Tab Switcher — four panels now, so on anything but a wide
+          rail only the active tab keeps its label and the rest fall back to
+          their icon. Docs is last and label-less below a wider rail than the
+          others: it's the one you visit rather than work in. */}
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-line px-2.5 bg-ink">
         <div className="flex min-w-0 items-center gap-1">
           {(
             [
-              { id: "layers" as const, label: "Layers", icon: Layers, domId: undefined },
-              { id: "tokens" as const, label: "Tokens", icon: Database, domId: "stage-rail-tokens-tab" },
-              { id: "variables" as const, label: "Variables", icon: Waypoints, domId: "stage-rail-variables-tab" },
+              { id: "layers" as const, label: "Layers", icon: Layers, domId: undefined, wide: 252 },
+              { id: "tokens" as const, label: "Tokens", icon: Database, domId: "stage-rail-tokens-tab", wide: 252 },
+              { id: "variables" as const, label: "Variables", icon: Waypoints, domId: "stage-rail-variables-tab", wide: 252 },
+              { id: "docs" as const, label: "Docs", icon: BookOpen, domId: "stage-rail-docs-tab", wide: 316 },
             ]
           ).map((tab) => {
             const active = activeLeftTab === tab.id;
             const Icon = tab.icon;
-            const showLabel = active || width >= 252;
+            const showLabel = active || width >= tab.wide;
             return (
               <button
                 key={tab.id}
@@ -835,6 +996,9 @@ export function StageRail() {
         ) : activeLeftTab === "variables" ? (
           /* Variables View (navigator for the token map on the canvas) */
           <VariablesPanel />
+        ) : activeLeftTab === "docs" ? (
+          /* Docs View (contents for the manual on the canvas) */
+          <DocsPanel />
         ) : (
           /* Tokens Studio View (defined primitives & semantics) */
           <div className="px-4 py-3 space-y-6">

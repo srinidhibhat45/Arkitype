@@ -923,18 +923,32 @@ export function DocsSections() {
 
             <SubHeading>Wiring and unwiring</SubHeading>
             <p>
-              Take a row&apos;s right-hand handle and either drag it onto a target or let go and
-              click one — both work, because dragging is quicker between neighbours and clicking is
-              the only one that survives having to scroll on the way. While a link is in flight,{" "}
-              <strong className="font-medium text-fg">every row that could legally take it stays
-              lit and the rest fade</strong>, so a drop is never a guess: the rule (a colour takes a
-              colour, a primitive holds literals, a link can&apos;t loop back on itself) is answered
-              up front rather than after you release. <Key>Esc</Key> cancels.
+              Every row carries a <strong className="font-medium text-fg">+</strong> handle on each
+              side it can be joined on — left for what it follows, right for what follows it — and
+              the handle does two things.
+            </p>
+            <FieldList
+              items={[
+                {
+                  label: "Click it for the list",
+                  body: "A small menu opens beside the row holding every variable in the file that could legally take the link, grouped by set and searchable. On the right-hand handle they're checkboxes: tick as many as you like and Connect wires them all in one press, as one edit and one undo. On the left-hand handle they're single choices, because a variable follows exactly one source — pick it and you're done. This is the one that scales: the list is the whole file, so the target doesn't have to be on screen, or even drawn (a ramp step hidden by “Hide unused primitives” is offered here, and its card appears the moment something points at it).",
+                },
+                {
+                  label: "Or drag it onto a target",
+                  body: "Quicker between neighbours, and the gesture to use when you can already see where it's going. While a link is in flight every row that could legally take it stays lit and the rest fade, so a drop is never a guess: the rule (a colour takes a colour, a primitive holds literals, a link can't loop back on itself) is answered up front rather than after you release. Esc cancels.",
+                },
+              ]}
+            />
+            <p>
+              Either way the edit lands in the mode the toolbar is showing and offers to spread to
+              the rest — see <em>Mode</em> below.
             </p>
             <p>
               Cutting one is the same gesture from three places: point at a wire, hold it (its
               Detach stays put and everything else gets out of the way), or use the row for it in
-              an opened ribbon. On a token, a cut detaches the link and freezes the colour it
+              an opened ribbon. Wherever it appears, that button sits on the stretch of the wire
+              that&apos;s in the open rather than at its exact middle, which on a full map is
+              usually behind a card. On a token, a cut detaches the link and freezes the colour it
               currently resolves to, so the system looks identical the instant after. A component
               property still on its shipped binding has nothing to cut — there&apos;s no stored
               value to remove — so it says so instead of offering a button that would do nothing;

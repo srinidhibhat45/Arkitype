@@ -2,6 +2,56 @@
 
 > Compressed memory checkpoint. Update after every compiled module.
 
+## Status: ✅ CONNECT FROM A LIST + CONTROLS OFF THE CARDS — implemented (2026-08-10)
+
+**Dragging was the only way to make a link, and it doesn't scale.** The target
+is two screens away, the button has to stay down for the whole journey, and the
+map has to be scrolled in the middle of it. The handle now does two things and
+says so with a `+` instead of a bare dot (`VariableCanvas`):
+
+- **Drag** is unchanged — quickest between neighbours, with every legal row lit
+  and the rest faded while the link is in flight.
+- **Click** opens `ConnectMenu` beside the row: every variable in the file that
+  could legally take the link, grouped by set, searchable. The two directions
+  aren't symmetrical and the menu doesn't pretend they are — outgoing is
+  checkboxes and a **Connect n**, incoming is single choices, because a consumer
+  follows exactly one source.
+- The list is built from `graph.collections`, not `visible.collections`. A drag
+  can only land on something drawn; a list has no such excuse, and the commonest
+  errand is the one the visible slice excludes — point a role at a ramp step
+  nothing references yet, which `connectedOnly` (on by default) has taken off
+  the canvas. The link makes it referenced, so its card arrives on its own.
+- `applyPlan` split into `linkOnce` (silent, returns what happened) and callers
+  that report. `applyMany` lands n links, reports **one** sentence, and offers
+  **one** "Every mode" spread. Four `setSemantic` calls in a tick coalesce into
+  a single history step, so one ⌘Z takes the whole press back.
+- This replaces the click-then-click-again *armed* mode, which was the same idea
+  done worse: the same journey, still aiming at a row, with the wire hanging off
+  the cursor the whole way. Its state, its window listeners and its `validTargets`
+  ref are gone.
+- The menu opens the way the link travels — outward right, inward left — unless
+  there's no room that way, which there isn't for the incoming handle of a card
+  parked at the left edge. `menuPlacement` flips it horizontally and vertically
+  against the container; three nested transforms keep the counter-scale anchored
+  to whichever corner touches the row.
+
+**Controls that belong to a wire stopped landing on cards.** The Detach button
+sat at the wire's exact midpoint, which on a full map is usually *behind a
+card* — so it covered a row of real variables and read as belonging to that card
+rather than to the link. `cardCovered` and `clearPointOn` (the predicate the
+ribbon labels already used, lifted out and shared) walk out from the middle to
+the first sample in clear air. Measured after: **65 of 65** drawn wires find a
+clear spot.
+
+Docs and the two in-app hint lists carry the new gesture; the FAQ and the
+wiring section were rewritten around it rather than appended to.
+
+Verified live: ticking `text-primary` and `text-secondary` under `surface-base`
+and pressing Connect 2 lands both, reports "Linked 2 variables in Light" with
+the mode offer, and one undo reverts both (dependents 10 → 8). The incoming menu
+on `text-primary` flips right at the canvas edge and connects on a single pick.
+`tsc` clean, `next build` clean (`/` 401 kB).
+
 ## Status: ✅ A WIRE CAN BE HELD + DOCS INSIDE THE FILE — implemented (2026-08-10)
 
 **A wire was the one thing on the map you could only hover.** Rows pin, cards

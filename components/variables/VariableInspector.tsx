@@ -345,7 +345,8 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
             {[
               ["Click any row", "to edit it here — and to bring its chain forward on the map"],
               ["Links · Summary", "to swap the weave for one ribbon per pair of sets, openable link by link"],
-              ["Drag a handle", "onto a target — or let go and click one. Only rows that can take the link stay lit"],
+              ["Click a + handle", "for a list of everything it can join — tick several going out"],
+              ["Drag a + handle", "onto a target instead. Only rows that can take the link stay lit"],
               ["Click a wire", "to hold that one link — both its variables light up, and Detach stays put"],
               ["⌘Z / ⇧⌘Z", "to undo and redo · Reset returns to how you found it"],
               ["⌘ + scroll", "to zoom · drag the background to pan"],

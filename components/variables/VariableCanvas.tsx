@@ -69,6 +69,7 @@ import {
   Plus,
   Redo2,
   RotateCcw,
+  Search,
   SlidersHorizontal,
   Spline,
   Undo2,
@@ -132,14 +133,27 @@ interface Placed extends Point {
   nudged: boolean;
 }
 
-/** A connection in progress — dragged from a handle, or armed by a click. */
+/** A connection in progress — dragged from a handle. */
 interface Connecting {
   from: string;
   side: "in" | "out";
   /** Where the loose end currently is, in graph coordinates. */
   at: Point;
-  /** True once the button is up and the next click is the drop. */
-  armed: boolean;
+}
+
+/**
+ * The other half of a handle: the list you get by *clicking* it rather than
+ * dragging from it.
+ *
+ * Dragging is the right gesture between neighbours and the wrong one across a
+ * system of four hundred variables, where the target is several screens away
+ * and the drop has to be held the whole way. This is the same operation
+ * without the journey — and, on the outgoing side, done to several targets at
+ * once, which dragging can't express at all.
+ */
+interface LinkMenu {
+  from: string;
+  side: "in" | "out";
 }
 
 /** What the map is holding, for the pill that names it and lets go of it. */
@@ -292,6 +306,184 @@ function PrimitiveCardFooter({
   );
 }
 
+/**
+ * The list a handle opens: everything this variable could legally be joined to,
+ * grouped by set, searchable, and — going outwards — tickable several at a time.
+ *
+ * The two directions are not symmetrical, and the menu doesn't pretend they
+ * are. A consumer follows exactly one source, so the incoming list is a set of
+ * choices and picking one is the whole interaction. A provider can feed any
+ * number of things, so the outgoing list is a set of checkboxes and a count —
+ * which is the case dragging cannot express at all, and the reason this exists.
+ */
+function ConnectMenu({
+  node,
+  side,
+  groups,
+  linked,
+  onConnect,
+  onClose,
+}: {
+  node: VarNode;
+  side: "in" | "out";
+  groups: Array<{ id: string; label: string; tier: VarTier; nodes: VarNode[] }>;
+  /** Already joined this way — shown as done rather than offered again. */
+  linked: Set<string>;
+  onConnect: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
+  const q = query.trim().toLowerCase();
+
+  const shown = useMemo(() => {
+    if (!q) return groups;
+    return groups
+      .map((g) => ({
+        ...g,
+        nodes: g.nodes.filter(
+          (n) => n.path.toLowerCase().includes(q) || n.label.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((g) => g.nodes.length > 0);
+  }, [groups, q]);
+
+  const total = shown.reduce((n, g) => n + g.nodes.length, 0);
+
+  const choose = (id: string) => {
+    // Incoming: one source, so a pick *is* the answer and the menu is done.
+    if (side === "in") {
+      onConnect([id]);
+      return;
+    }
+    setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  };
+
+  return (
+    <div
+      data-link-menu
+      onMouseDown={(e) => e.stopPropagation()}
+      className="w-[290px] overflow-hidden rounded-lg border border-line-strong bg-ink-raised shadow-2xl"
+    >
+      <div className="flex items-center gap-1.5 border-b border-line px-2.5 py-1.5">
+        <TierBadge tier={node.tier} size={13} />
+        <p className="min-w-0 flex-1 truncate text-[11px] font-bold text-fg">
+          {side === "out" ? "Point something at" : "Make this follow"}{" "}
+          <span className="font-mono">{node.label}</span>
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
+        >
+          <X size={11} />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1.5 border-b border-line px-2.5 py-1.5">
+        <Search size={11} className="shrink-0 text-fg-mute" />
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              onClose();
+            }
+          }}
+          placeholder={side === "out" ? "Find what should follow it…" : "Find what it should follow…"}
+          className="min-w-0 flex-1 bg-transparent font-mono text-[10.5px] text-fg placeholder:font-sans placeholder:text-fg-mute focus:outline-none"
+        />
+        <span className="shrink-0 font-mono text-[9px] text-fg-mute">{total}</span>
+      </div>
+
+      <div className="max-h-[260px] overflow-y-auto py-0.5">
+        {total === 0 ? (
+          <p className="px-2.5 py-3 text-[10.5px] leading-snug text-fg-mute">
+            {q
+              ? `Nothing matching “${query}” can take this link.`
+              : "Nothing in the file can legally take this link."}
+          </p>
+        ) : null}
+        {shown.map((g) => (
+          <div key={g.id}>
+            <div className="sticky top-0 flex items-center gap-1.5 bg-ink-raised px-2.5 py-1">
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                style={{ background: tierColor(g.tier) }}
+              />
+              <p className="min-w-0 flex-1 truncate text-[9px] font-bold uppercase tracking-[0.08em] text-fg-mute">
+                {g.label}
+              </p>
+            </div>
+            {g.nodes.map((n) => {
+              const isPicked = picked.includes(n.id);
+              const isLinked = linked.has(n.id);
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => choose(n.id)}
+                  title={n.path}
+                  className={`flex w-full items-center gap-1.5 px-2.5 py-1 text-left transition-colors ${
+                    isPicked ? "bg-focus/20" : "hover:bg-ink-hover"
+                  }`}
+                >
+                  {side === "out" ? (
+                    <span
+                      aria-hidden
+                      className={`flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] border ${
+                        isPicked ? "border-focus bg-focus text-white" : "border-line-strong"
+                      }`}
+                    >
+                      {isPicked ? <Check size={8} strokeWidth={3.5} /> : null}
+                    </span>
+                  ) : null}
+                  <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-fg-dim">
+                    {n.label}
+                  </span>
+                  {/* Already joined. Not hidden — seeing that the thing you
+                      came here to do is done is the answer to the question,
+                      and hiding it would read as the target not existing. */}
+                  {isLinked ? (
+                    <span className="shrink-0 text-[8.5px] font-semibold uppercase tracking-[0.06em] text-fg-mute">
+                      linked
+                    </span>
+                  ) : n.detail ? (
+                    <span className="shrink-0 truncate font-mono text-[8.5px] text-fg-mute">
+                      {n.detail}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {side === "out" ? (
+        <div className="flex items-center gap-2 border-t border-line px-2.5 py-1.5">
+          <p className="min-w-0 flex-1 truncate text-[10px] text-fg-mute">
+            {picked.length === 0
+              ? "Tick everything that should follow it"
+              : `${picked.length} selected`}
+          </p>
+          <button
+            type="button"
+            onClick={() => onConnect(picked)}
+            disabled={picked.length === 0}
+            className="shrink-0 rounded bg-fg px-2 py-1 text-[10.5px] font-bold text-ink transition-opacity disabled:opacity-30"
+          >
+            Connect{picked.length > 1 ? ` ${picked.length}` : ""}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /* ────────────────────────── the canvas ────────────────────────── */
 
 export function VariableCanvas({
@@ -372,6 +564,8 @@ export function VariableCanvas({
   /** Clicking one opens it: the ribbon stays lit and lists its links. */
   const [openBundle, setOpenBundle] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<Connecting | null>(null);
+  /** The click half of a handle — see `LinkMenu`. */
+  const [linkMenu, setLinkMenu] = useState<LinkMenu | null>(null);
   // Read by the Escape handler, which is bound once and must not be re-bound
   // sixty times a second as the loose end of a link follows the cursor.
   const connectingRef = useRef<Connecting | null>(null);
@@ -953,8 +1147,21 @@ export function VariableCanvas({
 
   /* ── connecting ── */
 
-  const applyPlan = useCallback(
-    (providerId: string, consumerId: string) => {
+  /**
+   * Make one link and say nothing about it.
+   *
+   * Split out from `applyPlan` because a menu can land four links in one press
+   * and four toasts stacked on top of each other report less than one. The
+   * caller gets back what it needs to write a single sentence — and, for an
+   * alias, the widening it might want to offer.
+   */
+  const linkOnce = useCallback(
+    (
+      providerId: string,
+      consumerId: string
+    ):
+      | { ok: true; label: string; mode: string | null; spread: (() => void) | null }
+      | { ok: false; reason: string } => {
       const plan = planConnection(
         graph,
         { primitives, semantics, components },
@@ -962,52 +1169,100 @@ export function VariableCanvas({
         consumerId,
         editModes
       );
-      if (!plan.ok) {
-        flash(plan.reason, false);
-        return;
-      }
+      if (!plan.ok) return { ok: false, reason: plan.reason };
       if (plan.kind === "binding") {
         // A binding resolves to a var(), which flips per mode on its own —
         // there's no other mode for it to also land in.
         setComponentBinding(plan.componentId, plan.storageKey, plan.binding);
-        selectVariable(consumerId);
-        flash(`Linked ${plan.label}`, true);
+        return { ok: true, label: plan.label, mode: null, spread: null };
+      }
+      for (const m of plan.modes) setSemantic(m, plan.token, plan.value);
+      const others = modeDefs.map((d) => d.id).filter((id) => !plan.modes.includes(id));
+      return {
+        ok: true,
+        label: plan.label,
+        mode: modeDefs.find((d) => d.id === plan.modes[0])?.name ?? plan.modes[0] ?? null,
+        spread:
+          others.length === 0
+            ? null
+            : () => {
+                for (const m of others) setSemantic(m, plan.token, plan.value);
+              },
+      };
+    },
+    [graph, primitives, semantics, components, editModes, modeDefs, setSemantic, setComponentBinding]
+  );
+
+  const applyPlan = useCallback(
+    (providerId: string, consumerId: string) => {
+      const result = linkOnce(providerId, consumerId);
+      if (!result.ok) {
+        flash(result.reason, false);
         return;
       }
-
-      for (const m of plan.modes) setSemantic(m, plan.token, plan.value);
       selectVariable(consumerId);
 
       // The map reads one mode at a time, so a link made on it lands in one
       // mode — which is right, and is also exactly the thing you'd want to
       // undo-by-widening a second later. The offer sits in the confirmation
       // rather than in a preference, so it costs nothing until it's the answer.
-      const others = modeDefs.map((d) => d.id).filter((id) => !plan.modes.includes(id));
-      const only = modeDefs.find((d) => d.id === plan.modes[0])?.name;
-      if (others.length === 0) {
-        flash(`Linked ${plan.label}`, true);
+      if (!result.spread) {
+        flash(`Linked ${result.label}`, true);
         return;
       }
-      flash(`Linked ${plan.label} in ${only ?? plan.modes[0]}`, true, {
+      const spread = result.spread;
+      flash(`Linked ${result.label} in ${result.mode}`, true, {
         label: `Every mode (${modeDefs.length})`,
         run: () => {
-          for (const m of others) setSemantic(m, plan.token, plan.value);
-          flash(`${plan.label} — in all ${modeDefs.length} modes`, true);
+          spread();
+          flash(`${result.label} — in all ${modeDefs.length} modes`, true);
         },
       });
     },
-    [
-      graph,
-      primitives,
-      semantics,
-      components,
-      editModes,
-      modeDefs,
-      setSemantic,
-      setComponentBinding,
-      selectVariable,
-      flash,
-    ]
+    [linkOnce, modeDefs, selectVariable, flash]
+  );
+
+  /**
+   * Everything picked in a menu, landed in one press — and reported as one
+   * sentence with one offer, because the mode question has the same answer for
+   * all of them.
+   */
+  const applyMany = useCallback(
+    (pairs: Array<{ provider: string; consumer: string }>) => {
+      const spreads: Array<() => void> = [];
+      let done = 0;
+      let last = "";
+      let mode: string | null = null;
+      let failure = "";
+      for (const { provider, consumer } of pairs) {
+        const result = linkOnce(provider, consumer);
+        if (!result.ok) {
+          failure = result.reason;
+          continue;
+        }
+        done += 1;
+        last = result.label;
+        mode = result.mode;
+        if (result.spread) spreads.push(result.spread);
+      }
+      if (done === 0) {
+        flash(failure || "Nothing to link", false);
+        return;
+      }
+      const what = done === 1 ? `Linked ${last}` : `Linked ${done} variables`;
+      if (spreads.length === 0) {
+        flash(what, true);
+        return;
+      }
+      flash(`${what} in ${mode}`, true, {
+        label: `Every mode (${modeDefs.length})`,
+        run: () => {
+          for (const s of spreads) s();
+          flash(`${what} — in all ${modeDefs.length} modes`, true);
+        },
+      });
+    },
+    [linkOnce, modeDefs, flash]
   );
 
   /**
@@ -1042,6 +1297,48 @@ export function VariableCanvas({
     return out;
   }, [connectFrom, connectSide, visible.collections, graph, primitives, semantics, components, editModes]);
 
+  /**
+   * The same question for the menu — with one deliberate difference: it asks it
+   * of the *whole file*, not of what the map happens to be drawing.
+   *
+   * A drag can only land on something drawn, so `validTargets` is right to stop
+   * at the visible slice. A list has no such excuse, and the commonest real
+   * errand here is the one the visible slice excludes: point a role at a ramp
+   * step nothing references yet — which "Hide unused primitives", on by
+   * default, has taken off the canvas. The link makes it referenced, so the
+   * card it lands on appears on its own.
+   *
+   * Grouped by set, in the file's own order, so the list reads like the map.
+   */
+  const menuGroups = useMemo(() => {
+    if (!linkMenu) return [];
+    const { from, side } = linkMenu;
+    const out: Array<{ id: string; label: string; tier: VarTier; nodes: VarNode[] }> = [];
+    for (const c of graph.collections) {
+      const nodes = c.nodes.filter((n) => {
+        if (n.id === from) return false;
+        const provider = side === "out" ? from : n.id;
+        const consumer = side === "out" ? n.id : from;
+        return planConnection(graph, { primitives, semantics, components }, provider, consumer, editModes)
+          .ok;
+      });
+      if (nodes.length > 0) out.push({ id: c.id, label: c.label, tier: c.tier, nodes });
+    }
+    return out;
+  }, [linkMenu, graph, primitives, semantics, components, editModes]);
+
+  /** What the menu's subject already points at (or is pointed at by). */
+  const menuLinked = useMemo(() => {
+    if (!linkMenu) return new Set<string>();
+    const { from, side } = linkMenu;
+    const out = new Set<string>();
+    for (const e of graph.edges) {
+      if (side === "out" && e.from === from) out.add(e.to);
+      if (side === "in" && e.to === from) out.add(e.from);
+    }
+    return out;
+  }, [linkMenu, graph.edges]);
+
   /** The row under a pointer position, if any. */
   const nodeAt = (clientX: number, clientY: number): string | null => {
     const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
@@ -1060,15 +1357,21 @@ export function VariableCanvas({
   );
 
   /**
-   * Start a link. Drag it onto a target, or simply let go — the wire stays on
-   * the cursor and the next click drops it. Both gestures exist because both
-   * get used: dragging is quicker between neighbours, and clicking is the only
-   * one that survives having to scroll halfway down a lane on the way.
+   * Start a link. Drag it onto a target — or don't move at all, and get the
+   * list instead.
+   *
+   * Both gestures exist because both get used, and each is bad at what the
+   * other is for. Dragging is quicker between neighbours and hopeless across a
+   * system: the target is two screens away, the button has to stay down the
+   * whole journey, and the map has to be scrolled in the middle of it. The
+   * list is that same operation with the journey removed, and it's the only
+   * one of the two that can express "…and these three as well".
    */
   const startConnect = (e: React.MouseEvent, nodeId: string, side: "in" | "out") => {
     e.stopPropagation();
     e.preventDefault();
-    setConnecting({ from: nodeId, side, at: toGraph(e.clientX, e.clientY), armed: false });
+    setConnecting({ from: nodeId, side, at: toGraph(e.clientX, e.clientY) });
+    setLinkMenu(null);
     setOpenBundle(null);
     // A held wire dims every row that isn't one of its two ends, which is the
     // opposite of what a link in flight needs: there, the map's job is to
@@ -1101,11 +1404,13 @@ export function VariableCanvas({
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
       const target = nodeAt(ev.clientX, ev.clientY);
-      // A click that never moved arms the link instead of cancelling it. The
+      // A click that never moved opens the list instead of cancelling. The
       // handle sits inside its own row, so "still on the source" is the normal
       // reading of a plain click — not a self-link to be rejected.
       if (!moved && (!target || target === nodeId)) {
-        setConnecting((c) => (c ? { ...c, armed: true } : c));
+        setConnecting(null);
+        setDropTarget(null);
+        setLinkMenu({ from: nodeId, side });
         return;
       }
       finishConnect(nodeId, side, target);
@@ -1114,43 +1419,6 @@ export function VariableCanvas({
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
   };
-
-  // The armed half of the gesture: the wire follows the cursor until a click
-  // lands it (or misses, which cancels — a click on nothing means "never mind").
-  //
-  // Keyed on what's being connected rather than on `connecting`, whose loose
-  // end moves with the cursor: depending on the object tore down and re-bound
-  // both window listeners on every mouse move for the length of the gesture.
-  // `validTargets` is read through a ref for the same reason — it's only
-  // consulted inside the handler, and naming it as a dependency would put the
-  // re-binding straight back.
-  const armed = connecting?.armed ?? false;
-  const validTargetsRef = useRef(validTargets);
-  validTargetsRef.current = validTargets;
-  useEffect(() => {
-    if (!armed || !connectFrom || !connectSide) return;
-    const move = (ev: MouseEvent) => {
-      setConnecting((c) => (c && c.armed ? { ...c, at: toGraph(ev.clientX, ev.clientY) } : c));
-      const target = nodeAt(ev.clientX, ev.clientY);
-      setDropTarget(
-        !target || target === connectFrom
-          ? null
-          : { id: target, ok: !!validTargetsRef.current?.has(target) }
-      );
-    };
-    const down = (ev: MouseEvent) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      finishConnect(connectFrom, connectSide, nodeAt(ev.clientX, ev.clientY));
-    };
-    window.addEventListener("mousemove", move);
-    // Capture, so the click lands the link rather than starting a pan.
-    window.addEventListener("mousedown", down, true);
-    return () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mousedown", down, true);
-    };
-  }, [armed, connectFrom, connectSide, toGraph, finishConnect]);
 
   /** Let go of everything the map is holding — one gesture, four sources. */
   const release = useCallback(() => {
@@ -1177,14 +1445,34 @@ export function VariableCanvas({
     [selectVariable]
   );
 
+  // An open menu is dismissed by a mousedown anywhere that isn't inside it —
+  // including on a card, which swallows its own mousedown and so can't be left
+  // to the canvas to notice.
+  useEffect(() => {
+    if (!linkMenu) return;
+    const onDown = (ev: MouseEvent) => {
+      if ((ev.target as Element | null)?.closest?.("[data-link-menu]")) return;
+      setLinkMenu(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [linkMenu]);
+
+  const linkMenuRef = useRef<LinkMenu | null>(null);
+  linkMenuRef.current = linkMenu;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      // A link in flight is the nearer thing to cancel; the selection survives
-      // it, so escaping a mis-started drag doesn't also lose your place.
+      // A link in flight, or an open menu, is the nearer thing to cancel; the
+      // selection survives either, so escaping a mis-started link doesn't also
+      // lose your place.
       if (connectingRef.current) {
         setConnecting(null);
         setDropTarget(null);
+        return;
+      }
+      if (linkMenuRef.current) {
+        setLinkMenu(null);
         return;
       }
       release();
@@ -1403,6 +1691,35 @@ export function VariableCanvas({
     return out;
   }, [wires]);
 
+  /**
+   * Is this point sitting on top of a card?
+   *
+   * Everything the canvas parks *on* a wire — a ribbon's count, a cut button —
+   * is opaque, and a wire's midpoint is very often behind a card, because the
+   * lanes are full of them. Anything that lands there hides a row of real
+   * variables in order to annotate the wires behind it, which is the worse of
+   * the two trades every time.
+   */
+  const cardCovered = useCallback(
+    (p: Point) =>
+      Object.values(placed).some(
+        (c) => p.x > c.x - 9 && p.x < c.x + CARD_W + 9 && p.y > c.y - 9 && p.y < c.y + c.h + 9
+      ),
+    [placed]
+  );
+
+  /**
+   * Where a control that belongs to a wire should sit: as near its middle as it
+   * can while still being in the open. `wireSamples` hands back the midpoint
+   * first and then walks outwards in both directions, so the first clear
+   * sample is the closest one to the middle.
+   */
+  const clearPointOn = useCallback(
+    (w: { a: Point; b: Point; mid: Point }): Point =>
+      wireSamples(w.a, w.b, 15, wireStyle).find((p) => !cardCovered(p)) ?? w.mid,
+    [wireStyle, cardCovered]
+  );
+
   /* ── the same edges, gathered into one ribbon per pair of sets ── */
 
   // Only Summary draws ribbons, and only Summary should pay for them: bundling
@@ -1417,15 +1734,9 @@ export function VariableCanvas({
     );
     const max = ribbons.reduce((m, r) => Math.max(m, r.count), 1);
 
-    // Park the label where the ribbon is in the open. It's opaque, so one
-    // sitting over a card would hide a row of real tokens to report a number
-    // about the wires behind it — the worse of the two trades.
-    const cards = Object.values(placed);
-    const covered = (p: Point) =>
-      cards.some((c) => p.x > c.x - 9 && p.x < c.x + CARD_W + 9 && p.y > c.y - 9 && p.y < c.y + c.h + 9);
-
+    // Park the label where the ribbon is in the open — see `cardCovered`.
     return ribbons.map((r) => {
-      const clear = wireSamples(r.a, r.b, 13, wireStyle).find((p) => !covered(p));
+      const clear = wireSamples(r.a, r.b, 13, wireStyle).find((p) => !cardCovered(p));
       return {
         ...r,
         width: bundleWidth(r.count, max),
@@ -1438,7 +1749,7 @@ export function VariableCanvas({
         toLabel: graph.collections.find((c) => c.id === r.to)?.label ?? r.to,
       };
     });
-  }, [linkView, wires, visible.rowOf, placed, graph.collections, wireStyle]);
+  }, [linkView, wires, visible.rowOf, cardCovered, graph.collections, wireStyle]);
 
   const bundleById = useMemo(() => {
     const out: Record<string, (typeof bundles)[number]> = {};
@@ -1543,6 +1854,42 @@ export function VariableCanvas({
   };
 
   const openRibbon = bundleById[openBundle ?? ""] ?? null;
+
+  const menuNode = linkMenu ? graph.nodes[linkMenu.from] : undefined;
+  const menuAt = linkMenu ? anchor(linkMenu.from, linkMenu.side) : null;
+  /**
+   * Floating chrome is counter-scaled so it stays the size of a control rather
+   * than the size of the map — the same treatment the ribbon labels and the
+   * opened-ribbon list get.
+   */
+  const chromeScale = Math.min(2.2, Math.max(0.75, 1 / view.scale));
+
+  /**
+   * Which way the menu unfolds.
+   *
+   * It wants to open the way the link travels — outward to the right of the
+   * row, inward to its left — because that's the direction the value moves and
+   * the side the handle is on. But the canvas clips, and the incoming handle of
+   * a card parked at the left edge has nothing to its left, so a menu that
+   * insisted on the meaningful side would open half underneath the rail. Room
+   * wins over meaning when there isn't any.
+   */
+  const menuPlacement = useMemo(() => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!linkMenu || !menuAt || !rect) return { left: linkMenu?.side === "in", up: false };
+    const w = 290 * chromeScale + 26;
+    const h = 340 * chromeScale;
+    const x = menuAt.x * view.scale + view.x;
+    const y = menuAt.y * view.scale + view.y;
+    const fitsLeft = x - w > 0;
+    const fitsRight = x + w < rect.width;
+    return {
+      left: linkMenu.side === "in" ? fitsLeft || !fitsRight : !fitsRight && fitsLeft,
+      // Upwards only if there's genuinely more room that way — a menu hanging
+      // off the top is no better than one hanging off the bottom.
+      up: y + h > rect.height && y - h > 0,
+    };
+  }, [linkMenu, menuAt, chromeScale, view]);
 
   return (
     <div
@@ -1877,6 +2224,65 @@ export function VariableCanvas({
           ) : null}
         </svg>
 
+        {/* The list a handle opens, parked beside the handle that opened it —
+            see `menuPlacement` for which side. Three nested transforms rather
+            than one: the outer places the anchor, the middle flips the box
+            around it (by its own layout width and height, which the scale
+            doesn't change), and the inner counter-scales about whichever
+            corner is touching the row, so the menu stays put as the map
+            zooms. */}
+        {linkMenu && menuNode && menuAt ? (
+          <div
+            className="absolute z-40"
+            style={{
+              left: menuAt.x + (menuPlacement.left ? -13 : 13),
+              top: menuAt.y + (menuPlacement.up ? 12 : -12),
+            }}
+          >
+            <div
+              style={{
+                transform: `translate(${menuPlacement.left ? "-100%" : "0"}, ${
+                  menuPlacement.up ? "-100%" : "0"
+                })`,
+              }}
+            >
+              <div
+                style={{
+                  transform: `scale(${chromeScale})`,
+                  transformOrigin: `${menuPlacement.up ? "bottom" : "top"} ${
+                    menuPlacement.left ? "right" : "left"
+                  }`,
+                }}
+              >
+                <ConnectMenu
+                  node={menuNode}
+                  side={linkMenu.side}
+                  groups={menuGroups}
+                  linked={menuLinked}
+                  onClose={() => setLinkMenu(null)}
+                  onConnect={(ids) => {
+                    setLinkMenu(null);
+                    if (ids.length === 0) return;
+                    applyMany(
+                      ids.map((id) =>
+                        linkMenu.side === "out"
+                          ? { provider: linkMenu.from, consumer: id }
+                          : { provider: id, consumer: linkMenu.from }
+                      )
+                    );
+                    // Land on the variable that changed. Outward that's the
+                    // one thing you pointed somewhere (or, for several, the
+                    // provider they now share).
+                    selectVariable(
+                      linkMenu.side === "in" || ids.length > 1 ? linkMenu.from : ids[0]
+                    );
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {/* Ribbon labels. Counter-scaled against the viewport so they stay
             readable at 12% as well as at 200% — at a full zoom-out these are
             the whole map in twenty numbers. Each one is a button: it says which
@@ -2030,8 +2436,14 @@ export function VariableCanvas({
           </div>
         ) : null}
 
-        {/* Unlink control, parked on the wire's midpoint — for the one under
-            the pointer, and for the one being held.
+        {/* Unlink control, parked on the wire where the wire is in the open —
+            for the one under the pointer, and for the one being held.
+
+            Not the midpoint: a wire's middle is very often *behind a card*,
+            being where the lanes are, and an opaque button there covers a row
+            of real variables and reads as belonging to that card rather than
+            to the wire. `clearPointOn` walks out from the middle to the first
+            sample in clear air.
 
             Held, it spells itself out. The compact circle is right for a
             hover, where it's already under the cursor that summoned it; it's
@@ -2046,7 +2458,9 @@ export function VariableCanvas({
                   !openBundle &&
                   canUnlink(w.edge)
               )
-              .map(({ edge, mid }) => {
+              .map((w) => {
+                const { edge } = w;
+                const mid = clearPointOn(w);
                 const isHeld = edge.id === pinnedEdge;
                 return (
                   <button
@@ -2330,20 +2744,30 @@ export function VariableCanvas({
                         can legally land — primitives hold literals. They show
                         for the whole card on hover, not just the one row under
                         the cursor, so you can see where a link starts before
-                        you go looking for it. */}
+                        you go looking for it.
+
+                        A plus rather than a bare dot, because the handle now
+                        does two things and only one of them was ever guessable
+                        from a dot: drag it to aim at a neighbour, or click it
+                        and pick from a list — which is the only workable
+                        gesture once the target is two screens away. */}
                     {node.tier !== "primitive" ? (
                       <span
                         onMouseDown={(e) => startConnect(e, node.id, "in")}
-                        title="Drag (or click, then click again) onto the variable this should follow"
-                        className="absolute -left-[6px] top-1/2 h-[11px] w-[11px] -translate-y-1/2 cursor-crosshair rounded-full border border-line-strong bg-ink opacity-0 transition-all hover:scale-125 hover:border-focus hover:bg-focus group-hover/card:opacity-60 group-hover/row:opacity-100"
-                      />
+                        title="Click for a list of everything this could follow — or drag onto one"
+                        className="absolute -left-[7px] top-1/2 flex h-[13px] w-[13px] -translate-y-1/2 items-center justify-center rounded-full border border-line-strong bg-ink text-fg-mute opacity-0 transition-all hover:scale-125 hover:border-focus hover:bg-focus hover:text-white group-hover/card:opacity-60 group-hover/row:opacity-100"
+                      >
+                        <Plus size={8} strokeWidth={3} />
+                      </span>
                     ) : null}
                     {node.tier !== "usage" ? (
                       <span
                         onMouseDown={(e) => startConnect(e, node.id, "out")}
-                        title="Drag (or click, then click again) onto a role, token or component property to point it here"
-                        className="absolute -right-[6px] top-1/2 h-[11px] w-[11px] -translate-y-1/2 cursor-crosshair rounded-full border border-line-strong bg-ink opacity-0 transition-all hover:scale-125 hover:border-focus hover:bg-focus group-hover/card:opacity-60 group-hover/row:opacity-100"
-                      />
+                        title="Click for a list of everything that could follow this — several at once — or drag onto one"
+                        className="absolute -right-[7px] top-1/2 flex h-[13px] w-[13px] -translate-y-1/2 items-center justify-center rounded-full border border-line-strong bg-ink text-fg-mute opacity-0 transition-all hover:scale-125 hover:border-focus hover:bg-focus hover:text-white group-hover/card:opacity-60 group-hover/row:opacity-100"
+                      >
+                        <Plus size={8} strokeWidth={3} />
+                      </span>
                     ) : null}
                   </div>
                 );

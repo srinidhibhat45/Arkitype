@@ -27,21 +27,25 @@ import {
   TriangleAlert,
   Unlink,
 } from "lucide-react";
-import { PreviewMode, RADII_NAMES, useDesignSystem } from "@/store/useDesignSystem";
+import { PreviewMode, RADII_NAMES, modeDefsOf, useDesignSystem } from "@/store/useDesignSystem";
 import {
   TIER_META,
+  VarEdge,
   VarNode,
   VarTier,
   VariableGraph,
   acceptsKind,
   bindingFor,
   nodeTokenName,
+  primitiveHome,
   resolutionChain,
   tierColor,
+  tokenValueFor,
   wouldCycle,
 } from "@/lib/variableGraph";
-import { resolveTokenValue } from "@/lib/tokens";
+import { freezeTokenValue } from "@/lib/tokens";
 import { ModeValueEditor } from "@/components/steps/TokenTiers";
+import { KindIcon } from "@/components/variables/VariableBits";
 
 const PICKER_TIERS: VarTier[] = ["primitive", "semantic", "component"];
 
@@ -190,8 +194,8 @@ function SourcePicker({
           <div className="max-h-[280px] overflow-y-auto py-1">
             {matches.length === 0 ? (
               <p className="px-2.5 py-3 text-[11px] leading-relaxed text-fg-mute">
-                Nothing here can feed this variable — a colour role only takes a colour, and a link
-                can&apos;t loop back on itself.
+                Nothing here can feed this variable — a variable only takes its own type, and a
+                link can&apos;t loop back on itself.
               </p>
             ) : (
               PICKER_TIERS.map((tier) => {
@@ -213,7 +217,11 @@ function SourcePicker({
                         }}
                         className="flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors hover:bg-ink-hover"
                       >
-                        <Swatch hex={c.swatch?.[mode]} />
+                        {c.kind === "color" ? (
+                          <Swatch hex={c.swatch?.[mode]} />
+                        ) : (
+                          <KindIcon kind={c.kind} size={12} />
+                        )}
                         <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-fg-dim">
                           {c.path}
                         </span>
@@ -255,13 +263,18 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
   const semantics = useDesignSystem((s) => s.semantics);
   const components = useDesignSystem((s) => s.components);
 
+  const focusTokenSection = useDesignSystem((s) => s.focusTokenSection);
+
   const [renaming, setRenaming] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const node = ui.selected ? graph.nodes[ui.selected] : undefined;
   const collection = node ? graph.collections.find((c) => c.id === node.collectionId) : undefined;
-  const editModes: PreviewMode[] = ui.editMode === "both" ? ["light", "dark"] : [ui.editMode];
-  const displayMode: PreviewMode = ui.editMode === "dark" ? "dark" : "light";
+  const modeDefs = useMemo(() => modeDefsOf(semantics), [semantics]);
+  const editModes: PreviewMode[] = ui.editMode === "all" ? modeDefs.map((d) => d.id) : [ui.editMode];
+  /** Which column the swatches and the chain are read in. */
+  const displayMode: PreviewMode =
+    ui.editMode === "all" ? (modeDefs[0]?.id ?? "light") : ui.editMode;
   const token = node ? nodeTokenName(node.id) : null;
 
   const consumers = useMemo(
@@ -269,13 +282,13 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
     [graph, node]
   );
 
-  /** What currently feeds this variable, and on which mode(s). */
+  /** What currently feeds this variable, and in which mode(s). */
   const sources = useMemo(
     () =>
       node
         ? graph.edges
             .filter((e) => e.to === node.id)
-            .map((e) => ({ node: graph.nodes[e.from], mode: e.mode }))
+            .map((e) => ({ node: graph.nodes[e.from], edge: e }))
             .filter((s) => s.node)
         : [],
     [graph, node]
@@ -296,6 +309,8 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
   }, [graph, node]);
 
   const issues = node ? graph.issues.filter((i) => i.nodeId === node.id) : [];
+  /** For a primitive: the two places its scale is actually edited. */
+  const home = collection ? primitiveHome(collection) : null;
 
   if (!node) {
     return (
@@ -306,8 +321,9 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
             The map of everything, and what it points at
           </h2>
           <p className="mt-3 text-[12px] leading-relaxed text-fg-dim">
-            Value flows left to right through four lanes. Each lane has a colour and a number, and
-            every wire is painted in the lane its value came from.
+            Value flows left to right through four lanes, each with its own colour and number, and
+            each one a single column you can scan. Between them, one ribbon per pair of sets —
+            coloured by where its values come from and as thick as how many there are.
           </p>
 
           <div className="mt-3 space-y-1.5 rounded-lg border border-line bg-ink p-3">
@@ -327,8 +343,9 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
           <div className="mt-3 space-y-2 rounded-lg border border-line bg-ink p-3">
             {[
               ["Click any row", "to edit it here — value, source, name"],
-              ["Drag a handle", "from one row onto a row to its right to link them"],
-              ["Hover a wire", "to detach it — the colour is kept, the link isn't"],
+              ["Click a ribbon", "to list every link it carries, and cut any of them"],
+              ["Drag a handle", "onto a target — or let go and click one. Only rows that can take the link stay lit"],
+              ["Hover a wire", "to detach it · Esc cancels a link in flight"],
               ["⌘Z / ⇧⌘Z", "to undo and redo · Reset returns to how you found it"],
               ["⌘ + scroll", "to zoom · drag the background to pan"],
             ].map(([k, v]) => (
@@ -356,7 +373,8 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
       return;
     }
     if (!token) return;
-    const value = provider.tier === "primitive" ? provider.path : `@${provider.path}`;
+    const value = tokenValueFor(provider, primitives.radiusNames ?? [...RADII_NAMES]);
+    if (!value) return;
     for (const m of editModes) setSemantic(m, token, value);
   };
 
@@ -367,7 +385,11 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
     }
     if (!token) return;
     for (const m of editModes) {
-      setSemantic(m, token, resolveTokenValue({ primitives, semantics }, m, semantics.modes[m][token] ?? ""));
+      // Freeze what it looks like now, so cutting the link changes nothing
+      // visible. A kind with no literal form (a weight, a family) has nothing
+      // to freeze to and is left pointing where it points.
+      const frozen = freezeTokenValue({ primitives, semantics }, m, token);
+      if (frozen !== null) setSemantic(m, token, frozen);
     }
   };
 
@@ -377,22 +399,31 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
     addRole(collection.addTo.groupLabel, name);
     // addRole slugifies and seeds a default; copy the original's real values on top.
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    for (const m of ["light", "dark"] as PreviewMode[]) {
-      const v = semantics.modes[m][token];
-      if (v !== undefined) setSemantic(m, slug, v);
+    for (const d of modeDefs) {
+      const v = semantics.modes[d.id]?.[token];
+      if (v !== undefined) setSemantic(d.id, slug, v);
     }
     selectVariable(`tok:${slug}`);
   };
 
-  const modeWord = (mode: string) =>
-    mode === "both" ? "in both modes" : mode === "binding" ? "" : `in ${mode} mode only`;
+  /**
+   * What a link's mode coverage *says*, in words. With more than two modes the
+   * interesting fact is rarely which ones — it's whether this alias is the
+   * whole story or only part of it.
+   */
+  const modeWord = (edge: VarEdge): string => {
+    if (edge.binding) return "";
+    if (edge.modes.length >= modeDefs.length) return "in every mode";
+    const names = edge.modes.map((m) => modeDefs.find((d) => d.id === m)?.name ?? m);
+    return `in ${names.join(", ")} only`;
+  };
 
   const scopeNote =
     node.tier === "usage"
       ? "this component property"
-      : ui.editMode === "both"
-        ? "both light and dark"
-        : `${ui.editMode} mode only`;
+      : ui.editMode === "all"
+        ? `all ${modeDefs.length} modes`
+        : `${modeDefs.find((d) => d.id === ui.editMode)?.name ?? ui.editMode} only`;
 
   // Source first, this variable last — the direction value actually travels.
   const chain = resolutionChain(graph, { primitives, semantics, components }, node.id, displayMode)
@@ -458,14 +489,14 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
                 <p className="text-[11.5px] leading-relaxed text-fg-dim">
                   <span className="font-mono font-semibold text-fg">{node.label}</span>{" "}
                   {node.tier === "usage"
-                    ? "isn't bound to anything — it falls back to the component's default."
+                    ? "is set to a literal — a raw length or colour, with no variable behind it. Point it at one below and it starts following your system."
                     : "holds a fixed value. Nothing feeds it, so nothing upstream can change it."}
                 </p>
               ) : (
                 <div className="space-y-1.5">
                   {sources.map((s) => (
                     <button
-                      key={`${s.node.id}-${s.mode}`}
+                      key={s.edge.id}
                       type="button"
                       onClick={() => focusVariable(s.node.id)}
                       title={`Go to ${s.node.path}`}
@@ -477,7 +508,7 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
                       <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] font-semibold text-fg">
                         {s.node.path}
                       </span>
-                      <span className="shrink-0 text-[10px] text-fg-mute">{modeWord(s.mode)}</span>
+                      <span className="shrink-0 text-[10px] text-fg-mute">{modeWord(s.edge)}</span>
                     </button>
                   ))}
                 </div>
@@ -491,19 +522,22 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
                 scopeNote={scopeNote}
                 onPick={applyAlias}
               />
-              {sources.length > 0 ? (
+              {/* A component property is always wired to something, so what's
+                  on offer here isn't "cut" but "put back": it only appears
+                  once there's an override of yours to drop. */}
+              {sources.length > 0 && (node.tier !== "usage" || node.usage?.overridden) ? (
                 <button
                   type="button"
                   onClick={detach}
                   title={
                     node.tier === "usage"
-                      ? "Remove the binding — the property returns to its default"
-                      : "Cut the link and freeze the colour it resolves to right now"
+                      ? "Drop your override — the property goes back to the binding it ships with"
+                      : "Cut the link and freeze the value it resolves to right now"
                   }
                   className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-line bg-ink px-2 py-1.5 text-[11px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
                 >
                   <Unlink size={11} />
-                  {node.tier === "usage" ? "Clear binding" : "Unlink — keep the current colour"}
+                  {node.tier === "usage" ? "Back to default" : "Unlink — keep the current value"}
                 </button>
               ) : null}
             </div>
@@ -515,10 +549,12 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
           <div>
             <SectionTitle>Value</SectionTitle>
             <div className="space-y-2">
-              {(["light", "dark"] as PreviewMode[]).map((m) => (
-                <div key={m}>
-                  <p className="mb-1 text-[10px] uppercase tracking-[0.07em] text-fg-mute">{m}</p>
-                  <ModeValueEditor mode={m} token={token} />
+              {modeDefs.map((m) => (
+                <div key={m.id}>
+                  <p className="mb-1 text-[10px] uppercase tracking-[0.07em] text-fg-mute">
+                    {m.name}
+                  </p>
+                  <ModeValueEditor mode={m.id} token={token} />
                 </div>
               ))}
             </div>
@@ -532,8 +568,9 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
               </Row>
               {node.tier === "primitive" ? (
                 <p className="pt-1 text-[11px] leading-relaxed text-fg-mute">
-                  Primitives hold raw values — edit this one on its own step, and everything aliased
-                  to it follows.
+                  Primitives are generated scales — tune this one where it&apos;s generated
+                  {home ? ` (the ${home.stepLabel} step)` : ""}, and everything aliased to it
+                  follows.
                 </p>
               ) : null}
             </div>
@@ -543,7 +580,9 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
         {/* ── the full chain, in the direction value travels ── */}
         {chain.length > 1 ? (
           <div>
-            <SectionTitle>The whole chain ({displayMode})</SectionTitle>
+            <SectionTitle>
+              The whole chain ({modeDefs.find((d) => d.id === displayMode)?.name ?? displayMode})
+            </SectionTitle>
             <div className="space-y-0.5">
               {chain.map((link, i) => {
                 const linkNode = link.nodeId ? graph.nodes[link.nodeId] : undefined;
@@ -590,8 +629,8 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
           <SectionTitle>What depends on this {consumers.length > 0 ? `(${consumers.length})` : ""}</SectionTitle>
           {consumers.length === 0 ? (
             <p className="text-[11px] leading-relaxed text-fg-mute">
-              Nothing points here yet. Drag this row&apos;s right handle onto a role or a component
-              property to wire it up.
+              Nothing points here yet. On the map, take this row&apos;s right handle onto a role or
+              a component property to wire it up.
             </p>
           ) : (
             <div className="space-y-0.5">
@@ -639,18 +678,36 @@ export function VariableInspector({ graph }: { graph: VariableGraph }) {
           </button>
         ) : null}
 
-        {node.tier === "primitive" && node.kind === "color" ? (
-          <button
-            type="button"
-            onClick={() => {
-              setPendingFocus({ step: "colour", anchor: node.path.split("-").slice(0, -1).join("-") });
-              goToStep("colour");
-            }}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-[11px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
-          >
-            <ArrowUpRight size={11} />
-            Edit this ramp in the Colour step
-          </button>
+        {/* Primitives are generated scales, so the inspector doesn't pretend to
+            edit them — it names the two places that do and goes there. Every
+            kind, not just colour: a radius scale was as much a dead end here as
+            a ramp was. */}
+        {node.tier === "primitive" && home ? (
+          <div className="flex gap-1.5">
+            {home.section ? (
+              <button
+                type="button"
+                onClick={() => focusTokenSection(home.section!)}
+                title={`Open the Tokens panel at ${home.sectionLabel} — where steps are added and removed`}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-[11px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+              >
+                <Plus size={11} />
+                Add / remove
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                if (home.anchor) setPendingFocus({ step: home.step, anchor: home.anchor });
+                goToStep(home.step);
+              }}
+              title={`Tune these values on the ${home.stepLabel} step`}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-[11px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
+            >
+              <ArrowUpRight size={11} />
+              Edit in {home.stepLabel}
+            </button>
+          </div>
         ) : null}
 
         {token ? (

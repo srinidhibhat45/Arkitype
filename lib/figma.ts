@@ -3,10 +3,19 @@ import {
   PreviewMode,
   RADII_NAMES,
   countTokens,
+  elevationOf,
+  modeDefsOf,
   shadowToCss,
 } from "@/store/useDesignSystem";
 import { hexToFigmaRgba, rampStepLabels } from "@/lib/color";
-import { resolveToken, resolveTokenValue } from "@/lib/tokens";
+import {
+  describeTokenValue,
+  resolveToken,
+  resolveTokenValue,
+  splitAlpha,
+  splitTypedValue,
+  tokenKind,
+} from "@/lib/tokens";
 import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 import {
   COMPONENT_SPECS,
@@ -160,8 +169,8 @@ export interface FigmaBundle {
 }
 
 const VALUE_MODE = "mode:value";
-const LIGHT_MODE = "mode:light";
-const DARK_MODE = "mode:dark";
+/** Figma collections carry one mode per column the file has. */
+const figmaModeId = (id: PreviewMode): string => `mode:${id}`;
 
 function getVariantDimensions(spec: ComponentSpec): Record<string, string[]> {
   const dims: Record<string, string[]> = {};
@@ -936,11 +945,11 @@ export function compileFigmaBundle(
     });
   });
 
-  // Elevation — per-mode shadow strings (light + dark).
-  (["light", "dark"] as const).forEach((elevMode) => {
-    primitives.elevation[elevMode].forEach((def) => {
+  // Elevation — one ramp per mode, since every mode owns its own.
+  modeDefsOf(semantics).forEach((m) => {
+    elevationOf(primitives, semantics, m.id).forEach((def) => {
       primitiveVars.push({
-        name: `shadow/${elevMode}/${def.name}`,
+        name: `shadow/${m.id}/${def.name}`,
         resolvedType: "STRING",
         scopes: ["EFFECT_COLOR"],
         valuesByMode: { [VALUE_MODE]: shadowToCss(def) },
@@ -974,11 +983,28 @@ export function compileFigmaBundle(
     });
   });
 
-  /* ── Collection 2: Semantics (Light + Dark modes) ── */
+  /* ── Collection 2: Semantics (one Figma mode per mode in the file) ── */
+  const semanticModes = modeDefsOf(semantics);
+  /** Where each typed value's primitive lives in the collection above. */
+  const TYPED_FIGMA_PATH: Record<
+    string,
+    (rest: string, p: typeof primitives) => string | null
+  > = {
+    space: (rest) => `space/${rest}`,
+    radius: (rest, p) => {
+      const names = p.radiusNames ?? [...RADII_NAMES];
+      return `radius/${names.includes(rest) ? rest : (names[Number(rest)] ?? rest)}`;
+    },
+    text: (rest) => `type/size/${rest}`,
+    weight: (rest) => `font/weight/${rest}`,
+    font: (rest) => `font/${rest}`,
+    duration: (rest) => `motion/duration/${rest}`,
+    ease: (rest) => `motion/easing/${rest}`,
+    shadow: () => null, // shadows are per-appearance ramps, not one variable
+    px: () => null,
+  };
   const semanticVars: FigmaVariable[] = Object.keys(semantics.modes.light).map(
     (token) => {
-      const lightRef = semantics.modes.light[token];
-      const darkRef = semantics.modes.dark[token];
       // A clean primitive ref ("brand-600") aliases to that primitive variable,
       // keeping the live link in Figma. Everything else — a raw hex, an "@role"
       // reference, or anything carrying a "/NN" alpha suffix — is baked to its
@@ -995,18 +1021,55 @@ export function compileFigmaBundle(
         }
         return hexToFigmaRgba(resolveTokenValue(state, mode, ref));
       };
+      // A token that carries something other than colour — a component's
+      // corner, its padding, its type size — exports as that type, aliased to
+      // the primitive it names so the link survives the round trip.
+      const kind = tokenKind(state, token);
+      if (kind !== "color") {
+        const ref = semantics.modes.light?.[token] ?? "";
+        const typed = splitTypedValue(splitAlpha(ref.trim()).base);
+        const alias = typed ? TYPED_FIGMA_PATH[typed.prefix]?.(typed.rest, primitives) : null;
+        const float = kind !== "font" && kind !== "ease" && kind !== "shadow";
+        // FLOAT wants a number: "8px" is how a person reads it, 8 is what Figma
+        // binds to a corner radius.
+        const literal = (m: string): FigmaVariableValue => {
+          const shown = describeTokenValue(primitives, semantics.modes[m]?.[token] ?? ref);
+          return float ? (parseFloat(shown) || 0) : shown;
+        };
+        return {
+          name: token.replace(/-/g, "/"),
+          resolvedType: float ? ("FLOAT" as const) : ("STRING" as const),
+          scopes: ["ALL_SCOPES"] as const,
+          valuesByMode: Object.fromEntries(
+            semanticModes.map((m) => [
+              figmaModeId(m.id),
+              alias ? ({ type: "VARIABLE_ALIAS", id: alias } as FigmaVariableValue) : literal(m.id),
+            ])
+          ),
+          resolvedValuesByMode: Object.fromEntries(
+            semanticModes.map((m) => [
+              figmaModeId(m.id),
+              describeTokenValue(primitives, semantics.modes[m.id]?.[token] ?? ref),
+            ])
+          ),
+        };
+      }
+
+      const valuesByMode: Record<string, FigmaVariableValue> = {};
+      const resolvedValuesByMode: Record<string, string> = {};
+      for (const m of semanticModes) {
+        // A token the user only authored in some modes falls back to light
+        // rather than exporting a hole.
+        const ref = semantics.modes[m.id]?.[token] ?? semantics.modes.light?.[token] ?? "";
+        valuesByMode[figmaModeId(m.id)] = bind(ref, m.id);
+        resolvedValuesByMode[figmaModeId(m.id)] = resolveToken(state, m.id, token);
+      }
       return {
         name: token.replace(/-/g, "/"),
         resolvedType: "COLOR",
         scopes: ["ALL_SCOPES"],
-        valuesByMode: {
-          [LIGHT_MODE]: bind(lightRef, "light"),
-          [DARK_MODE]: bind(darkRef, "dark"),
-        },
-        resolvedValuesByMode: {
-          [LIGHT_MODE]: resolveToken(state, "light", token),
-          [DARK_MODE]: resolveToken(state, "dark", token),
-        },
+        valuesByMode,
+        resolvedValuesByMode,
       };
     }
   );
@@ -1148,10 +1211,7 @@ export function compileFigmaBundle(
       {
         name: "Arkitype / Semantics",
         id: "collection:semantics",
-        modes: [
-          { modeId: LIGHT_MODE, name: "Light" },
-          { modeId: DARK_MODE, name: "Dark" },
-        ],
+        modes: semanticModes.map((m) => ({ modeId: figmaModeId(m.id), name: m.name })),
         variables: semanticVars,
       },
     ],

@@ -57,6 +57,16 @@
   --c-tier-semantic: 104 71 219; /* violet, #6847db */
   --c-tier-component: 173 100 6; /* amber, #ad6406 */
   --c-tier-usage: 190 50 106; /* rose, #be326a */
+
+  /*
+   * Connections at rest, on the Variables map. Deliberately *not* a tier hue:
+   * the lanes already say which tier a connection leaves, so painting the
+   * connections too spent four colours on nothing and left the canvas a
+   * rainbow you couldn't trace. One neutral ink at rest; tier colour is
+   * reserved for the chain you're actually pointing at, where it means
+   * "this one" instead of "some one".
+   */
+  --c-wire: 116 116 126; /* #74747e — reads on the light canvas, #e8e8eb */
   color-scheme: light;
 }
 
@@ -77,6 +87,9 @@
   --c-tier-semantic: 154 130 255; /* #9a82ff */
   --c-tier-component: 232 163 61; /* #e8a33d */
   --c-tier-usage: 244 122 165; /* #f47aa5 */
+
+  /* Lifted, because the dark canvas is #0d0d0f — darker than --c-ink. */
+  --c-wire: 138 138 150; /* #8a8a96 */
   color-scheme: dark;
 }
 

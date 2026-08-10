@@ -19,7 +19,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
+import { PreviewMode, modeBase, useDesignSystem } from "@/store/useDesignSystem";
 import { resolveRef, resolveToken, rv, sv, tv } from "@/lib/tokens";
 import { bestTextOn, contrastRatio } from "@/lib/color";
 import { CState, NO_BINDINGS, Resolver, createChildResolver, resolveOptions, useComponentBindings, useVariantComponentBindings } from "@/lib/componentSchema";
@@ -107,7 +107,7 @@ export function TokenButton({
   // Resolve a token (semantic role OR a raw ramp step like "error-500") to its
   // concrete hex for the active preview mode, so a fill can guarantee readable text.
   const hexOf = (token: string): string =>
-    semantics.modes[mode][token] !== undefined
+    semantics.modes[mode]?.[token] !== undefined
       ? resolveToken({ primitives, semantics }, mode, token)
       : resolveRef(primitives, token);
   // A fill's label: keep the intended on-action colour when it clears AA against
@@ -116,6 +116,10 @@ export function TokenButton({
   const readableOn = (bgToken: string, preferred = "text-on-action"): string =>
     contrastRatio(hexOf(bgToken), hexOf(preferred)) >= 4.5 ? tv(preferred) : bestTextOn(hexOf(bgToken));
 
+  // Fallbacks that aren't tokens (a disabled fill, a wash off a raw ramp) ask
+  // how the mode *looks*, not what it's called.
+  const base = modeBase(semantics, mode);
+
   let defBg = "transparent";
   let defBorder = "transparent";
   let defColor = tv("action-primary-default");
@@ -123,7 +127,7 @@ export function TokenButton({
 
   if (disabled) {
     if (variant === "filled" || variant === "error" || variant === "warning" || variant === "success") {
-      defBg = mode === "dark" ? tv("neutral-700") : tv("neutral-300");
+      defBg = base === "dark" ? tv("neutral-700") : tv("neutral-300");
       defColor = tv("text-muted");
     } else if (variant === "tonal" || variant === "elevated") {
       defBg = tv("surface-subtle");
@@ -162,15 +166,15 @@ export function TokenButton({
       defBg = state === "hover" ? tv("surface-subtle") : "transparent";
       defColor = tv("text-link");
     } else if (variant === "error") {
-      const bgTok = state === "hover" ? (mode === "dark" ? "error-400" : "error-700") : state === "active" ? (mode === "dark" ? "error-300" : "error-800") : (mode === "dark" ? "error-500" : "error-600");
+      const bgTok = state === "hover" ? (base === "dark" ? "error-400" : "error-700") : state === "active" ? (base === "dark" ? "error-300" : "error-800") : (base === "dark" ? "error-500" : "error-600");
       defBg = tv(bgTok);
       defColor = readableOn(bgTok);
     } else if (variant === "warning") {
-      const bgTok = state === "hover" ? (mode === "dark" ? "warning-400" : "warning-700") : state === "active" ? (mode === "dark" ? "warning-300" : "warning-800") : (mode === "dark" ? "warning-500" : "warning-600");
+      const bgTok = state === "hover" ? (base === "dark" ? "warning-400" : "warning-700") : state === "active" ? (base === "dark" ? "warning-300" : "warning-800") : (base === "dark" ? "warning-500" : "warning-600");
       defBg = tv(bgTok);
       defColor = readableOn(bgTok);
     } else if (variant === "success") {
-      const bgTok = state === "hover" ? (mode === "dark" ? "success-400" : "success-700") : state === "active" ? (mode === "dark" ? "success-300" : "success-800") : (mode === "dark" ? "success-500" : "success-600");
+      const bgTok = state === "hover" ? (base === "dark" ? "success-400" : "success-700") : state === "active" ? (base === "dark" ? "success-300" : "success-800") : (base === "dark" ? "success-500" : "success-600");
       defBg = tv(bgTok);
       defColor = readableOn(bgTok);
     }
@@ -464,6 +468,7 @@ export function TokenAlert({
 }) {
   const r = resolve;
   const colors = useDesignSystem((s) => s.primitives.colors);
+  const alertSemantics = useDesignSystem((s) => s.semantics);
   const cfg = useDesignSystem((s) => s.components.alert);
   const instances = cfg?.instances;
 
@@ -492,10 +497,12 @@ export function TokenAlert({
           ? "warning"
           : "error";
   const ramp = colors[slot];
-  // Mode-aware primitive steps: pale wash + strong text in light, inverse in dark.
-  const wash = mode === "light" ? ramp[0] : ramp[9];
-  const washBorder = mode === "light" ? ramp[2] : ramp[7];
-  const washText = mode === "light" ? ramp[8] : ramp[1];
+  // Appearance-aware primitive steps: pale wash + strong text on a light frame,
+  // inverse on a dark one — whatever the mode happens to be called.
+  const alertBase = modeBase(alertSemantics, mode);
+  const wash = alertBase === "light" ? ramp[0] : ramp[9];
+  const washBorder = alertBase === "light" ? ramp[2] : ramp[7];
+  const washText = alertBase === "light" ? ramp[8] : ramp[1];
   const accentC = ramp[5];
 
   const opts = resolveOptions("alert", cfg?.properties);

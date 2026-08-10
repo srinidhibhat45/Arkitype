@@ -416,7 +416,15 @@ export default function DocsPage() {
             <p>
               Every step shares the same three-part frame: a rail on the left for navigating and
               editing tokens, the canvas in the middle, and an inspector on the right for whatever is
-              currently selected. Both side panels drag to resize, and the width is remembered.
+              currently selected. Both side panels drag to resize, and the width is remembered — and
+              either can be put away entirely when you want the room. A panel switch sits at each end
+              of the top bar — over the panel it controls — and <Key>{"⌘\\"}</Key> clears both at once (and brings them back),
+              and the choice sticks across reloads. Nothing is narrowed to a strip of icons: a panel
+              is either there or it isn&apos;t, and the switch that returns it is in the top bar,
+              which never goes anywhere. Hiding the inspector on a step keeps{" "}
+              <strong className="font-medium text-fg">Back</strong> and{" "}
+              <strong className="font-medium text-fg">Continue</strong> — they reappear as a small
+              pair in the canvas&apos;s bottom-right corner.
             </p>
 
             <SubHeading>The top bar</SubHeading>
@@ -435,12 +443,16 @@ export default function DocsPage() {
                   body: "A four-stop tour of the frame itself (rail, canvas, inspector, top bar). It's always available, not just on first run.",
                 },
                 {
+                  label: "The panel switches — one at each end",
+                  body: "The switch at the far left hides and shows the left rail; the one at the far right does the same for the inspector. They sit over the panels they control rather than in the middle of the chrome, so which is which needs no explaining. ⌘\\ puts both away for a full-width canvas and brings them back the same way.",
+                },
+                {
                   label: "Sun / moon — Appearance",
                   body: "Themes the tool. This is not your design system's light and dark mode, and changing it doesn't touch a single token.",
                 },
                 {
                   label: "Preview: Light / Dark",
-                  body: "This one is your system's mode. Everything on the canvas — components, previews, the Variables table's two columns — resolves through it. Check both while you work; a system that only looks considered in one theme isn't finished.",
+                  body: "This one is your system's mode — light, dark, and any further one you've added in Variables. Everything on the canvas resolves through it. Check each while you work; a system that only looks considered in one theme isn't finished.",
                 },
                 {
                   label: "Ship",
@@ -814,22 +826,30 @@ export default function DocsPage() {
               it.
             </p>
             <p>
-              <strong className="font-medium text-fg">New set of variables</strong> — in the rail, in
-              the table&apos;s sets list, and at the foot of the map — starts an empty set, or drops
-              in a ready-made one. The ready-made sets (a focus ring, a disabled grey, six chart
+              <strong className="font-medium text-fg">New set of variables</strong> — in the rail, on
+              each tier heading in the table&apos;s sets list, on each band&apos;s header on the map,
+              and at the foot of the map — starts an empty set, or drops in a ready-made one. Asking
+              from inside a band opens the panel already on that tier. The ready-made sets (a focus ring, a disabled grey, six chart
               colours, a tooltip&apos;s own colours…) arrive wired to your ramps and roles rather
               than to invented values, and land as a single edit, so one ⌘Z puts it back.
             </p>
             <p>
               Value flows left to right through four lanes. Each lane has its own colour and a
               number, and both travel with it everywhere — on the map, in the rail, and in the
-              inspector — so a variable is recognisable as the same thing wherever you meet it.
+              inspector — so a variable is recognisable as the same thing wherever you meet it. The
+              map draws those lanes one of two ways, and the toggle is in its top-right corner:{" "}
+              <strong className="font-medium text-fg">Lanes</strong> gives each tier a single column
+              in a fixed order, so a set is always where you last saw it and every connection runs
+              cleanly between two columns — at the price of a map several screens deep.{" "}
+              <strong className="font-medium text-fg">Packed</strong> wraps each tier into as many
+              columns as it needs, so a whole system fits on one screen. The order is the same
+              either way: down a column, then across.
             </p>
             <FieldList
               items={[
                 {
                   label: "1 · Primitives",
-                  body: "Raw values — the ramps and scales everything else is built from. They hold literals, so nothing can feed them.",
+                  body: "Raw values — the ramps and scales everything else is built from. They hold literals, so nothing can feed them. They're also generated rather than typed, so Variables doesn't pretend to edit them: every primitive set carries “Add or remove steps” (opens the Tokens panel at that scale) and “Edit in <step>” (tunes its values where they're generated).",
                 },
                 {
                   label: "2 · Semantic roles",
@@ -837,7 +857,7 @@ export default function DocsPage() {
                 },
                 {
                   label: "3 · Component tokens",
-                  body: "A component's own names, usually pointed at a role.",
+                  body: "A component's own names — not only its colours. A Button set carries its corner, its padding, its gap and its type alongside its fill, each pointed at the primitive scale of its own type (radius:md, space:4, text:sm), so everything a component is lives in one place.",
                 },
                 {
                   label: "4 · Component properties",
@@ -850,8 +870,8 @@ export default function DocsPage() {
             <p>
               Sets down the left, grouped by those four tiers with a count each. Pick one and it
               fills the columns: a <strong className="font-medium text-fg">Name</strong> column, then
-              one column per mode — Light and Dark for a role or component token, a single read-only
-              Value for a primitive, and <em>Bound to</em> for a component property.
+              one column per mode for a role or component token, a single read-only Value for a
+              primitive, and <em>Bound to</em> for a component property.
             </p>
             <FieldList
               items={[
@@ -861,24 +881,62 @@ export default function DocsPage() {
                 },
                 {
                   label: "A value states what it is",
-                  body: "A chip carrying a swatch and either the name it follows (an alias), or its hex (a literal), plus an alpha percentage when there is one. Aliases read as names on purpose — that's the whole reason to alias.",
+                  body: "A chip carrying a mark — a swatch for a colour, its type's icon for anything else — and either the name it follows (an alias), its hex (a literal), or the step it names with the px it currently works out to. Aliases read as names on purpose: that's the whole reason to alias.",
                 },
                 {
                   label: "Clicking a value opens both ways to set it",
-                  body: "A colour well and a free-text field on top — a ramp reference like brand-600, an @role, or a raw hex — and a searchable list of every variable that could legally feed this one below. Nothing in that list can produce an illegal link, so there's no error to recover from.",
+                  body: "A free-text field on top — a ramp reference like brand-600, an @role, a raw hex, or a typed reference like radius:md — with a colour well beside it where a colour is what's being held, and a searchable list of every variable that could legally feed this one below. The list only ever offers variables of the same type, so there's no illegal link to recover from.",
                 },
                 {
                   label: "Names, adds and deletes",
-                  body: "Rename a variable in place and every reference and component binding follows. Hovering a row offers copy and delete; the set header renames or deletes the whole set, and “+ Variable” adds to it.",
+                  body: "Rename a variable in place and every reference and component binding follows. Hovering a row offers copy and delete; the set header renames or deletes the whole set, and “+ Variable” adds to it — picking what the new one holds (a colour, a spacing step, a radius, a type size, a weight, a family, an elevation) before you name it.",
+                },
+              ]}
+            />
+
+            <SubHeading>Modes are columns, and you can add them</SubHeading>
+            <p>
+              Light and dark are the two every system starts with, not the two it&apos;s limited to.{" "}
+              <strong className="font-medium text-fg">+ Mode</strong> in the set header adds a
+              column — a brand theme, a high-contrast pass, a print variant — and every variable in
+              the file gains its own value in it. A new mode starts as a copy of an existing one
+              rather than empty, because an empty column is every token in the file dangling at
+              once — but it is a copy, not a link: the two are independent from the moment it
+              exists, right down to their own elevation ramps.
+            </p>
+            <FieldList
+              items={[
+                {
+                  label: "The column header is the mode",
+                  body: "Its chevron opens rename, duplicate and delete. That's deliberate: the place you notice you want another mode is while looking at the ones you have.",
+                },
+                {
+                  label: "Every mode stands on its own",
+                  body: "A mode is not a variant of Light or Dark. It owns its column of values and its own elevation ramp — Dusk tunes its own depth rather than borrowing Dark’s — and nothing flows between two modes after the one-time copy that seeds a new one.",
+                },
+                {
+                  label: "Reads as — Auto, Light or Dark",
+                  body: "The only question left for anything outside the token map (the frame a preview sits on, which end of a raw ramp is the wash) is whether a mode reads light or dark. Auto answers it from the mode’s own surface-base, so you never declare a parent; pin it by hand only when your surfaces don’t say.",
+                },
+                {
+                  label: "Light and Dark can't be deleted",
+                  body: "They can be renamed, but not removed — not because other modes derive from them, but because the two are the file’s fixed export contract: the :root/.dark pair every CSS export writes, and the pair the contrast audit reports against.",
+                },
+                {
+                  label: "Every mode ships",
+                  body: "Extra modes export as [data-ark-mode=\"<id>\"] blocks in the CSS, as their own Figma variable modes in the bundle, and as their own section in the generated docs. The preview switcher in the top bar lists them all.",
                 },
               ]}
             />
 
             <SubHeading>Creating a set</SubHeading>
             <p>
-              <strong className="font-medium text-fg">New set of variables</strong> appears in three
-              places — the rail, the top of the table&apos;s sets list, and the foot of the map — and
-              opens the same panel. Name an empty set (a{" "}
+              <strong className="font-medium text-fg">New set of variables</strong> opens the same
+              panel from everywhere it appears: the rail, the top of the table&apos;s sets list, the
+              <em> + </em> on each tier heading beside it, the{" "}
+              <strong className="font-medium text-fg">New set</strong> button on each band&apos;s
+              header on the map, and the foot of the map. The two that sit inside a tier open the
+              panel on that tier. Name an empty set (a{" "}
               <strong className="font-medium text-fg">Role</strong> set or a{" "}
               <strong className="font-medium text-fg">Component</strong> one), or take a ready-made
               one: Focus &amp; overlay, Selection &amp; highlight, Disabled, Chart, Badge, Table,
@@ -893,55 +951,69 @@ export default function DocsPage() {
               <Key>⌘Z</Key> removes the set and everything in it.
             </Callout>
 
-            <SubHeading>Reading the wires</SubHeading>
+            <SubHeading>Reading the connections</SubHeading>
             <p>
-              A wire is painted in the lane of the value it <em>carries</em> and points at whatever
-              consumes it, so its colour answers &ldquo;where did this come from&rdquo; without a
-              click. At rest a wire is quiet and ends in a small dot at each end; point at a row or a
-              card and its whole chain lights up, gains an arrow, and spells out the dashes below.
-              A full system is several hundred aliases, and this is what keeps it a map rather than
-              a hairball.
+              A full system is several hundred aliases, and one hairline per alias is a weave rather
+              than a map — no single wire can be followed, and hushing them only makes a fainter
+              weave. So at rest the map doesn&apos;t draw wires at all. It draws one{" "}
+              <em>ribbon</em> per pair of sets: coloured by the lane its values come from, as thick
+              as how many run along it, arrowed the way they travel, and labelled with that count.
+              Twenty ribbons say what three hundred wires couldn&apos;t.
+            </p>
+            <p>
+              A ribbon isn&apos;t just a summary you point at —{" "}
+              <strong className="font-medium text-fg">click one and it opens</strong>, listing every
+              link it carries by name. Each row in that list jumps to the variable or cuts the link
+              outright, which is the answer to a count that tells you five things exist and leaves
+              you to find them. Pointing at a card or a row does the other half: the ribbons step
+              back and that one chain is drawn as its actual wires.
             </p>
             <FieldList
               items={[
-                { label: "Solid", body: "The same source in both light and dark" },
                 {
-                  label: "Long dashes / short dots",
-                  body: "Light-only and dark-only. A token whose two modes point at different primitives draws both, landing side by side on the row.",
-                },
-                { label: "Fine dots", body: "A component-property binding" },
-                {
-                  label: "Wires: All / Calm / Focus",
-                  body: "How much is drawn at rest. Calm is the default — everything is there, hushed. All puts every wire at full strength when you want the whole weave; Focus draws nothing but the chain under your cursor.",
+                  label: "Solid",
+                  body: "The alias holds in every mode the file has — the ordinary case.",
                 },
                 {
-                  label: "Elbow / Curve",
-                  body: "Two routings, top-right of the canvas. Elbows share a trunk, so a bundle leaving one ramp can be traced; curves keep each wire distinct when two cards nearly overlap.",
+                  label: "Dashed",
+                  body: "It doesn't. A token pointing somewhere different in one mode draws a separate link for each group, landing side by side on the row, and the opened ribbon labels each with how many modes it covers.",
+                },
+                {
+                  label: "Links: Summary / All",
+                  body: "What's drawn at rest. Summary is the default — ribbons, opening into wires wherever you point or click. All draws every wire separately, for when you do want the whole weave.",
                 },
                 {
                   label: "Folding a card",
-                  body: "The chevron on any card header (or a double-click on it) collapses the card to its header, and every wire into or out of it gathers onto that one point. Fold-all, next to the routing controls, does the whole file at once — the fastest way to see the shape of a system.",
+                  body: "The chevron on any card header (or a double-click on it) collapses the card to its header, and every link into or out of it gathers onto that one point. Fold-all, in the same toolbar, does the whole file at once — the fastest way to see the shape of a system.",
                 },
               ]}
             />
 
             <SubHeading>Wiring and unwiring</SubHeading>
             <p>
-              Drag from a row&apos;s right-hand handle onto any row to its right to link them —
-              illegal drops (a radius into a colour role, or anything that would loop back on
-              itself) are refused before you release. Hovering a wire offers a cut: on a token that
-              detaches the link and freezes the colour it currently resolves to, so the system looks
-              identical the instant after. The inspector does the same work in words — it states
-              what the selected variable follows, offers a searchable list of everything that could
-              legally feed it, and shows the whole chain in the direction the value travels. In the
-              table, that same work is a click on the value.
+              Take a row&apos;s right-hand handle and either drag it onto a target or let go and
+              click one — both work, because dragging is quicker between neighbours and clicking is
+              the only one that survives having to scroll on the way. While a link is in flight,{" "}
+              <strong className="font-medium text-fg">every row that could legally take it stays
+              lit and the rest fade</strong>, so a drop is never a guess: the rule (a colour takes a
+              colour, a primitive holds literals, a link can&apos;t loop back on itself) is answered
+              up front rather than after you release. <Key>Esc</Key> cancels.
             </p>
             <p>
-              One control worth knowing before you drag anything:{" "}
-              <strong className="font-medium text-fg">Editing — Light / Dark / Both</strong>, at the
-              top of the rail, decides which mode a new wire writes to <em>and</em> which wires are
-              drawn. On Both (the default) a link lands in light and dark together; on a single mode
-              it lands only there, and the map shows only that mode&apos;s wiring.
+              Hovering a wire offers a cut, and so does every row of an opened ribbon. On a token, a
+              cut detaches the link and freezes the colour it currently resolves to, so the system
+              looks identical the instant after. The inspector does the same work in words — it
+              states what the selected variable follows, offers a searchable list of everything that
+              could legally feed it, and shows the whole chain in the direction the value travels. In
+              the table, that same work is a click on the value.
+            </p>
+            <p>
+              One control worth knowing before you wire anything:{" "}
+              <strong className="font-medium text-fg">Editing</strong>, in the map&apos;s toolbar and
+              at the top of the rail, decides which mode a new link writes to <em>and</em> which
+              links are drawn. On <em>All modes</em> (the default) a link lands in every mode at
+              once; pick a single one and it lands only there, and the map shows only that
+              mode&apos;s wiring.
             </p>
 
             <SubHeading>Getting around the canvas</SubHeading>
@@ -1032,7 +1104,8 @@ export default function DocsPage() {
                     <td className="py-3 pr-4 text-fg-dim">{`{name}-design-system.json`}</td>
                     <td className="py-3 text-fg-dim">
                       Two Figma variable collections — Primitives (single mode) and
-                      Semantics (Light/Dark modes, aliased to primitives) — plus a
+                      Semantics (one Figma mode per mode in your file, aliased to
+                      primitives) — plus a
                       components array and a page per included component. Feed it to{" "}
                       <a
                         href="#figma-plugin"
@@ -1249,7 +1322,7 @@ export default function DocsPage() {
               items={[
                 {
                   label: "Variables",
-                  body: "Primitives (single mode) and Semantics (Light/Dark, aliased to primitives) — real Figma variables, so a mode swap on a frame reskins everything bound to them.",
+                  body: "Primitives (single mode) and Semantics (one Figma mode per mode in your file, aliased to primitives) — real Figma variables, so a mode swap on a frame reskins everything bound to them.",
                 },
                 {
                   label: "A page per component",
@@ -1333,11 +1406,11 @@ export default function DocsPage() {
                   label: "The Variables map looks like spaghetti. What do I do?",
                   body: (
                     <>
-                      Three levers, in the order worth trying them. Fold the cards you aren&apos;t
-                      reading — the fold-all button collapses every card to its header and gathers its
-                      wires onto one point. Drop{" "}
-                      <strong className="font-medium text-fg">Wires</strong> from Calm to Focus, which
-                      draws only the chain under your cursor. And turn on{" "}
+                      First check that <strong className="font-medium text-fg">Links</strong> is on
+                      Summary rather than All — Summary is the default, and it draws one ribbon per
+                      pair of sets instead of one hairline per alias. Past that, two levers. Fold
+                      the cards you aren&apos;t reading — the fold-all button collapses every card to
+                      its header and gathers its connections onto one point. And turn on{" "}
                       <em>Hide unused primitives</em> in the rail, since on most files the majority of
                       ramp steps aren&apos;t referenced yet.
                     </>

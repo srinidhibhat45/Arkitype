@@ -13,6 +13,8 @@ import { useState } from "react";
 import type { PreviewMode, ShadowDef, ShadowField } from "@/store/useDesignSystem";
 import {
   RADII_NAMES,
+  elevationOf,
+  modeDefsOf,
   shadowToCss,
   useDesignSystem,
 } from "@/store/useDesignSystem";
@@ -28,11 +30,19 @@ import { TokenButton } from "@/components/factory/CoreComponents";
 import { rv, sv, tv } from "@/lib/tokens";
 import { Plus, Trash2 } from "lucide-react";
 
-/* ── elevation preview: every level on a real surface, both modes at once ── */
+/* ── elevation preview: every level on a real surface, every mode at once ── */
 
-function ElevationPreview({ mode, levels }: { mode: PreviewMode; levels: ShadowDef[] }) {
+function ElevationPreview({
+  mode,
+  label,
+  levels,
+}: {
+  mode: PreviewMode;
+  label: string;
+  levels: ShadowDef[];
+}) {
   return (
-    <ThemeFrame mode={mode} label={mode === "light" ? "Light" : "Dark"}>
+    <ThemeFrame mode={mode} label={label}>
       <div className="flex flex-wrap gap-5 p-6" style={{ background: tv("surface-base") }}>
         {levels.map((def, i) => (
           <div key={i} className="flex flex-col items-center gap-2">
@@ -62,7 +72,8 @@ const NUM_FIELDS: Array<{ key: ShadowField; label: string; min: number; max: num
 ];
 
 function ElevationEditor() {
-  const elevation = useDesignSystem((s) => s.primitives.elevation);
+  const primitives = useDesignSystem((s) => s.primitives);
+  const semantics = useDesignSystem((s) => s.semantics);
   const currentMode = useDesignSystem((s) => s.currentPreviewMode);
   const setShadowField = useDesignSystem((s) => s.setShadowField);
   const setShadowColor = useDesignSystem((s) => s.setShadowColor);
@@ -70,12 +81,18 @@ function ElevationEditor() {
   const addLevel = useDesignSystem((s) => s.addLevel);
   const removeLevel = useDesignSystem((s) => s.removeLevel);
 
+  // One ramp per mode, not per appearance: Dusk tunes its own depth rather
+  // than inheriting Dark's. The rungs stay shared, so a level is the same
+  // level whichever column you're editing.
+  const modes = modeDefsOf(semantics);
   const [editMode, setEditMode] = useState<PreviewMode>(currentMode);
   const [sel, setSel] = useState(0);
 
-  const levels = elevation[editMode];
+  const active = modes.some((m) => m.id === editMode) ? editMode : (modes[0]?.id ?? "light");
+  const levels = elevationOf(primitives, semantics, active);
   const idx = Math.min(sel, levels.length - 1);
   const level = levels[idx];
+  if (!level) return null;
 
   return (
     <div className="rounded-xl border border-line p-4">
@@ -83,11 +100,8 @@ function ElevationEditor() {
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-fg-mute">Editing</span>
           <Segmented
-            options={[
-              { label: "Light", value: "light" as PreviewMode },
-              { label: "Dark", value: "dark" as PreviewMode },
-            ]}
-            value={editMode}
+            options={modes.map((m) => ({ label: m.name, value: m.id }))}
+            value={active}
             onChange={setEditMode}
           />
         </div>
@@ -142,7 +156,7 @@ function ElevationEditor() {
               value={level[f.key]}
               onChange={(e) => {
                 const v = Number(e.target.value);
-                if (Number.isFinite(v)) setShadowField(editMode, idx, f.key, v);
+                if (Number.isFinite(v)) setShadowField(active, idx, f.key, v);
               }}
               className="h-8 w-full rounded-md border border-line bg-ink-panel px-2 font-mono text-[12px] text-fg focus:border-line-strong focus:outline-none"
             />
@@ -159,7 +173,7 @@ function ElevationEditor() {
             value={level.opacity}
             onChange={(e) => {
               const v = Number(e.target.value);
-              if (Number.isFinite(v)) setShadowField(editMode, idx, "opacity", v);
+              if (Number.isFinite(v)) setShadowField(active, idx, "opacity", v);
             }}
             className="h-8 w-full rounded-md border border-line bg-ink-panel px-2 font-mono text-[12px] text-fg focus:border-line-strong focus:outline-none"
           />
@@ -171,7 +185,7 @@ function ElevationEditor() {
             <HexInput
               size="sm"
               value={level.color}
-              onChange={(hex) => setShadowColor(editMode, idx, hex)}
+              onChange={(hex) => setShadowColor(active, idx, hex)}
             />
           </div>
         </div>
@@ -205,7 +219,9 @@ export function ShapeStep() {
   const setRadiusOverride = useDesignSystem((s) => s.setRadiusOverride);
   const clearRadiusOverride = useDesignSystem((s) => s.clearRadiusOverride);
   const mode = useDesignSystem((s) => s.currentPreviewMode);
-  const elevation = useDesignSystem((s) => s.primitives.elevation);
+  const primitives = useDesignSystem((s) => s.primitives);
+  const semantics = useDesignSystem((s) => s.semantics);
+  const elevationModes = modeDefsOf(semantics);
 
   return (
     <StepScaffold
@@ -282,13 +298,19 @@ export function ShapeStep() {
 
       <CanvasSection
         title="Elevation"
-        hint="light and dark, simultaneously"
-        info="Shadows are structured — offset, blur, spread, colour and opacity — and stored per mode, because depth reads differently on a light surface than a dark one. Edit one mode while watching both previews."
+        hint="every mode, simultaneously"
+        info="Shadows are structured — offset, blur, spread, colour and opacity — and every mode owns its own ramp, because depth reads differently on every paper. Edit one mode while watching them all."
       >
         <div className="space-y-5">
           <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
-            <ElevationPreview mode="light" levels={elevation.light} />
-            <ElevationPreview mode="dark" levels={elevation.dark} />
+            {elevationModes.map((m) => (
+              <ElevationPreview
+                key={m.id}
+                mode={m.id}
+                label={m.name}
+                levels={elevationOf(primitives, semantics, m.id)}
+              />
+            ))}
           </div>
           <ElevationEditor />
         </div>

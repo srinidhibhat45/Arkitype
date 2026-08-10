@@ -26,6 +26,25 @@ export const PROJECT_LIMIT = 24;
 /** Colour families are now dynamic — the id is any stable slug, not a union. */
 export type ColorSlotId = string;
 
+/**
+ * What a variable *carries*. Colour was the only answer for a long time; a
+ * token can now hold any of the primitive types, so a component's radius,
+ * padding and type size can live beside its colours instead of only ever being
+ * bound one component at a time. See `lib/tokens.ts` for the value grammar and
+ * `acceptsKind` in `lib/variableGraph.ts` for what may feed what.
+ */
+export type TokenKind =
+  | "color"
+  | "space"
+  | "radius"
+  | "size"
+  | "weight"
+  | "font"
+  | "shadow"
+  | "duration"
+  | "ease"
+  | "dimension";
+
 export interface ColorFamily {
   id: string; // stable slug: "brand", "neutral", "neutral-warm"
   name: string; // display label
@@ -45,10 +64,195 @@ export const COLOR_SLOTS: string[] = [
   "error",
 ];
 
-export type PreviewMode = "light" | "dark";
+/**
+ * A mode id. Light and dark are always here; everything past them is the
+ * user's, added from the Variables table — "High contrast", "Brand · Acme",
+ * "Print". A mode is a *column of values*, not a new kind of thing: every
+ * token holds one value per mode, and which column a preview reads is the only
+ * difference between them.
+ */
+export type PreviewMode = string;
+
+/**
+ * Whether a mode reads as light or dark — the one question anything *outside*
+ * the token map still has to answer: a chrome border, a component's fallback
+ * ink, which end of a raw ramp is the wash.
+ *
+ * It is not a parent. A mode is standalone: it owns its own values and its own
+ * shadow ramp, and its appearance is read off the surfaces it actually
+ * declares (see {@link modeBase}) rather than inherited from light or dark.
+ * `ModeDef.base` exists only as a manual override for the rare file whose
+ * surfaces don't say — leave it unset and Dusk is simply dusk.
+ */
+export type ModeBase = "light" | "dark";
+
+/** A mode as the file stores it: a stable id, a display name, and — only if
+ *  someone overrode the automatic reading — a declared appearance. */
+export interface ModeDef {
+  id: string;
+  name: string;
+  /** Manual appearance override. Unset means "read it from my own surfaces". */
+  base?: ModeBase;
+}
+
+/**
+ * Light and dark can be renamed but never removed. Not because other modes
+ * derive from them — none do — but because the two are the file's fixed
+ * export contract: the `:root`/`.dark` pair every CSS export writes, and the
+ * pair the contrast audit reports against.
+ */
+export const BUILT_IN_MODE_IDS = ["light", "dark"] as const;
+
+export const isBuiltInMode = (id: string): boolean =>
+  id === "light" || id === "dark";
+
+export const DEFAULT_MODE_DEFS: ModeDef[] = [
+  { id: "light", name: "Light", base: "light" },
+  { id: "dark", name: "Dark", base: "dark" },
+];
+
+type SemanticsSlice = { modes: Record<string, Record<string, string>>; modeDefs?: ModeDef[] };
+
+/**
+ * The file's modes, in order, with light and dark guaranteed. Read this rather
+ * than `semantics.modeDefs` directly: a project saved before modes existed has
+ * no list at all, and one saved mid-flight may have a list that's drifted from
+ * the value maps it's supposed to describe.
+ */
+export function modeDefsOf(semantics: SemanticsSlice | undefined): ModeDef[] {
+  const stored = semantics?.modeDefs;
+  const out: ModeDef[] = [];
+  const seen = new Set<string>();
+  for (const d of stored ?? []) {
+    if (!d?.id || seen.has(d.id)) continue;
+    seen.add(d.id);
+    out.push({
+      id: d.id,
+      name: d.name || d.id,
+      // Absent stays absent — that's "read my appearance off my own surfaces",
+      // not a missing field to be filled in with a guess.
+      ...(d.base === "dark" || d.base === "light" ? { base: d.base } : {}),
+    });
+  }
+  for (const d of DEFAULT_MODE_DEFS) {
+    if (!seen.has(d.id)) {
+      seen.add(d.id);
+      out.splice(d.id === "light" ? 0 : out.length, 0, { ...d });
+    }
+  }
+  // A value map with no def behind it would be invisible and uneditable —
+  // adopt it rather than orphan it.
+  for (const id of Object.keys(semantics?.modes ?? {})) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: id });
+  }
+  return out;
+}
+
+/** Relative luminance of a #rgb/#rrggbb(aa) colour, 0 (black) – 1 (white). */
+function hexLuminance(hex: string): number | null {
+  const h = hex.trim().replace("#", "");
+  const full =
+    h.length === 3 || h.length === 4
+      ? h
+          .slice(0, 3)
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : h.slice(0, 6);
+  if (full.length !== 6 || /[^0-9a-f]/i.test(full)) return null;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16) / 255);
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/**
+ * Whether a mode reads light or dark.
+ *
+ * A mode is not derived from another one, so this is never "which parent did
+ * you pick" — it's "what colour is your own paper". The mode's `surface-base`
+ * is followed through its own aliases and weighed; a manual override wins if
+ * one was set, and light is the answer when a mode has nothing to say yet.
+ *
+ * `primitives` is optional so the twenty call sites that only hold semantics
+ * keep working: without it a ramp reference is read from its step number
+ * (neutral-900 is dark, neutral-50 is not), which is right for every ramp the
+ * tool generates.
+ */
+export function modeBase(
+  semantics: SemanticsSlice | undefined,
+  mode: PreviewMode,
+  primitives?: { colorFamilies: ColorFamily[]; colors: Record<string, string[]> }
+): ModeBase {
+  const def = modeDefsOf(semantics).find((d) => d.id === mode);
+  if (def?.base) return def.base;
+
+  const map = semantics?.modes?.[mode];
+  if (!map) return "light";
+
+  let value = map["surface-base"] ?? "";
+  for (let i = 0; i < 8 && value.trim().startsWith("@"); i++) {
+    value = map[value.trim().slice(1).split("/")[0]] ?? "";
+  }
+  const base = value.trim().split("/")[0];
+  if (!base) return "light";
+
+  if (base.startsWith("#")) {
+    const l = hexLuminance(base);
+    return l !== null && l < 0.4 ? "dark" : "light";
+  }
+
+  if (primitives) {
+    const cut = base.lastIndexOf("-");
+    const fam = primitives.colorFamilies.find((f) => f.id === base.slice(0, cut));
+    const ramp = primitives.colors[base.slice(0, cut)];
+    if (fam && ramp) {
+      const idx = rampStepLabels(fam.steps).indexOf(Number(base.slice(cut + 1)));
+      const l = idx === -1 ? null : hexLuminance(ramp[idx] ?? "");
+      if (l !== null) return l < 0.4 ? "dark" : "light";
+    }
+  }
+
+  // No ramp to hand: a generated ramp runs light → dark, so the step says it.
+  const step = Number(base.slice(base.lastIndexOf("-") + 1));
+  return Number.isFinite(step) && step >= 500 ? "dark" : "light";
+}
+
+/**
+ * A mode's own elevation ramp. Every mode owns one; a mode that hasn't been
+ * given one yet (an older file, or one just created) reads the ramp of the
+ * appearance it presents, which is the closest thing to right there is.
+ */
+export function elevationOf(
+  primitives: { elevation: ElevationTokens },
+  semantics: SemanticsSlice | undefined,
+  mode: PreviewMode
+): ShadowDef[] {
+  return (
+    primitives.elevation[mode] ??
+    primitives.elevation[modeBase(semantics, mode)] ??
+    primitives.elevation.light ??
+    []
+  );
+}
+
+/** A mode's display name, for anything that puts one in a sentence. */
+export function modeName(semantics: SemanticsSlice | undefined, mode: PreviewMode): string {
+  return modeDefsOf(semantics).find((d) => d.id === mode)?.name ?? mode;
+}
 
 /** Appearance of the tool itself (chrome), independent of the preview mode. */
 export type ChromeTheme = "light" | "dark";
+
+/** The workspace's two side panels: the rail on the left, the inspector on the
+ *  right. Either can be put away entirely to give the canvas the room. */
+export type PanelSide = "left" | "right";
+
+export interface PanelVisibility {
+  left: boolean;
+  right: boolean;
+}
 
 /** The three panels the left rail switches between. */
 export type LeftTab = "layers" | "tokens" | "variables";
@@ -68,27 +272,55 @@ export interface VariablesUI {
   focus: { id: string; tick: number } | null;
   hiddenCollections: string[];
   tiers: Record<VarTierKey, boolean>;
-  /** Which mode(s) a drag-to-connect writes, and which alias edges are drawn. */
-  editMode: PreviewMode | "both";
+  /**
+   * Which mode a link edit writes, and which aliases the map draws. "all" —
+   * the default — writes every mode at once, which is what someone wiring a
+   * system almost always means.
+   */
+  editMode: PreviewMode | "all";
   /** Hide primitives nothing references yet — the ramps are 60 rows otherwise. */
   connectedOnly: boolean;
-  /** How wires are routed: right-angle elbows, or free curves. */
-  wireStyle: VarWireStyle;
   /** Which surface the Variables workspace shows — the table, or the map. */
   view: VarView;
-  /** How loudly the map draws wires you aren't currently looking at. */
-  wireDensity: VarWireDensity;
-  /** Collections collapsed to their header on the map, by collection id. */
+  /** How the map arranges each band's cards. */
+  layout: VarLayout;
+  /** How much of the wiring the map draws at rest. */
+  links: VarLinkView;
+  /**
+   * Which collections are folded to their header on the map — held as two
+   * exception lists rather than one, because the map has two starting points.
+   * Most sets start open; every component starts folded (there are fifty-three
+   * of them, and four hundred-odd properties between them). So `collapsed`
+   * names the open ones you've folded, `expanded` the folded ones you've
+   * opened, and a set the user hasn't touched sits at whatever its own default
+   * is — see `VarCollection.defaultCollapsed`.
+   */
   collapsed: string[];
+  expanded: string[];
   /** The collection the table has open. */
   activeCollection: string | null;
   /** The "new set" panel is open. In the store because the rail, the table and
    *  the map all offer the same way in, and they're siblings. */
   creating: boolean;
+  /** Which tier the create panel opens on — set by whichever band's button was
+   *  pressed, so "new set" from the Component tokens band makes a component
+   *  set without anyone having to say so twice. */
+  createKind: "semantic" | "component";
 }
 
-/** Wire routing on the map — mirrors lib/variableGraph's WireStyle. */
-export type VarWireStyle = "stepped" | "curved";
+/**
+ * How a band arranges its cards.
+ *
+ * "lanes" is one column per tier: every set at a known place in a single list,
+ * which is what makes a set findable — and several thousand pixels of scroll,
+ * which is what makes the shape of the system impossible to see.
+ *
+ * "packed" wraps each band into as many columns as it needs to stay roughly as
+ * deep as the tallest single card, so a whole system fits on a screen. The
+ * order within a band is the same either way (down a column, then across), so
+ * neither is a different map — just a different aspect ratio of the same one.
+ */
+export type VarLayout = "lanes" | "packed";
 
 /**
  * The two ways to read the same variables. The table is the everyday editing
@@ -99,26 +331,32 @@ export type VarWireStyle = "stepped" | "curved";
 export type VarView = "table" | "map";
 
 /**
- * How much of the wiring the map draws at rest. A full system is several
- * hundred aliases, and drawing them all at full strength is a hairball — so
- * "calm" is the default: everything is still there, but hushed until you point
- * at something.
+ * How much of the wiring the map draws when you aren't pointing at anything.
+ *
+ * A full system is several hundred aliases, and one hairline per alias is a
+ * weave you can't read at any opacity. So "summary" is the default: one ribbon
+ * per pair of sets, coloured by where its values come from, thick in proportion
+ * to how many run along it, and openable — click one and it lists its links.
+ * The individual wires draw themselves for whatever you point at or select.
+ * "all" draws every wire at once, for when you want the whole weave.
  */
-export type VarWireDensity = "full" | "calm" | "focus";
+export type VarLinkView = "summary" | "all";
 
 export const DEFAULT_VARIABLES_UI: VariablesUI = {
   selected: null,
   focus: null,
   hiddenCollections: [],
   tiers: { primitive: true, semantic: true, component: true, usage: true },
-  editMode: "both",
+  editMode: "all",
   connectedOnly: false,
-  wireStyle: "stepped",
   view: "table",
-  wireDensity: "calm",
+  layout: "lanes",
+  links: "summary",
   collapsed: [],
+  expanded: [],
   activeCollection: null,
   creating: false,
+  createKind: "semantic",
 };
 
 /* ────────────────────────────── edit history ────────────────────────────── */
@@ -450,32 +688,83 @@ export const DEFAULT_COMPONENT_GROUPS: SemanticGroup[] = [
   {
     label: "Button",
     kind: "component",
-    tokens: ["button-bg", "button-text", "button-border"],
+    tokens: [
+      "button-bg",
+      "button-text",
+      "button-border",
+      "button-radius",
+      "button-padding-x",
+      "button-padding-y",
+      "button-gap",
+      "button-font-size",
+      "button-font-weight",
+    ],
   },
   {
     label: "Card",
     kind: "component",
-    tokens: ["card-bg", "card-text", "card-border"],
+    tokens: ["card-bg", "card-text", "card-border", "card-radius", "card-padding", "card-gap", "card-shadow"],
   },
   {
     label: "Input",
     kind: "component",
-    tokens: ["input-bg", "input-text", "input-border"],
+    tokens: [
+      "input-bg",
+      "input-text",
+      "input-border",
+      "input-radius",
+      "input-padding-x",
+      "input-padding-y",
+      "input-font-size",
+    ],
   },
 ];
 
-/** Component tokens are mode-agnostic by default: each is an "@role" reference,
- *  and the role itself already resolves per mode. Same map for light and dark. */
+/**
+ * The seed values behind those tokens.
+ *
+ * Colours are "@role" references, so they follow their role across every mode
+ * on their own — which is why the same map serves light and dark. The shape and
+ * rhythm tokens name a primitive by type ("radius:md", "space:3"), so a
+ * component's corner and padding are as inspectable, aliasable and bindable as
+ * its ink is: one set per component, holding everything that component *is*.
+ */
 export const DEFAULT_COMPONENT_TOKENS: Record<string, string> = {
   "button-bg": "@action-primary-default",
   "button-text": "@text-on-action",
   "button-border": "@action-primary-default",
+  "button-radius": "radius:md",
+  "button-padding-x": "space:4",
+  "button-padding-y": "space:2",
+  "button-gap": "space:2",
+  "button-font-size": "text:sm",
+  "button-font-weight": "weight:medium",
   "card-bg": "@surface-elevated",
   "card-text": "@text-primary",
   "card-border": "@border-default",
+  "card-radius": "radius:lg",
+  "card-padding": "space:5",
+  "card-gap": "space:3",
+  "card-shadow": "shadow:low",
   "input-bg": "@surface-base",
   "input-text": "@text-primary",
   "input-border": "@border-default",
+  "input-radius": "radius:sm",
+  "input-padding-x": "space:3",
+  "input-padding-y": "space:2",
+  "input-font-size": "text:sm",
+};
+
+/**
+ * What each seed group held before it carried anything but colour. A file whose
+ * Button set is still *exactly* this has never been touched by hand, so it's
+ * safe to top it up with the shape and rhythm tokens (see
+ * `backfillComponentShape`); any other list belongs to whoever edited it.
+ */
+const LEGACY_COMPONENT_TOKENS: Record<string, string[]> = {
+  Button: ["button-bg", "button-text", "button-border"],
+  Card: ["card-bg", "card-text", "card-border"],
+  Input: ["input-bg", "input-text", "input-border"],
 };
 
 /** All default token names in the component tier (for backfill/dedupe checks). */
@@ -519,9 +808,19 @@ export interface ShadowDef {
 
 export type ShadowField = "x" | "y" | "blur" | "spread" | "opacity";
 
+/**
+ * One shadow ramp per mode, keyed by mode id — light and dark always present
+ * (they're the export contract), and a custom mode gets its own the moment it
+ * is created. A mode is standalone down to its shadows: Dusk doesn't borrow
+ * Dark's, it has its own to tune.
+ *
+ * Level *names* stay in step across every ramp: `--ark-shadow-low` has to mean
+ * the same rung whichever column you're in, so add/rename/remove apply to all.
+ */
 export interface ElevationTokens {
   light: ShadowDef[];
   dark: ShadowDef[];
+  [modeId: string]: ShadowDef[];
 }
 
 /** Compile a shadow definition to a CSS box-shadow string. */
@@ -686,6 +985,46 @@ const buildSeeds = (families: ColorFamily[]): Record<string, string> => {
 const cloneShadows = (defs: ShadowDef[]): ShadowDef[] =>
   defs.map((d) => ({ ...d }));
 
+/**
+ * The value a brand-new variable of each kind starts life with. Never empty:
+ * an unset variable is a dangling reference the moment it exists, and the map
+ * would draw a new token in red before its author had finished naming it.
+ */
+export function seedValueFor(kind: TokenKind, appearance: ModeBase = "light"): string {
+  switch (kind) {
+    case "space":
+      return "space:3";
+    case "radius":
+      return "radius:md";
+    case "size":
+      return "text:sm";
+    case "weight":
+      return "weight:regular";
+    case "font":
+      return "font:body";
+    case "shadow":
+      return "shadow:low";
+    case "duration":
+      return "duration:base";
+    case "ease":
+      return "ease:out";
+    case "dimension":
+      return "px:8";
+    default:
+      return appearance === "dark" ? "neutral-400" : "neutral-500";
+  }
+}
+
+/** Rewrite every mode's shadow ramp, keeping the keys the file already has. */
+function mapElevation(
+  elevation: ElevationTokens,
+  fn: (ramp: ShadowDef[], modeId: string) => ShadowDef[]
+): ElevationTokens {
+  const out = {} as ElevationTokens;
+  for (const [id, ramp] of Object.entries(elevation)) out[id] = fn(ramp ?? [], id);
+  return out;
+}
+
 /* ────────────────────────────── state shape ────────────────────────────── */
 
 export type ComponentStatus = "ready" | "beta" | "deprecated";
@@ -751,10 +1090,10 @@ export interface ProjectState {
   };
   semantics: {
     groups: SemanticGroup[];
-    modes: {
-      light: Record<string, string>;
-      dark: Record<string, string>;
-    };
+    /** One value map per mode, keyed by mode id. Light and dark are always here. */
+    modes: Record<string, Record<string, string>>;
+    /** The modes themselves, in the order the table shows them. */
+    modeDefs: ModeDef[];
   };
   components: Record<string, ComponentConfig>;
   currentPreviewMode: PreviewMode;
@@ -809,18 +1148,26 @@ export interface ArkitypeState {
   };
   semantics: {
     groups: SemanticGroup[];
-    modes: {
-      light: Record<string, string>;
-      dark: Record<string, string>;
-    };
+    /** One value map per mode, keyed by mode id. Light and dark are always here. */
+    modes: Record<string, Record<string, string>>;
+    /** The modes themselves, in the order the table shows them. */
+    modeDefs: ModeDef[];
   };
   components: Record<string, ComponentConfig>;
   currentPreviewMode: PreviewMode;
   /** Light/dark appearance of the tool chrome (not the component preview). */
   chromeTheme: ChromeTheme;
+  /** Which of the workspace's two side panels are showing. */
+  panels: PanelVisibility;
   canvasZoom: number;
   /** Transient "jump here and highlight X" target — never persisted. */
   pendingFocus: { step: StepId; anchor: string } | null;
+  /**
+   * "Open the Tokens panel at this section" — the route from a primitive set in
+   * Variables to the place that actually adds and removes its steps. The tick
+   * makes a repeat request fire again; never persisted.
+   */
+  tokensFocus: { section: string; tick: number } | null;
   /**
    * Cloud autosave status, driven by AuthProvider — keyed by project id (not
    * global) so switching files can't show one project's error banner over
@@ -887,6 +1234,12 @@ export interface ArkitypeState {
   goToStep: (step: StepId) => void;
   completeStep: (step: StepId) => void;
   setPendingFocus: (target: { step: StepId; anchor: string } | null) => void;
+  /**
+   * Open the Tokens panel at a named section — the one place a primitive scale
+   * can have steps added to or removed from it. Brings the left panel back if
+   * it's been put away, since the destination is inside it.
+   */
+  focusTokenSection: (section: string) => void;
 
   setActiveComponentId: (id: string | null) => void;
   setActiveComponentVariant: (v: string) => void;
@@ -903,15 +1256,19 @@ export interface ArkitypeState {
   toggleVariableTier: (tier: VarTierKey) => void;
   setVariableEditMode: (mode: VariablesUI["editMode"]) => void;
   setVariablesConnectedOnly: (only: boolean) => void;
-  setVariableWireStyle: (style: VarWireStyle) => void;
   setVariableView: (view: VarView) => void;
-  setVariableWireDensity: (density: VarWireDensity) => void;
-  /** Collapse a map card to its header — wires re-anchor there. */
-  toggleVariableCollapsed: (collectionId: string) => void;
-  setVariableCollapsedAll: (collectionIds: string[]) => void;
+  setVariableLinkView: (links: VarLinkView) => void;
+  /** One column per band, or each band packed into as many as it needs. */
+  setVariableLayout: (layout: VarLayout) => void;
+  /** Fold a map card to its header, or unfold it — wires re-anchor there. The
+   *  caller passes the state it wants, since which way a card is folded now
+   *  depends on the card's own default as well as on this list. */
+  setVariableCollapsed: (collectionId: string, collapsed: boolean) => void;
+  /** Fold (or unfold) every card on the map at once. */
+  setVariableCollapsedAll: (collectionIds: string[], collapsed: boolean) => void;
   setActiveVariableCollection: (collectionId: string | null) => void;
-  /** Open or close the "new set of variables" panel. */
-  setVariablesCreating: (creating: boolean) => void;
+  /** Open or close the "new set of variables" panel, optionally on a tier. */
+  setVariablesCreating: (creating: boolean, kind?: "semantic" | "component") => void;
 
   /* undo / redo / reset */
   undo: () => void;
@@ -964,7 +1321,7 @@ export interface ArkitypeState {
   addTypeStep: (name: string, assignment: string, exp: number) => void; // NEW
   removeTypeStep: (name: string) => void; // NEW
 
-  /* elevation */
+  /* elevation — one ramp per mode, keyed by mode id */
   setShadowField: (mode: PreviewMode, index: number, field: ShadowField, value: number) => void;
   setShadowColor: (mode: PreviewMode, index: number, hex: string) => void;
   renameLevel: (index: number, name: string) => void;
@@ -978,7 +1335,9 @@ export interface ArkitypeState {
 
   /* roles + component tokens (both live in `semantics`) */
   setSemantic: (mode: PreviewMode, token: string, value: string) => void;
-  addRole: (groupLabel: string, token: string) => void;
+  /** A new variable in a set. `kind` decides what it holds — a colour unless
+   *  told otherwise — and seeds a sensible starting value of that type. */
+  addRole: (groupLabel: string, token: string, kind?: TokenKind) => void;
   /**
    * A whole set at once — the group plus its tokens plus their values, in one
    * write, so a ready-made starter set costs exactly one press of ⌘Z. Tokens
@@ -996,6 +1355,19 @@ export interface ArkitypeState {
   addGroup: (label: string, kind?: "semantic" | "component") => void;
   renameGroup: (oldLabel: string, newLabel: string) => void;
   removeGroup: (label: string) => void;
+
+  /* modes — the columns of the Variables table */
+  /**
+   * A new, standalone mode. `startFrom` seeds its column of values (light
+   * unless told otherwise) so the file still renders the moment it exists —
+   * a copy, not a link: nothing afterwards flows between the two.
+   */
+  addVariableMode: (name: string, startFrom?: PreviewMode) => void;
+  renameVariableMode: (id: PreviewMode, name: string) => void;
+  /** Pin how a custom mode reads, or pass null to let its own surfaces say. */
+  setVariableModeBase: (id: PreviewMode, base: ModeBase | null) => void;
+  /** Custom modes only — light and dark can't be removed. */
+  removeVariableMode: (id: PreviewMode) => void;
 
   /* components */
   setComponentSkeleton: (componentId: string, skeletonId: string) => void;
@@ -1019,6 +1391,11 @@ export interface ArkitypeState {
   togglePreviewMode: () => void;
   setChromeTheme: (theme: ChromeTheme) => void;
   toggleChromeTheme: () => void;
+  /* side panels — either can be put away entirely for canvas room */
+  setPanel: (side: PanelSide, visible: boolean) => void;
+  togglePanel: (side: PanelSide) => void;
+  /** Hide both, or — if either is already hidden — bring both back. */
+  toggleAllPanels: () => void;
   setCanvasZoom: (zoom: number) => void;
 
   /** Driven by AuthProvider's autosave effect — never call directly from UI. */
@@ -1213,10 +1590,70 @@ export function backfillComponentTier(semantics: ProjectState["semantics"]): voi
   for (const group of DEFAULT_COMPONENT_GROUPS) {
     for (const t of group.tokens) {
       const seed = DEFAULT_COMPONENT_TOKENS[t] ?? "@surface-base";
-      if (semantics.modes.light[t] === undefined) semantics.modes.light[t] = seed;
-      if (semantics.modes.dark[t] === undefined) semantics.modes.dark[t] = seed;
+      for (const def of modeDefsOf(semantics)) {
+        const map = (semantics.modes[def.id] ??= {});
+        if (map[t] === undefined) map[t] = seed;
+      }
     }
     semantics.groups.push({ label: group.label, kind: "component", tokens: [...group.tokens] });
+  }
+}
+
+/**
+ * Give an untouched seed component set the rest of what a component is.
+ *
+ * Component tokens used to be colours only, so an older file's Button holds
+ * three of them and nothing about its corner, padding or type. This adds the
+ * missing ones — but only to a set that still reads *exactly* as it shipped, so
+ * a set someone has renamed, pruned or added to is left alone entirely. It's
+ * idempotent by construction: once topped up, the list no longer matches.
+ */
+export function backfillComponentShape(semantics: ProjectState["semantics"]): void {
+  if (!semantics?.modes || !semantics.groups) return;
+  for (const group of semantics.groups) {
+    if (group.kind !== "component") continue;
+    const legacy = LEGACY_COMPONENT_TOKENS[group.label];
+    if (!legacy || group.tokens.length !== legacy.length) continue;
+    if (!legacy.every((t, i) => group.tokens[i] === t)) continue;
+
+    const seeded = DEFAULT_COMPONENT_GROUPS.find((g) => g.label === group.label);
+    if (!seeded) continue;
+    for (const token of seeded.tokens) {
+      if (group.tokens.includes(token)) continue;
+      // A name already claimed elsewhere in the file belongs to whoever took
+      // it — skip rather than collide.
+      if (semantics.modes.light?.[token] !== undefined) continue;
+      group.tokens.push(token);
+      for (const def of modeDefsOf(semantics)) {
+        const map = (semantics.modes[def.id] ??= {});
+        map[token] = DEFAULT_COMPONENT_TOKENS[token] ?? "radius:md";
+      }
+    }
+  }
+}
+
+/**
+ * Give a project its mode list, and make sure every mode it claims actually has
+ * a value map behind it.
+ *
+ * Runs on every load, cloud or local: a row written before modes were a thing
+ * has no `modeDefs` at all, and one written by a client mid-deploy can have a
+ * def with no map (or a map with no def). Both halves are repaired here rather
+ * than defended against in twenty read sites.
+ */
+export function backfillModes(semantics: ProjectState["semantics"] | undefined): void {
+  if (!semantics) return;
+  semantics.modes = semantics.modes ?? ({} as Record<string, Record<string, string>>);
+  semantics.modes.light = semantics.modes.light ?? {};
+  semantics.modes.dark = semantics.modes.dark ?? {};
+  semantics.modeDefs = modeDefsOf(semantics);
+  for (const def of semantics.modeDefs) {
+    // A column with no values is every token in the file dangling at once — so
+    // a mode that somehow arrived without one is seeded a starting draft to
+    // edit. Not a link: it's a one-time copy, made only because the alternative
+    // is a broken column.
+    semantics.modes[def.id] =
+      semantics.modes[def.id] ?? { ...(semantics.modes[def.base ?? "light"] ?? {}) };
   }
 }
 
@@ -1232,7 +1669,11 @@ export function backfillProjectState(proj: ProjectState): ProjectState {
     ...(JSON.parse(JSON.stringify(DEFAULT_COMPONENTS)) as Record<string, ComponentConfig>),
     ...(proj.components ?? {}),
   };
-  if (proj.semantics) backfillComponentTier(proj.semantics);
+  if (proj.semantics) {
+    backfillModes(proj.semantics);
+    backfillComponentTier(proj.semantics);
+    backfillComponentShape(proj.semantics);
+  }
   return proj;
 }
 
@@ -1264,6 +1705,7 @@ function freshSemantics(): ProjectState["semantics"] {
       light: { ...DEFAULT_LIGHT, ...DEFAULT_COMPONENT_TOKENS },
       dark: { ...DEFAULT_DARK, ...DEFAULT_COMPONENT_TOKENS },
     },
+    modeDefs: DEFAULT_MODE_DEFS.map((d) => ({ ...d })),
   };
 }
 
@@ -1460,8 +1902,10 @@ export const useDesignSystem = create<ArkitypeState>()(
         >,
         currentPreviewMode: "dark",
         chromeTheme: "light",
+        panels: { left: true, right: true },
         canvasZoom: 1,
         pendingFocus: null,
+        tokensFocus: null,
         saveStatus: {},
         saveError: {},
 
@@ -1806,36 +2250,53 @@ export const useDesignSystem = create<ArkitypeState>()(
       setVariablesConnectedOnly: (only) =>
         set((state) => ({ variablesUI: { ...state.variablesUI, connectedOnly: only } })),
 
-      setVariableWireStyle: (style) =>
-        set((state) => ({ variablesUI: { ...state.variablesUI, wireStyle: style } })),
-
       setVariableView: (view) =>
         set((state) => ({ variablesUI: { ...state.variablesUI, view } })),
 
-      setVariableWireDensity: (density) =>
-        set((state) => ({ variablesUI: { ...state.variablesUI, wireDensity: density } })),
+      setVariableLinkView: (links) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, links } })),
 
-      toggleVariableCollapsed: (collectionId) =>
+      setVariableLayout: (layout) =>
+        set((state) => ({ variablesUI: { ...state.variablesUI, layout } })),
+
+      setVariableCollapsed: (collectionId, collapsed) =>
         set((state) => {
-          const collapsed = state.variablesUI.collapsed;
+          // One id, one list: it names the exception to that card's default, so
+          // it never appears in both.
+          const drop = (ids: string[]) => ids.filter((c) => c !== collectionId);
           return {
             variablesUI: {
               ...state.variablesUI,
-              collapsed: collapsed.includes(collectionId)
-                ? collapsed.filter((c) => c !== collectionId)
-                : [...collapsed, collectionId],
+              collapsed: collapsed
+                ? [...drop(state.variablesUI.collapsed), collectionId]
+                : drop(state.variablesUI.collapsed),
+              expanded: collapsed
+                ? drop(state.variablesUI.expanded)
+                : [...drop(state.variablesUI.expanded), collectionId],
             },
           };
         }),
 
-      setVariableCollapsedAll: (collectionIds) =>
-        set((state) => ({ variablesUI: { ...state.variablesUI, collapsed: collectionIds } })),
+      setVariableCollapsedAll: (collectionIds, collapsed) =>
+        set((state) => ({
+          variablesUI: {
+            ...state.variablesUI,
+            collapsed: collapsed ? collectionIds : [],
+            expanded: collapsed ? [] : collectionIds,
+          },
+        })),
 
       setActiveVariableCollection: (collectionId) =>
         set((state) => ({ variablesUI: { ...state.variablesUI, activeCollection: collectionId } })),
 
-      setVariablesCreating: (creating) =>
-        set((state) => ({ variablesUI: { ...state.variablesUI, creating } })),
+      setVariablesCreating: (creating, kind) =>
+        set((state) => ({
+          variablesUI: {
+            ...state.variablesUI,
+            creating,
+            ...(kind ? { createKind: kind } : {}),
+          },
+        })),
 
       /* ── undo / redo / reset ── */
 
@@ -1896,6 +2357,13 @@ export const useDesignSystem = create<ArkitypeState>()(
         set((state) => ({ meta: { ...state.meta, name } })),
 
       setPendingFocus: (target) => set({ pendingFocus: target }),
+
+      focusTokenSection: (section) =>
+        set((state) => ({
+          activeLeftTab: "tokens",
+          panels: { ...state.panels, left: true },
+          tokensFocus: { section, tick: (state.tokensFocus?.tick ?? 0) + 1 },
+        })),
 
       goToStep: (step) =>
         set((state) => {
@@ -2504,38 +2972,53 @@ export const useDesignSystem = create<ArkitypeState>()(
           };
         }),
 
+      // Levels are a rung on every ramp at once — a shadow name that existed in
+      // one mode and not another would be an undefined var() in that column.
       renameLevel: (index, name) =>
-        set((state) => {
-          const light = cloneShadows(state.primitives.elevation.light);
-          const dark = cloneShadows(state.primitives.elevation.dark);
-          if (light[index]) light[index].name = name;
-          if (dark[index]) dark[index].name = name;
-          return {
-            primitives: { ...state.primitives, elevation: { light, dark } },
-          };
-        }),
+        set((state) => ({
+          primitives: {
+            ...state.primitives,
+            elevation: mapElevation(state.primitives.elevation, (ramp) => {
+              const next = cloneShadows(ramp);
+              if (next[index]) next[index].name = name;
+              return next;
+            }),
+          },
+        })),
 
       addLevel: () =>
         set((state) => {
-          const light = cloneShadows(state.primitives.elevation.light);
-          const dark = cloneShadows(state.primitives.elevation.dark);
-          const name = `level-${light.length + 1}`;
-          const lastL = light[light.length - 1];
-          const lastD = dark[dark.length - 1];
-          light.push({ ...lastL, name, y: lastL.y + 8, blur: lastL.blur + 16, opacity: Math.min(1, lastL.opacity + 0.05) });
-          dark.push({ ...lastD, name, y: lastD.y + 8, blur: lastD.blur + 16, opacity: Math.min(1, lastD.opacity + 0.08) });
+          const name = `level-${(state.primitives.elevation.light?.length ?? 0) + 1}`;
           return {
-            primitives: { ...state.primitives, elevation: { light, dark } },
+            primitives: {
+              ...state.primitives,
+              elevation: mapElevation(state.primitives.elevation, (ramp, id) => {
+                const next = cloneShadows(ramp);
+                const last = next[next.length - 1];
+                if (!last) return next;
+                next.push({
+                  ...last,
+                  name,
+                  y: last.y + 8,
+                  blur: last.blur + 16,
+                  opacity: Math.min(1, last.opacity + (id === "light" ? 0.05 : 0.08)),
+                });
+                return next;
+              }),
+            },
           };
         }),
 
       removeLevel: (index) =>
         set((state) => {
-          if (state.primitives.elevation.light.length <= 1) return state;
-          const light = state.primitives.elevation.light.filter((_, i) => i !== index);
-          const dark = state.primitives.elevation.dark.filter((_, i) => i !== index);
+          if ((state.primitives.elevation.light?.length ?? 0) <= 1) return state;
           return {
-            primitives: { ...state.primitives, elevation: { light, dark } },
+            primitives: {
+              ...state.primitives,
+              elevation: mapElevation(state.primitives.elevation, (ramp) =>
+                ramp.filter((_, i) => i !== index)
+              ),
+            },
           };
         }),
 
@@ -2592,23 +3075,25 @@ export const useDesignSystem = create<ArkitypeState>()(
           },
         })),
 
-      addRole: (groupLabel, token) =>
+      addRole: (groupLabel, token, kind = "color") =>
         set((state) => {
           const t = slugify(token);
           if (!t || state.semantics.modes.light[t] !== undefined) return state;
           const groups = state.semantics.groups.map((g) =>
             g.label === groupLabel ? { ...g, tokens: [...g.tokens, t] } : g
           );
-          // Seed both modes with a sensible default reference.
-          return {
-            semantics: {
-              groups,
-              modes: {
-                light: { ...state.semantics.modes.light, [t]: "neutral-500" },
-                dark: { ...state.semantics.modes.dark, [t]: "neutral-400" },
-              },
-            },
-          };
+          // Seed *every* mode, not just the two originals: a token that exists
+          // in some columns and not others is exactly the dangling reference
+          // the map draws in red, and a new token has no business starting
+          // life broken.
+          const modes: Record<string, Record<string, string>> = {};
+          for (const def of modeDefsOf(state.semantics)) {
+            modes[def.id] = {
+              ...(state.semantics.modes[def.id] ?? {}),
+              [t]: seedValueFor(kind, modeBase(state.semantics, def.id, state.primitives)),
+            };
+          }
+          return { semantics: { ...state.semantics, groups, modes } };
         }),
 
       createVariableSet: (label, kind, tokens) =>
@@ -2617,16 +3102,21 @@ export const useDesignSystem = create<ArkitypeState>()(
           if (!l) return state;
           const existing = state.semantics.groups.find((g) => g.label === l);
 
-          const light = { ...state.semantics.modes.light };
-          const dark = { ...state.semantics.modes.dark };
+          const defs = modeDefsOf(state.semantics);
+          const modes: Record<string, Record<string, string>> = {};
+          for (const def of defs) modes[def.id] = { ...(state.semantics.modes[def.id] ?? {}) };
+
           const added: string[] = [];
           for (const t of tokens) {
             const slug = slugify(t.name);
             // A name already in the file belongs to whoever took it — a preset
             // adds what's missing, it never redefines what's there.
-            if (!slug || light[slug] !== undefined || added.includes(slug)) continue;
-            light[slug] = t.light;
-            dark[slug] = t.dark ?? t.light;
+            if (!slug || modes.light[slug] !== undefined || added.includes(slug)) continue;
+            // A preset only knows light and dark; a custom mode starts from
+            // whichever of the two it was declared to look like.
+            for (const def of defs) {
+              modes[def.id][slug] = def.base === "dark" ? (t.dark ?? t.light) : t.light;
+            }
             added.push(slug);
           }
 
@@ -2640,7 +3130,7 @@ export const useDesignSystem = create<ArkitypeState>()(
               )
             : [...state.semantics.groups, { label: l, kind, tokens: added }];
 
-          return { semantics: { groups, modes: { light, dark } } };
+          return { semantics: { ...state.semantics, groups, modes } };
         }),
 
       removeRole: (token) =>
@@ -2649,9 +3139,12 @@ export const useDesignSystem = create<ArkitypeState>()(
             ...g,
             tokens: g.tokens.filter((tk) => tk !== token),
           }));
-          const { [token]: _l, ...light } = state.semantics.modes.light;
-          const { [token]: _d, ...dark } = state.semantics.modes.dark;
-          return { semantics: { groups, modes: { light, dark } } };
+          const modes: Record<string, Record<string, string>> = {};
+          for (const [id, map] of Object.entries(state.semantics.modes)) {
+            const { [token]: _dropped, ...rest } = map;
+            modes[id] = rest;
+          }
+          return { semantics: { ...state.semantics, groups, modes } };
         }),
 
       renameRole: (oldToken, newToken) =>
@@ -2700,14 +3193,13 @@ export const useDesignSystem = create<ArkitypeState>()(
             }
           }
 
+          const modes: Record<string, Record<string, string>> = {};
+          for (const [id, map] of Object.entries(state.semantics.modes)) {
+            modes[id] = renameMode(map);
+          }
+
           return {
-            semantics: {
-              groups,
-              modes: {
-                light: renameMode(state.semantics.modes.light),
-                dark: renameMode(state.semantics.modes.dark),
-              },
-            },
+            semantics: { ...state.semantics, groups, modes },
             ...(componentsChanged ? { components } : {}),
           };
         }),
@@ -2747,14 +3239,103 @@ export const useDesignSystem = create<ArkitypeState>()(
           const groups = state.semantics.groups.filter((g) => g.label !== label);
           const strip = (m: Record<string, string>): Record<string, string> =>
             Object.fromEntries(Object.entries(m).filter(([k]) => !dropped.has(k)));
+          const modes: Record<string, Record<string, string>> = {};
+          for (const [id, map] of Object.entries(state.semantics.modes)) modes[id] = strip(map);
+          return { semantics: { ...state.semantics, groups, modes } };
+        }),
+
+      /* ── modes ── */
+
+      /**
+       * A new mode: its own column of values, its own shadow ramp, its own
+       * appearance read off its own surfaces. `startFrom` seeds the values so
+       * nobody has to author two hundred of them before the file renders
+       * again — but it is a *copy*, not a parent: nothing about the new mode
+       * points back at where its first draft came from, and editing either one
+       * afterwards leaves the other alone.
+       */
+      addVariableMode: (name, startFrom) =>
+        set((state) => {
+          const defs = modeDefsOf(state.semantics);
+          const label = name.trim() || "New mode";
+          const id = uniqueId(slugify(label), new Set(defs.map((d) => d.id)));
+          const source = startFrom && state.semantics.modes[startFrom] ? startFrom : "light";
           return {
             semantics: {
-              groups,
-              modes: {
-                light: strip(state.semantics.modes.light),
-                dark: strip(state.semantics.modes.dark),
+              ...state.semantics,
+              modes: { ...state.semantics.modes, [id]: { ...state.semantics.modes[source] } },
+              modeDefs: [...defs, { id, name: label }],
+            },
+            primitives: {
+              ...state.primitives,
+              elevation: {
+                ...state.primitives.elevation,
+                [id]: cloneShadows(elevationOf(state.primitives, state.semantics, source)),
               },
             },
+          };
+        }),
+
+      renameVariableMode: (id, name) =>
+        set((state) => {
+          const label = name.trim();
+          if (!label) return state;
+          const defs = modeDefsOf(state.semantics);
+          if (!defs.some((d) => d.id === id)) return state;
+          return {
+            semantics: {
+              ...state.semantics,
+              modeDefs: defs.map((d) => (d.id === id ? { ...d, name: label } : d)),
+            },
+          };
+        }),
+
+      /**
+       * Override how a mode reads, or (with null) hand the question back to the
+       * mode's own surfaces. Light and dark are the file's two named
+       * appearances, so theirs are fixed.
+       */
+      setVariableModeBase: (id, base) =>
+        set((state) => {
+          if (isBuiltInMode(id)) return state;
+          const defs = modeDefsOf(state.semantics);
+          if (!defs.some((d) => d.id === id)) return state;
+          return {
+            semantics: {
+              ...state.semantics,
+              modeDefs: defs.map((d) => {
+                if (d.id !== id) return d;
+                if (!base) {
+                  const { base: _auto, ...rest } = d;
+                  return rest;
+                }
+                return { ...d, base };
+              }),
+            },
+          };
+        }),
+
+      removeVariableMode: (id) =>
+        set((state) => {
+          if (isBuiltInMode(id)) return state;
+          const defs = modeDefsOf(state.semantics);
+          if (!defs.some((d) => d.id === id)) return state;
+          const { [id]: _dropped, ...modes } = state.semantics.modes;
+          const { [id]: _ramp, ...elevation } = state.primitives.elevation;
+          return {
+            primitives: { ...state.primitives, elevation: elevation as ElevationTokens },
+            semantics: {
+              ...state.semantics,
+              modes,
+              modeDefs: defs.filter((d) => d.id !== id),
+            },
+            // Anything still pointed at the deleted column would be editing a
+            // map that no longer exists.
+            ...(state.currentPreviewMode === id ? { currentPreviewMode: "light" } : {}),
+            variablesUI:
+              state.variablesUI.editMode === id
+                ? { ...state.variablesUI, editMode: "all" }
+                : state.variablesUI,
           };
         }),
 
@@ -2869,11 +3450,14 @@ export const useDesignSystem = create<ArkitypeState>()(
 
       setPreviewMode: (mode) => set({ currentPreviewMode: mode }),
 
+      // Cycles the file's modes in table order rather than flipping a pair —
+      // a system with a third column has a third thing to toggle to.
       togglePreviewMode: () =>
-        set((state) => ({
-          currentPreviewMode:
-            state.currentPreviewMode === "light" ? "dark" : "light",
-        })),
+        set((state) => {
+          const defs = modeDefsOf(state.semantics);
+          const i = defs.findIndex((d) => d.id === state.currentPreviewMode);
+          return { currentPreviewMode: defs[(i + 1) % defs.length]?.id ?? "light" };
+        }),
 
       setChromeTheme: (theme) => set({ chromeTheme: theme }),
 
@@ -2881,6 +3465,21 @@ export const useDesignSystem = create<ArkitypeState>()(
         set((state) => ({
           chromeTheme: state.chromeTheme === "light" ? "dark" : "light",
         })),
+
+      setPanel: (side, visible) =>
+        set((state) => ({ panels: { ...state.panels, [side]: visible } })),
+
+      togglePanel: (side) =>
+        set((state) => ({ panels: { ...state.panels, [side]: !state.panels[side] } })),
+
+      /** Both at once. Anything hidden comes back first — the gesture people
+       *  reach for when a panel is away is "give me everything", not "put the
+       *  other one away too". */
+      toggleAllPanels: () =>
+        set((state) => {
+          const anyHidden = !state.panels.left || !state.panels.right;
+          return { panels: { left: anyHidden, right: anyHidden } };
+        }),
 
       setCanvasZoom: (zoom) => set({ canvasZoom: zoom }),
 
@@ -2893,7 +3492,7 @@ export const useDesignSystem = create<ArkitypeState>()(
   },
   {
       name: "arkitype-system",
-      version: 14,
+      version: 15,
       // v2 → v3: dynamic colour families, per-mode elevation, typography
       // weights/roles/rounding/overrides, editable spacing/radii + overrides,
       // stored semantic groups + expanded roles.
@@ -3262,6 +3861,18 @@ export const useDesignSystem = create<ArkitypeState>()(
           }
         }
 
+        if (version < 15) {
+          // v14 -> v15: modes become a list rather than a hardcoded pair. Every
+          // existing file keeps exactly the two it had — this only writes down
+          // what was previously implied, so custom modes have somewhere to go.
+          backfillModes(state.semantics);
+          if (state.projects) {
+            for (const pid of Object.keys(state.projects)) {
+              backfillModes(state.projects[pid]?.semantics);
+            }
+          }
+        }
+
         return state as ArkitypeState;
       },
       storage: createJSONStorage(() => localStorage),
@@ -3271,6 +3882,7 @@ export const useDesignSystem = create<ArkitypeState>()(
       partialize: (state) => ({
         currentPreviewMode: state.currentPreviewMode,
         chromeTheme: state.chromeTheme,
+        panels: state.panels,
       }),
     }
   )
@@ -3307,9 +3919,12 @@ export function countTokens(
     Object.keys(state.primitives.motion.durations).length +
     state.primitives.motion.easings.length;
   const layoutCount = Object.keys(state.primitives.layout.breakpoints).length;
-  const semanticCount =
-    Object.keys(state.semantics.modes.light).length +
-    Object.keys(state.semantics.modes.dark).length;
+  // Every mode is a real, separately addressable value of every token — a file
+  // with a third mode genuinely holds a third set of them.
+  const semanticCount = Object.values(state.semantics.modes).reduce(
+    (sum, map) => sum + Object.keys(map).length,
+    0
+  );
   return (
     colorCount +
     spacingCount +

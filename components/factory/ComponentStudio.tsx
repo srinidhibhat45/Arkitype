@@ -19,7 +19,7 @@
  * Options persist to `ComponentConfig.properties` (exported in the docs bundle);
  * colour/scale bindings persist to `ComponentConfig.bindings`.
  */
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Moon,
@@ -49,6 +49,7 @@ import {
   type ComponentStatus,
   PreviewMode,
   componentStatus,
+  modeDefsOf,
   useDesignSystem,
 } from "@/store/useDesignSystem";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
@@ -926,6 +927,8 @@ function useStudioData(id: string) {
   const setSlotContent = useDesignSystem((s) => s.setSlotContent);
   const currentMode = useDesignSystem((s) => s.currentPreviewMode);
   const setPreviewMode = useDesignSystem((s) => s.setPreviewMode);
+  const semantics = useDesignSystem((s) => s.semantics);
+  const modeDefs = useMemo(() => modeDefsOf(semantics), [semantics]);
   const resolve = useComponentBindings(id);
   const data = useInspectorData();
 
@@ -950,6 +953,7 @@ function useStudioData(id: string) {
     setSlotContent,
     currentMode,
     setPreviewMode,
+    modeDefs,
     resolve,
     data,
     properties,
@@ -1000,6 +1004,7 @@ export function ComponentStudioPreview({
     setProperty,
     currentMode: mode,
     setPreviewMode,
+    modeDefs,
     resolve,
     size,
     radiusStep,
@@ -1192,18 +1197,20 @@ export function ComponentStudioPreview({
 
           {/* Light/Dark Toggle */}
           <div className="inline-flex rounded-lg border border-line bg-ink-panel p-0.5 h-7 items-center">
-            {(["light", "dark"] as PreviewMode[]).map((m) => (
+            {/* Every mode in the file — a High-contrast column is only worth
+                authoring if you can look at what it does to a component. */}
+            {modeDefs.map((m) => (
               <button
-                key={m}
+                key={m.id}
                 type="button"
-                aria-label={m}
-                onClick={() => setPreviewMode(m)}
-                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-medium capitalize transition-colors h-full ${
-                  mode === m ? "bg-fg text-ink" : "text-fg-mute hover:text-fg-dim"
+                aria-label={m.name}
+                onClick={() => setPreviewMode(m.id)}
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-medium transition-colors h-full ${
+                  mode === m.id ? "bg-fg text-ink" : "text-fg-mute hover:text-fg-dim"
                 }`}
               >
-                {m === "light" ? <Sun size={11} /> : <Moon size={11} />}
-                {m}
+                {m.base === "light" ? <Sun size={11} /> : <Moon size={11} />}
+                {m.name}
               </button>
             ))}
           </div>

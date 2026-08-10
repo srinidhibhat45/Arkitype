@@ -54,6 +54,7 @@ export function VariablesView() {
   // map, and the rail — so which of them is showing is the store's business.
   const creating = useDesignSystem((s) => s.variablesUI.creating);
   const setCreating = useDesignSystem((s) => s.setVariablesCreating);
+  const showInspector = useDesignSystem((s) => s.panels.right);
 
   const graph = useMemo(
     () => buildVariableGraph({ primitives, semantics, components }),
@@ -127,14 +128,14 @@ export function VariablesView() {
           <p className="truncate text-[10.5px] text-fg-mute">
             {view === "table"
               ? "Every variable in the file, by set — click a value to point it somewhere else."
-              : "Drag a row's handle onto anything to its right to link them."}
+              : "Click a ribbon to list the links it carries — or take a row's handle onto anything to its right to make one."}
           </p>
         </div>
 
         {view === "table" ? (
-          <VariableTable graph={graph} onNewSet={() => setCreating(true)} />
+          <VariableTable graph={graph} onNewSet={(kind) => setCreating(true, kind)} />
         ) : (
-          <VariableCanvas graph={graph} onNewSet={() => setCreating(true)} />
+          <VariableCanvas graph={graph} onNewSet={(kind) => setCreating(true, kind)} />
         )}
 
 
@@ -151,17 +152,22 @@ export function VariablesView() {
         ) : null}
       </div>
 
-      <aside
-        style={{ width: `${inspectorWidth}px` }}
-        className="relative flex h-full shrink-0 flex-col border-l border-line bg-ink-panel"
-      >
-        <div
-          onMouseDown={handleMouseDown}
-          className="absolute bottom-0 left-0 top-0 z-30 w-1 cursor-col-resize transition-colors hover:bg-line-strong/50 active:bg-focus"
-          style={{ transform: "translateX(-50%)" }}
-        />
-        <VariableInspector graph={graph} />
-      </aside>
+      {/* Put away with the same switch every other inspector answers to. The
+          map and the table lose nothing by it — everything the inspector does
+          can also be done in place, on the row itself. */}
+      {showInspector ? (
+        <aside
+          style={{ width: `${inspectorWidth}px` }}
+          className="relative flex h-full shrink-0 flex-col border-l border-line bg-ink-panel"
+        >
+          <div
+            onMouseDown={handleMouseDown}
+            className="absolute bottom-0 left-0 top-0 z-30 w-1 cursor-col-resize transition-colors hover:bg-line-strong/50 active:bg-focus"
+            style={{ transform: "translateX(-50%)" }}
+          />
+          <VariableInspector graph={graph} />
+        </aside>
+      ) : null}
     </div>
   );
 }

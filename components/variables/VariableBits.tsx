@@ -113,6 +113,10 @@ export function Swatch({ hex, size = 12 }: { hex?: string; size?: number }) {
  * type icon for everything else.
  */
 export function RowMark({ node, mode }: { node: VarNode; mode: PreviewMode }) {
-  if (node.kind === "color") return <Swatch hex={node.swatch?.[mode] ?? "#000"} />;
+  const hex = node.kind === "color" ? node.swatch?.[mode] : undefined;
+  if (hex) return <Swatch hex={hex} />;
+  // A colour that resolves to no colour — a border bound to `raw:transparent`,
+  // a property whose source has gone — takes the type icon. A black chip would
+  // be a confident statement of the one thing we don't know.
   return <KindIcon kind={node.kind} size={11} />;
 }

@@ -34,8 +34,12 @@ export function NewSetPanel({ onClose }: { onClose: (createdCollectionId?: strin
   const colorFamilies = useDesignSystem((s) => s.primitives.colorFamilies);
   const createVariableSet = useDesignSystem((s) => s.createVariableSet);
 
+  // Which tier the panel opens on comes from whichever band's button was
+  // pressed — pressing "New set" inside Component tokens shouldn't then ask
+  // which tier you meant.
+  const createKind = useDesignSystem((s) => s.variablesUI.createKind);
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<"semantic" | "component">("semantic");
+  const [kind, setKind] = useState<"semantic" | "component">(createKind);
 
   const existing = useMemo(
     () => new Set(Object.keys(semantics.modes.light)),

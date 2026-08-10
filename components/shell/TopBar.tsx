@@ -1,14 +1,74 @@
-import { useState } from "react";
-import { Moon, Sun, Folder, HelpCircle, AlertTriangle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Moon, Sun, Folder, HelpCircle, AlertTriangle, PanelLeft, PanelRight } from "lucide-react";
 import { Segmented } from "@/components/ui/controls";
-import { STEP_ORDER, useDesignSystem } from "@/store/useDesignSystem";
+import { PanelSide, STEP_ORDER, modeDefsOf, useDesignSystem } from "@/store/useDesignSystem";
 import * as db from "@/lib/persistence";
+
+/**
+ * One panel switch, parked over the panel it controls.
+ *
+ * Position is the whole point. Sitting these two in the middle of the chrome
+ * cluster made them a third and fourth 32px bordered icon among identical ones,
+ * and nobody found them. At the far ends of the bar they're spatially obvious —
+ * the switch for the left panel is above the left panel — which is where Figma
+ * and every editor that has ever shipped this control puts it.
+ *
+ * They're in the *bar* rather than on the panels because a control docked
+ * inside a panel disappears with it. The bar never goes anywhere, so whatever
+ * you put away is always one click from coming back.
+ */
+function PanelToggle({ side }: { side: PanelSide }) {
+  const showing = useDesignSystem((s) => s.panels[side]);
+  const togglePanel = useDesignSystem((s) => s.togglePanel);
+
+  const name = side === "left" ? "left panel" : "right panel";
+  // One glyph per side, never swapped: an icon that changes shape as you press
+  // it reads as two different buttons. What changes is its *state* — lit means
+  // the panel is out, dim means it's away — which is the same thing the panel
+  // itself is telling you.
+  const Icon = side === "left" ? PanelLeft : PanelRight;
+
+  return (
+    <button
+      type="button"
+      onClick={() => togglePanel(side)}
+      aria-pressed={showing}
+      aria-label={`${showing ? "Hide" : "Show"} ${name}`}
+      title={`${showing ? "Hide" : "Show"} the ${name}  ·  ⌘\\ for both`}
+      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
+        showing
+          ? "text-fg-dim hover:bg-ink-hover hover:text-fg"
+          : "bg-ink-hover text-fg-mute hover:text-fg"
+      }`}
+    >
+      <Icon size={16} strokeWidth={showing ? 2 : 1.6} />
+    </button>
+  );
+}
+
+/** ⌘\ / Ctrl+\ — Figma's "get out of my way", and the fastest way back. */
+function usePanelShortcut() {
+  const toggleAllPanels = useDesignSystem((s) => s.toggleAllPanels);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "\\" || !(e.metaKey || e.ctrlKey)) return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      e.preventDefault();
+      toggleAllPanels();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleAllPanels]);
+}
 
 export function TopBar() {
   const name = useDesignSystem((s) => s.meta.name);
   const setSystemName = useDesignSystem((s) => s.setSystemName);
   const mode = useDesignSystem((s) => s.currentPreviewMode);
   const setPreviewMode = useDesignSystem((s) => s.setPreviewMode);
+  const semantics = useDesignSystem((s) => s.semantics);
+  const modeDefs = useMemo(() => modeDefsOf(semantics), [semantics]);
   const chromeTheme = useDesignSystem((s) => s.chromeTheme);
   const toggleChromeTheme = useDesignSystem((s) => s.toggleChromeTheme);
   const done = useDesignSystem((s) => s.journey.done);
@@ -52,8 +112,14 @@ export function TopBar() {
     }
   };
 
+  usePanelShortcut();
+
   return (
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-ink px-5">
+    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-ink pl-2.5 pr-2.5">
+      {/* Left switch, over the left panel. */}
+      <PanelToggle side="left" />
+      <span className="h-5 w-px shrink-0 bg-line" aria-hidden />
+
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -133,11 +199,9 @@ export function TopBar() {
           <span className="hidden text-[10px] font-medium uppercase tracking-[0.08em] text-fg-mute md:block">
             Preview
           </span>
+          {/* Every mode the file has, not the two it used to be limited to. */}
           <Segmented
-            options={[
-              { label: "Light", value: "light" as const },
-              { label: "Dark", value: "dark" as const },
-            ]}
+            options={modeDefs.map((m) => ({ label: m.name, value: m.id }))}
             value={mode}
             onChange={setPreviewMode}
           />
@@ -154,6 +218,10 @@ export function TopBar() {
         >
           Ship
         </button>
+
+        {/* Right switch, over the right panel. */}
+        <span className="h-5 w-px shrink-0 bg-line" aria-hidden />
+        <PanelToggle side="right" />
       </div>
     </header>
   );

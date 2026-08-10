@@ -23,7 +23,7 @@ import {
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 import { COMPONENT_DOCS } from "@/lib/componentDocs";
 import { ThemeFrame } from "@/components/ui/ThemeFrame";
-import { componentStatus, type PreviewMode } from "@/store/useDesignSystem";
+import { componentStatus, modeDefsOf, type PreviewMode } from "@/store/useDesignSystem";
 import type { PublishedSnapshot } from "@/lib/publish";
 import { StatusBadge } from "@/components/public/StatusBadge";
 import { useSnapshotHydrated } from "@/components/public/SnapshotProvider";
@@ -95,16 +95,18 @@ export function PublicComponentPage({
             <span className="truncate">{snapshot.name}</span>
           </Link>
           <div className="flex shrink-0 items-center gap-1 rounded-lg border border-line p-0.5">
-            {(["light", "dark"] as PreviewMode[]).map((m) => (
+            {/* Every mode the file ships with, not just the two — a published
+                system with a High-contrast column is publishing that column. */}
+            {modeDefsOf(snapshot.semantics).map((m) => (
               <button
-                key={m}
+                key={m.id}
                 type="button"
-                onClick={() => setMode(m)}
-                className={`rounded-md px-2.5 py-1 text-[12px] capitalize transition-colors ${
-                  mode === m ? "bg-ink-raised text-fg" : "text-fg-mute hover:text-fg-dim"
+                onClick={() => setMode(m.id)}
+                className={`rounded-md px-2.5 py-1 text-[12px] transition-colors ${
+                  mode === m.id ? "bg-ink-raised text-fg" : "text-fg-mute hover:text-fg-dim"
                 }`}
               >
-                {m}
+                {m.name}
               </button>
             ))}
           </div>

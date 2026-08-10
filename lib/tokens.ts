@@ -11,6 +11,8 @@ import {
   ColorFamily,
   PreviewMode,
   RADII_NAMES,
+  TokenKind,
+  elevationOf,
   shadowToCss,
   useDesignSystem,
 } from "@/store/useDesignSystem";
@@ -19,6 +21,245 @@ import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 
 const FALLBACK = "#ff00ff"; // loud magenta = broken reference, on purpose
 const MAX_TOKEN_DEPTH = 16; // cycle/blow-up guard for @token → @token chains
+
+/* ────────────────────── what a token carries ────────────────────── */
+
+export type { TokenKind };
+
+/**
+ * A token's value grammar, extended past colour.
+ *
+ * A colour is written bare — "brand-600", "#0af", "@text-primary" — because
+ * that's the grammar the file already had and the one every colour surface
+ * writes. Everything else carries an explicit prefix, so "radius:md" is a
+ * radius no matter what a colour ramp happens to be called:
+ *
+ *   space:3      radius:md     text:sm      weight:medium    font:body
+ *   shadow:low   duration:fast ease:standard px:12
+ *
+ * The prefixes are deliberately the same ones `lib/binding.ts` uses for
+ * component properties — one vocabulary for "point this at that", whichever
+ * tier is doing the pointing.
+ */
+const VALUE_PREFIX: Record<string, TokenKind> = {
+  space: "space",
+  radius: "radius",
+  text: "size",
+  weight: "weight",
+  font: "font",
+  shadow: "shadow",
+  duration: "duration",
+  ease: "ease",
+  px: "dimension",
+};
+
+/** The CSS custom-property family each prefix reads from. */
+const VALUE_VAR: Record<string, string> = {
+  space: "space",
+  radius: "radius",
+  text: "text",
+  weight: "font-weight",
+  font: "font",
+  shadow: "shadow",
+  duration: "duration",
+  ease: "ease",
+};
+
+/** Split "radius:md" into its prefix and target, or null for a colour value. */
+export function splitTypedValue(value: string): { prefix: string; rest: string; kind: TokenKind } | null {
+  const cut = (value ?? "").indexOf(":");
+  if (cut <= 0) return null;
+  const prefix = value.slice(0, cut);
+  const kind = VALUE_PREFIX[prefix];
+  return kind ? { prefix, rest: value.slice(cut + 1), kind } : null;
+}
+
+/** The kind a stored value declares on its own — an alias declares nothing. */
+export function valueKind(value: string): TokenKind | "alias" {
+  const v = (value ?? "").trim();
+  if (v.startsWith("@")) return "alias";
+  return splitTypedValue(v)?.kind ?? "color";
+}
+
+/**
+ * What a named token carries, following "@alias" chains until something says.
+ * Colour is the answer when nothing does — an empty or dangling token is a
+ * colour, which is what every token in a pre-typed file was.
+ */
+export function tokenKind(
+  state: Pick<ArkitypeState, "semantics">,
+  token: string,
+  mode?: PreviewMode
+): TokenKind {
+  const maps = mode
+    ? [state.semantics.modes[mode]]
+    : Object.values(state.semantics.modes ?? {});
+  for (const map of maps) {
+    if (!map) continue;
+    let cur = token;
+    for (let i = 0; i < MAX_TOKEN_DEPTH; i++) {
+      const raw = (map[cur] ?? "").trim();
+      if (!raw) break;
+      const k = valueKind(splitAlpha(raw).base);
+      if (k !== "alias") {
+        if (k !== "color") return k; // typed: definitive
+        break; // colour: keep looking in case another mode is typed
+      }
+      cur = splitAlpha(raw).base.slice(1);
+    }
+  }
+  return "color";
+}
+
+/** The radius index a "radius:" target names — by name or by position. */
+function radiusIndex(primitives: ArkitypeState["primitives"], target: string): number {
+  const names = primitives.radiusNames ?? [...RADII_NAMES];
+  const byName = names.indexOf(target);
+  if (byName !== -1) return byName;
+  const n = Number(target);
+  return Number.isFinite(n) ? Math.min(Math.max(n, 0), names.length - 1) : 0;
+}
+
+/**
+ * A stored value as a CSS value — the one function that covers every kind.
+ *
+ * Colours resolve all the way to a hex (the contrast audit and every swatch
+ * need a concrete colour). Everything else resolves to the `var()` of the
+ * primitive it points at, so a radius token re-reads its scale the moment the
+ * scale changes, exactly like a bound component property does.
+ */
+export function resolveTokenCss(
+  state: Pick<ArkitypeState, "primitives" | "semantics">,
+  mode: PreviewMode,
+  value: string,
+  depth = 0
+): string {
+  const raw = (value ?? "").trim();
+  if (!raw) return FALLBACK;
+
+  if (raw.startsWith("@")) {
+    if (depth >= MAX_TOKEN_DEPTH) return FALLBACK;
+    const target = raw.slice(1);
+    // An alias to a non-colour token is a var() hop; a colour alias still
+    // resolves to a hex so alpha suffixes and swatches keep working.
+    return tokenKind(state, target, mode) === "color"
+      ? resolveTokenValue(state, mode, raw, depth)
+      : `var(--ark-${splitAlpha(target).base})`;
+  }
+
+  const typed = splitTypedValue(raw);
+  if (!typed) return resolveTokenValue(state, mode, raw, depth);
+
+  switch (typed.prefix) {
+    case "px":
+      return `${Number(typed.rest) || 0}px`;
+    case "radius": {
+      const names = state.primitives.radiusNames ?? [...RADII_NAMES];
+      return `var(--ark-radius-${names[radiusIndex(state.primitives, typed.rest)]})`;
+    }
+    case "space": {
+      const i = Math.min(Math.max(Number(typed.rest) || 1, 1), state.primitives.spacing.length);
+      return `var(--ark-space-${i})`;
+    }
+    default:
+      return `var(--ark-${VALUE_VAR[typed.prefix]}-${typed.rest})`;
+  }
+}
+
+/**
+ * The value that *freezes* a token where it currently stands — what "unlink,
+ * keep what it looks like now" writes, so cutting a link never changes the
+ * rendering by a pixel.
+ *
+ * A colour freezes to its hex, and anything measured in px freezes to those px.
+ * A weight, a family, an easing has no literal form in the grammar, so there's
+ * nothing to freeze to and the caller is told so rather than handed a lie.
+ */
+export function freezeTokenValue(
+  state: Pick<ArkitypeState, "primitives" | "semantics">,
+  mode: PreviewMode,
+  token: string
+): string | null {
+  const value = state.semantics.modes[mode]?.[token] ?? "";
+  const kind = tokenKind(state, token, mode);
+  if (kind === "color") return resolveTokenValue(state, mode, value);
+  if (kind !== "space" && kind !== "radius" && kind !== "size" && kind !== "dimension") return null;
+  const px = parseFloat(describeTokenValue(state.primitives, resolveTypedThrough(state, mode, value)));
+  return Number.isFinite(px) ? `px:${px}` : null;
+}
+
+/** Follow "@alias" hops to the typed value at the end of the chain. */
+function resolveTypedThrough(
+  state: Pick<ArkitypeState, "semantics">,
+  mode: PreviewMode,
+  value: string
+): string {
+  let cur = (value ?? "").trim();
+  for (let i = 0; i < MAX_TOKEN_DEPTH && cur.startsWith("@"); i++) {
+    cur = (state.semantics.modes[mode]?.[splitAlpha(cur).base.slice(1)] ?? "").trim();
+  }
+  return cur;
+}
+
+/**
+ * The same value as something a person can read — "8px", "600", "Inter". Used
+ * wherever a row has to *state* its value rather than apply it, since a cell
+ * reading "var(--ark-space-3)" answers a question nobody asked.
+ */
+export function describeTokenValue(
+  primitives: ArkitypeState["primitives"],
+  value: string
+): string {
+  const typed = splitTypedValue((value ?? "").trim());
+  if (!typed) return "";
+  switch (typed.prefix) {
+    case "px":
+      return `${Number(typed.rest) || 0}px`;
+    case "space": {
+      const px = primitives.spacing[Math.max(1, Number(typed.rest) || 1) - 1];
+      return px === undefined ? "—" : `${px}px`;
+    }
+    case "radius": {
+      const px = primitives.radii[radiusIndex(primitives, typed.rest)];
+      return px === undefined ? "—" : px >= 9999 ? "full" : `${px}px`;
+    }
+    case "text": {
+      const t = primitives.typography;
+      const step = generateTypeScale(
+        t.baseSize,
+        t.scaleFactor,
+        {
+          rounding: t.rounding,
+          sizeOverrides: t.sizeOverrides,
+          leadingOverrides: t.leadingOverrides,
+          stepAssign: t.stepAssign,
+        },
+        t.stepDefs ?? STEP_DEFS
+      ).find((s) => s.name === typed.rest);
+      return step ? `${step.size}px` : "—";
+    }
+    case "weight":
+      return String(
+        primitives.typography.weights.find((w) => w.name === typed.rest)?.value ?? "—"
+      );
+    case "font":
+      return (
+        primitives.typography.fontRoles[typed.rest]?.family.split(",")[0].trim() ?? "—"
+      );
+    case "duration": {
+      const ms = (primitives.motion.durations as Record<string, number>)[typed.rest];
+      return ms === undefined ? "—" : `${ms}ms`;
+    }
+    case "ease":
+      return primitives.motion.easings.find((e) => e.name === typed.rest)?.value ?? "—";
+    case "shadow":
+      // The chip already reads "shadow-low"; repeating the level as its own
+      // detail would state the same fact twice.
+      return "";
+    default:
+      return "";
+  }
+}
 
 interface ColorPrimitives {
   colorFamilies: ColorFamily[];
@@ -90,7 +331,7 @@ export function resolveTokenValue(
   let hex: string;
   if (base.startsWith("@")) {
     if (depth >= MAX_TOKEN_DEPTH) return FALLBACK;
-    const target = state.semantics.modes[mode][base.slice(1)];
+    const target = state.semantics.modes[mode]?.[base.slice(1)];
     hex = target === undefined ? FALLBACK : resolveTokenValue(state, mode, target, depth + 1);
   } else {
     hex = resolveRefBase(state.primitives, base);
@@ -104,7 +345,7 @@ export function resolveToken(
   mode: PreviewMode,
   token: string
 ): string {
-  const value = state.semantics.modes[mode][token];
+  const value = state.semantics.modes[mode]?.[token];
   if (value === undefined) return FALLBACK;
   return resolveTokenValue(state, mode, value);
 }
@@ -140,9 +381,12 @@ export function systemCssVars(
 ): CSSProperties {
   const vars: Record<string, string> = {};
 
-  // Semantic color tokens
-  for (const token of Object.keys(state.semantics.modes[mode])) {
-    vars[`--ark-${token}`] = resolveToken(state, mode, token);
+  // Semantic tokens. Most are colours; a token that declares another type
+  // (radius:md, space:3, text:sm…) emits that type's value instead, so a
+  // component token can carry a component's shape and rhythm as well as its
+  // ink — same map, same cascade, same per-mode column.
+  for (const [token, value] of Object.entries(state.semantics.modes[mode] ?? {})) {
+    vars[`--ark-${token}`] = resolveTokenCss(state, mode, value);
   }
 
   // Primitive swatches — exposed so a component binding can point straight at a
@@ -192,8 +436,9 @@ export function systemCssVars(
   });
   vars["--ark-font-sans"] = t.fontRoles.body?.family ?? "";
 
-  // Shadows — per mode, compiled from structured definitions
-  state.primitives.elevation[mode].forEach((def) => {
+  // Shadows — compiled from structured definitions. Every mode owns its ramp
+  // (a mode with none yet reads the one matching its appearance).
+  elevationOf(state.primitives, state.semantics, mode).forEach((def) => {
     vars[`--ark-shadow-${def.name}`] = shadowToCss(def);
   });
 

@@ -8,7 +8,7 @@
 import { AlertTriangle, Bell, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import { useState } from "react";
 import type { CSSProperties } from "react";
-import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
+import { PreviewMode, modeBase, useDesignSystem } from "@/store/useDesignSystem";
 import { rv, sv, tv } from "@/lib/tokens";
 import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver, resolveOptions } from "@/lib/componentSchema";
 import { pxNum, TokenButton } from "./CoreComponents";
@@ -27,6 +27,11 @@ const TONE_SLOT: Record<Exclude<ToneVariant, "neutral">, "brand" | "secondary" |
 /** Mode-aware wash/border/text triple from a ramp. */
 export function useTone(variant: ToneVariant, mode: PreviewMode) {
   const colors = useDesignSystem((s) => s.primitives.colors);
+  const semantics = useDesignSystem((s) => s.semantics);
+  // Which end of the ramp is the wash and which is the ink is a question about
+  // how the mode *looks*, not what it's called — a custom mode answers it with
+  // the appearance it declared.
+  const base = modeBase(semantics, mode);
   if (variant === "neutral") {
     return {
       bg: tv("surface-subtle"),
@@ -36,7 +41,7 @@ export function useTone(variant: ToneVariant, mode: PreviewMode) {
     };
   }
   const ramp = colors[TONE_SLOT[variant]];
-  return mode === "light"
+  return base === "light"
     ? { bg: ramp[0], border: ramp[2], text: ramp[8], accent: ramp[5] }
     : { bg: ramp[9], border: ramp[7], text: ramp[1], accent: ramp[5] };
 }

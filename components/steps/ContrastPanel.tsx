@@ -13,7 +13,7 @@
  *    is individually reversible.
  */
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { ArkitypeState, PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
+import { ArkitypeState, PreviewMode, modeDefsOf, useDesignSystem } from "@/store/useDesignSystem";
 import { resolveToken } from "@/lib/tokens";
 import { checkContrast, thresholdFor, tierApplies, type A11yTier } from "@/lib/a11y";
 import { derivePairs, type RoleContrastPair } from "@/lib/a11yPairs";
@@ -47,7 +47,7 @@ export interface Verdict {
 }
 
 /**
- * Every pairing in the system, in both modes. Recomputed whenever primitives or
+ * Every pairing in the system, in every mode. Recomputed whenever primitives or
  * semantics change — which is every colour edit, rename, add or remove.
  */
 export function useContrastAudit() {
@@ -59,7 +59,10 @@ export function useContrastAudit() {
     const pairs = derivePairs(semantics.groups);
     const verdicts: Verdict[] = [];
 
-    for (const mode of ["light", "dark"] as PreviewMode[]) {
+    // Every mode the file carries, not the two it used to be limited to: an
+    // audit that quietly skips a High-contrast column is the one column it had
+    // the most business checking.
+    for (const { id: mode } of modeDefsOf(semantics)) {
       const fixContext = buildFixContext(state, mode);
       for (const pair of pairs) {
         const fgHex = resolveToken(state, mode, pair.fg);
@@ -163,11 +166,11 @@ function undoFix(record: FixRecord) {
   fixStore.drop(record.mode, record.token);
 }
 
-/** Gated pairings currently clearing AA, across both modes — the fix-all yardstick. */
+/** Gated pairings currently clearing AA, across every mode — the fix-all yardstick. */
 function gatedAaPasses(state: Pick<ArkitypeState, "primitives" | "semantics">): number {
   const pairs = derivePairs(state.semantics.groups);
   let passes = 0;
-  for (const mode of ["light", "dark"] as PreviewMode[]) {
+  for (const { id: mode } of modeDefsOf(state.semantics)) {
     for (const pair of pairs) {
       if (pair.advisory) continue;
       const check = checkContrast(
@@ -194,7 +197,9 @@ function gatedAaPasses(state: Pick<ArkitypeState, "primitives" | "semantics">): 
 function fixAll(tier: A11yTier, scope?: PreviewMode) {
   const seed = useDesignSystem.getState();
   const pairs = derivePairs(seed.semantics.groups);
-  const modes: PreviewMode[] = scope ? [scope] : ["light", "dark"];
+  const modes: PreviewMode[] = scope
+    ? [scope]
+    : modeDefsOf(seed.semantics).map((d) => d.id);
 
   for (const mode of modes) {
     const context = buildFixContext(useDesignSystem.getState(), mode);
@@ -401,7 +406,10 @@ export function ContrastPanel() {
 
   // Default to the shortest actionable view: just what's broken, if anything is.
   const [scope, setScope] = useState<Scope>(failures > 0 ? "failing" : "all");
-  const [modeFilter, setModeFilter] = useState<PreviewMode | "both">("both");
+  const [modeFilter, setModeFilter] = useState<PreviewMode | "all">("all");
+  const semantics = useDesignSystem((s) => s.semantics);
+  const modeDefs = useMemo(() => modeDefsOf(semantics), [semantics]);
+  const modeNameOf = (id: string) => modeDefs.find((d) => d.id === id)?.name ?? id;
 
   const recordFor = useCallback(
     (v: Verdict) => history.find((r) => r.mode === v.mode && r.token === v.target),
@@ -410,7 +418,7 @@ export function ContrastPanel() {
 
   const shown = useMemo(() => {
     const byMode =
-      modeFilter === "both" ? verdicts : verdicts.filter((v) => v.mode === modeFilter);
+      modeFilter === "all" ? verdicts : verdicts.filter((v) => v.mode === modeFilter);
     if (scope === "all") return byMode;
     // "Issues" means things that actually fail a bar the system is held to.
     // Advisory rows are informational and would otherwise drown the real ones.
@@ -422,7 +430,7 @@ export function ContrastPanel() {
     const map: Record<string, Verdict[]> = {};
     for (const v of shown) {
       const section = v.pair.section ?? "Other";
-      const key = modeFilter === "both" ? `${v.mode} · ${section}` : section;
+      const key = modeFilter === "all" ? `${modeNameOf(v.mode)} · ${section}` : section;
       if (!map[key]) {
         map[key] = [];
         order.push(key);
@@ -430,23 +438,24 @@ export function ContrastPanel() {
       map[key].push(v);
     }
     return order.map((key) => ({ key, rows: map[key] }));
-  }, [shown, modeFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, modeFilter, modeDefs]);
 
   const aaFailsInView = shown.filter((v) => !v.aa && !v.advisory).length;
   const aaaFailsInView = shown.filter((v) => v.aa && v.aaa === false && !v.advisory).length;
   const issueCount = verdicts.filter(
     (v) => !v.advisory && (!v.aa || v.aaa === false)
   ).length;
-  const fixScope = modeFilter === "both" ? undefined : modeFilter;
+  const fixScope = modeFilter === "all" ? undefined : modeFilter;
 
   return (
     <CanvasSection
       title="Contrast audit"
-      hint={`${total} gated${advisoryLow > 0 ? ` · ${advisoryLow} advisory` : ""} · both modes`}
+      hint={`${total} gated${advisoryLow > 0 ? ` · ${advisoryLow} advisory` : ""} · ${modeDefs.length} modes`}
       info={
         <>
           Every text-on-surface and border-on-surface pairing your token groups
-          imply, checked in light and dark on every edit. AA (4.5:1 text, 3:1
+          imply, checked in every mode on every edit. AA (4.5:1 text, 3:1
           non-text) is the shipping bar; AAA (7:1) is worth chasing for body copy.
           Fix retargets the foreground to the nearest ramp step that clears the
           bar — the surface never moves.
@@ -458,9 +467,8 @@ export function ContrastPanel() {
             value={modeFilter}
             onChange={setModeFilter}
             options={[
-              { label: "Light", value: "light" },
-              { label: "Dark", value: "dark" },
-              { label: "Both", value: "both" },
+              ...modeDefs.map((m) => ({ label: m.name, value: m.id })),
+              { label: "All", value: "all" },
             ]}
           />
           <Segment
@@ -522,7 +530,7 @@ export function ContrastPanel() {
           <p className="flex items-center gap-2 px-4 py-6 text-[12px] text-fg-mute">
             <Check size={13} className="text-emerald-400" />
             {scope === "failing"
-              ? `Nothing to fix — all ${total} gated pairings clear AA${aaaPass === aaaTotal ? " and AAA" : ""} in both modes. Switch to All to see the advisory checks.`
+              ? `Nothing to fix — all ${total} gated pairings clear AA${aaaPass === aaaTotal ? " and AAA" : ""} in every mode. Switch to All to see the advisory checks.`
               : "No pairings yet — add a group with a surface and a text token."}
           </p>
         ) : (
@@ -544,9 +552,9 @@ export function ContrastPanel() {
         )}
       </div>
 
-      {modeFilter !== "both" && modeFilter !== currentMode ? (
+      {modeFilter !== "all" && modeFilter !== currentMode ? (
         <p className="mt-2 text-[11px] text-fg-mute">
-          Showing {modeFilter} mode — the canvas is previewing {currentMode}.
+          Showing {modeNameOf(modeFilter)} — the canvas is previewing {modeNameOf(currentMode)}.
         </p>
       ) : null}
     </CanvasSection>

@@ -9,10 +9,13 @@ import {
   RADII_NAMES,
   SEMANTIC_GROUPS,
   countTokens,
+  isBuiltInMode,
+  modeBase,
+  modeDefsOf,
   shadowToCss,
 } from "@/store/useDesignSystem";
 import { wcagVerdict } from "@/lib/color";
-import { resolveToken } from "@/lib/tokens";
+import { resolveToken, resolveTokenCss } from "@/lib/tokens";
 import { generateTypeScale, scaleFactorLabel } from "@/lib/typography";
 import { componentOptions, optionValue } from "@/lib/componentSchema";
 import { collectUsedIcons, iconSectionMarkdown } from "@/lib/icons";
@@ -147,19 +150,20 @@ export function generateHandoffDocs(state: ArkitypeState): string {
 
   push("## 5. Token Dependency Graph");
   push();
+  const docModes = modeDefsOf(semantics);
   SEMANTIC_GROUPS.forEach((group) => {
     push(`### ${group.label}`);
     push();
     group.tokens.forEach((token) => {
-      const lightRef = semantics.modes.light[token];
-      const darkRef = semantics.modes.dark[token];
-      push(
-        `- \`${token}\` → light: \`${lightRef}\` (${resolveToken(
-          state,
-          "light",
-          token
-        )}) · dark: \`${darkRef}\` (${resolveToken(state, "dark", token)})`
-      );
+      // One clause per mode the file carries, not per mode it used to be
+      // limited to — a third column is part of the system's contract.
+      const per = docModes
+        .map((m) => {
+          const ref = semantics.modes[m.id]?.[token];
+          return `${m.name.toLowerCase()}: \`${ref}\` (${resolveToken(state, m.id, token)})`;
+        })
+        .join(" · ");
+      push(`- \`${token}\` → ${per}`);
     });
     push();
   });
@@ -266,6 +270,30 @@ export function generateHandoffDocs(state: ArkitypeState): string {
   push("}");
   push("```");
   push();
+
+  // Anything past light and dark ships as its own attribute block, matching
+  // the CSS export byte for byte.
+  const extraModes = docModes.filter((m) => !isBuiltInMode(m.id));
+  if (extraModes.length) {
+    push("### Further modes");
+    push();
+    push(
+      `This system carries ${extraModes.length} mode${extraModes.length === 1 ? "" : "s"} beyond light and dark. Each ships as its own attribute block; set \`data-ark-mode\` alongside your theme attribute.`
+    );
+    push();
+    extraModes.forEach((m) => {
+      push(`#### ${m.name} — reads as ${modeBase(semantics, m.id, primitives)}`);
+      push();
+      push("```css");
+      push(`[data-ark-mode="${m.id}"] {`);
+      Object.entries(semantics.modes[m.id] ?? {}).forEach(([token, value]) => {
+        push(`  --ark-${token}: ${resolveTokenCss(state, m.id, value)};`);
+      });
+      push("}");
+      push("```");
+      push();
+    });
+  }
   push("---");
   push();
   push(

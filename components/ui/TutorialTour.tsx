@@ -48,6 +48,17 @@ export function TutorialTour() {
   const activeStepIdx = tutorialStep ?? 0;
   const activeStep = TOUR_STEPS[activeStepIdx];
 
+  // Two of the four stops are the side panels. If either has been put away the
+  // tour would spend half its time pointing at nothing, so starting it brings
+  // both back — a tour of the workspace has to have the workspace on screen.
+  const setPanel = useDesignSystem((s) => s.setPanel);
+  const touring = tutorialStep !== null;
+  useEffect(() => {
+    if (!touring) return;
+    setPanel("left", true);
+    setPanel("right", true);
+  }, [touring, setPanel]);
+
   // Calculate target element coordinates dynamically
   const updateCoords = () => {
     if (tutorialStep === null) return;

@@ -26,6 +26,7 @@ import {
   StepId,
   VarTierKey,
   componentStatus,
+  modeDefsOf,
 } from "@/store/useDesignSystem";
 import { TIER_META, buildVariableGraph, tierColor } from "@/lib/variableGraph";
 import { TierBadge } from "@/components/variables/VariableBits";
@@ -37,21 +38,32 @@ import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
  * to say so as plainly as the delete does.
  */
 function TokenSection({
+  id,
   title,
   addLabel,
   onAdd,
   expanded,
+  flash,
   children,
 }: {
+  /** Names this section as a jump target — see `focusTokenSection`. */
+  id?: string;
   title: string;
   addLabel?: string;
   onAdd?: () => void;
   /** Renders the button in its "form open" state. */
   expanded?: boolean;
+  /** Briefly rings the section that was just jumped to. */
+  flash?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2">
+    <div
+      id={id ? `token-section-${id}` : undefined}
+      className={`space-y-2 scroll-mt-2 rounded-md transition-shadow duration-300 ${
+        flash ? "shadow-[0_0_0_2px_rgb(var(--c-focus))]" : ""
+      }`}
+    >
       <div className="flex items-center justify-between border-b border-line pb-1.5">
         <span className="text-[12px] font-bold text-fg">{title}</span>
         {onAdd && addLabel ? (
@@ -138,6 +150,10 @@ function VariablesPanel() {
     [primitives, semantics, components]
   );
 
+  const modeDefs = useMemo(() => modeDefsOf(semantics), [semantics]);
+  /** Which column a search result's swatch is read in. */
+  const railMode = ui.editMode === "all" ? (modeDefs[0]?.id ?? "light") : ui.editMode;
+
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
 
@@ -212,7 +228,7 @@ function VariablesPanel() {
               {n.swatch ? (
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-[2px] border border-line"
-                  style={{ background: n.swatch[ui.editMode === "dark" ? "dark" : "light"] }}
+                  style={{ background: n.swatch[railMode] ?? n.swatch.light }}
                 />
               ) : null}
               <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-fg-dim">{n.path}</span>
@@ -229,37 +245,32 @@ function VariablesPanel() {
             </p>
           ) : null}
 
-          {/* which mode a wire edit writes — a map question only: the table
+          {/* which mode a link edit writes — a map question only: the table
               writes to the column you typed in */}
           <div className={isMap ? "" : "hidden"}>
             <span className="mb-1 block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
               Editing
             </span>
-            <div className="grid grid-cols-3 gap-1 rounded border border-line bg-ink p-0.5">
-              {(["light", "dark", "both"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setVariableEditMode(m)}
-                  title={
-                    m === "both"
-                      ? "Draw every wire, and write new links to both modes"
-                      : `Draw only the wires that apply in ${m}, and write new links to ${m} alone`
-                  }
-                  className={`rounded py-1 text-[10px] font-bold capitalize transition-colors ${
-                    ui.editMode === m ? "bg-fg text-ink" : "text-fg-mute hover:text-fg-dim"
-                  }`}
-                >
-                  {m}
-                </button>
+            {/* A list rather than a row of buttons: a file can carry as many
+                modes as it likes, and a segmented control can't. */}
+            <select
+              value={ui.editMode}
+              onChange={(e) => setVariableEditMode(e.target.value)}
+              className="h-7 w-full rounded border border-line bg-ink px-1.5 text-[11px] font-semibold text-fg-dim focus:border-line-strong focus:outline-none"
+            >
+              <option value="all">All modes</option>
+              {modeDefs.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
               ))}
-            </div>
-            {/* One control, two jobs — worth saying, because "Both" doubles the
-                wire count on any token whose modes disagree. */}
+            </select>
+            {/* One control, two jobs — worth saying, because "All" draws a
+                separate link for every mode a token disagrees in. */}
             <p className="mt-1 text-[10px] leading-snug text-fg-mute">
-              {ui.editMode === "both"
-                ? "Every wire is drawn; new links land in light and dark."
-                : `Only ${ui.editMode} wires are drawn; new links land in ${ui.editMode} alone.`}
+              {ui.editMode === "all"
+                ? `Every link is drawn; a new one lands in all ${modeDefs.length} modes.`
+                : `Only ${modeDefs.find((m) => m.id === ui.editMode)?.name ?? ui.editMode} links are drawn; a new one lands there alone.`}
             </p>
           </div>
 
@@ -329,48 +340,59 @@ function VariablesPanel() {
                       {TIER_META[t].plural}
                     </span>
                   </div>
-                  {inTier.map((c) => {
+                  {inTier.map((c, i) => {
                     const hidden = ui.hiddenCollections.includes(c.id);
                     const open = !isMap && ui.activeCollection === c.id;
+                    // The component lane is the whole library — fifty-three
+                    // names run together unless the list keeps the four groups
+                    // the Components step already sorts them into.
+                    const lane = c.source?.laneLabel;
+                    const newLane = !!lane && lane !== inTier[i - 1]?.source?.laneLabel;
                     return (
-                      <div
-                        key={c.id}
-                        className={`group/coll flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-colors ${
-                          open ? "bg-ink-raised" : "hover:bg-ink-panel"
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            // One row, two views: on the map it flies the
-                            // canvas there; in the table it opens the set.
-                            setActiveVariableCollection(c.id);
-                            if (isMap && c.nodes[0]) focusVariable(c.nodes[0].id);
-                          }}
-                          className={`min-w-0 flex-1 truncate text-left text-[11.5px] hover:text-fg ${
-                            hidden && isMap
-                              ? "text-fg-mute line-through"
-                              : open
-                                ? "font-semibold text-fg"
-                                : "text-fg-dim"
+                      <div key={c.id}>
+                        {newLane ? (
+                          <p className="px-1.5 pb-0.5 pt-1.5 text-[9px] font-bold uppercase tracking-[0.08em] text-fg-mute">
+                            {lane}
+                          </p>
+                        ) : null}
+                        <div
+                          className={`group/coll flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-colors ${
+                            open ? "bg-ink-raised" : "hover:bg-ink-panel"
                           }`}
-                          title={isMap ? `Jump to ${c.label}` : `Open ${c.label}`}
                         >
-                          {c.label}
-                        </button>
-                        <span className="shrink-0 font-mono text-[10px] text-fg-mute">
-                          {c.nodes.length}
-                        </span>
-                        {isMap ? (
                           <button
                             type="button"
-                            onClick={() => toggleVariableCollection(c.id)}
-                            title={hidden ? "Show on the map" : "Hide from the map"}
-                            className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
+                            onClick={() => {
+                              // One row, two views: on the map it flies the
+                              // canvas there; in the table it opens the set.
+                              setActiveVariableCollection(c.id);
+                              if (isMap && c.nodes[0]) focusVariable(c.nodes[0].id);
+                            }}
+                            className={`min-w-0 flex-1 truncate text-left text-[11.5px] hover:text-fg ${
+                              hidden && isMap
+                                ? "text-fg-mute line-through"
+                                : open
+                                  ? "font-semibold text-fg"
+                                  : "text-fg-dim"
+                            }`}
+                            title={isMap ? `Jump to ${c.label}` : `Open ${c.label}`}
                           >
-                            {hidden ? <EyeOff size={10} /> : <Eye size={10} />}
+                            {c.label}
                           </button>
-                        ) : null}
+                          <span className="shrink-0 font-mono text-[10px] text-fg-mute">
+                            {c.nodes.length}
+                          </span>
+                          {isMap ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleVariableCollection(c.id)}
+                              title={hidden ? "Show on the map" : "Hide from the map"}
+                              className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:text-fg"
+                            >
+                              {hidden ? <EyeOff size={10} /> : <Eye size={10} />}
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     );
                   })}
@@ -441,6 +463,7 @@ export function StageRail() {
     document.addEventListener("mouseup", handleMouseUp);
   };
 
+  const showRail = useDesignSystem((s) => s.panels.left);
   const activeStep = useDesignSystem((s) => s.journey.activeStep);
   const done = useDesignSystem((s) => s.journey.done);
   const visited = useDesignSystem((s) => s.journey.visited ?? {});
@@ -471,6 +494,35 @@ export function StageRail() {
 
   // Copy state feedback
   const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  /**
+   * "Take me to where I can add or remove these" — arriving from a primitive
+   * set in Variables. The tab and the panel have already been switched on by
+   * `focusTokenSection`; what's left is to put the section under the eye, and
+   * to say which one it is, since a panel that merely scrolled would leave you
+   * guessing what it scrolled to.
+   */
+  const tokensFocus = useDesignSystem((s) => s.tokensFocus);
+  const tokensFocusTick = tokensFocus?.tick;
+  const [flashSection, setFlashSection] = useState<string | null>(null);
+  useEffect(() => {
+    const section = tokensFocus?.section;
+    if (!section) return;
+    // A frame late: the Tokens tab may only be mounting on this same tick.
+    const raf = requestAnimationFrame(() => {
+      document
+        .getElementById(`token-section-${section}`)
+        ?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    setFlashSection(section);
+    const clear = window.setTimeout(() => setFlashSection(null), 1600);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(clear);
+    };
+    // Keyed on the tick alone, so asking twice for the same section works.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokensFocusTick]);
 
   // Inline forms toggles
   const [addingSpacing, setAddingSpacing] = useState(false);
@@ -588,6 +640,12 @@ export function StageRail() {
     announce(`scale-${scaleName}`);
     setScaleName("");
   };
+
+  // Put away entirely — not narrowed to a strip of icons. A half-rail is the
+  // worst of both: it still costs the canvas 48px and it can no longer say what
+  // anything is. The switch that brings it back lives in the top bar, which is
+  // always on screen (see PanelToggles).
+  if (!showRail) return null;
 
   return (
     <nav
@@ -816,6 +874,8 @@ export function StageRail() {
 
             {/* Colors Section */}
             <TokenSection
+              id="colors"
+              flash={flashSection === "colors"}
               title="Colors"
               addLabel="Add colour family"
               onAdd={() => {
@@ -892,6 +952,8 @@ export function StageRail() {
 
             {/* Spacing Section */}
             <TokenSection
+              id="spacing"
+              flash={flashSection === "spacing"}
               title="Spacing"
               addLabel="Add spacing step"
               expanded={addingSpacing}
@@ -973,6 +1035,8 @@ export function StageRail() {
 
             {/* Radius Section */}
             <TokenSection
+              id="radius"
+              flash={flashSection === "radius"}
               title="Radius"
               addLabel="Add radius token"
               expanded={addingRadius}
@@ -1049,6 +1113,8 @@ export function StageRail() {
 
             {/* Typography Families Section */}
             <TokenSection
+              id="fonts"
+              flash={flashSection === "fonts"}
               title="Font Families"
               addLabel="Add font role"
               expanded={addingFont}
@@ -1124,6 +1190,8 @@ export function StageRail() {
 
             {/* Typography Scale Steps Section */}
             <TokenSection
+              id="type-steps"
+              flash={flashSection === "type-steps"}
               title="Font Scale Steps"
               addLabel="Add font scale step"
               expanded={addingScaleStep}
@@ -1215,6 +1283,8 @@ export function StageRail() {
 
             {/* Elevation Section */}
             <TokenSection
+              id="elevation"
+              flash={flashSection === "elevation"}
               title="Elevation (Shadows)"
               addLabel="Add elevation level"
               onAdd={() => {
@@ -1271,7 +1341,7 @@ export function StageRail() {
             {/* Motion Section — durations and easings are a fixed vocabulary
                 (fast/base/slow, four curves); their values are edited on the
                 Motion step, so there is nothing to add here. */}
-            <TokenSection title="Motion">
+            <TokenSection id="motion" flash={flashSection === "motion"} title="Motion">
               <div className="space-y-2 pt-1 pl-1">
                 <div>
                   <span className="text-[10px] font-bold text-fg-mute uppercase tracking-wide">Durations</span>

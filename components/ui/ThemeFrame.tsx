@@ -7,7 +7,7 @@
  * variables; changing any primitive or semantic mapping re-themes instantly.
  */
 import type { CSSProperties, ReactNode } from "react";
-import { useDesignSystem, type ProjectState } from "@/store/useDesignSystem";
+import { modeBase, useDesignSystem, type ProjectState } from "@/store/useDesignSystem";
 import { systemCssVars, tv } from "@/lib/tokens";
 import type { PreviewMode } from "@/store/useDesignSystem";
 
@@ -35,6 +35,9 @@ export function ThemeFrame({
   const primitives = primitivesProp ?? storePrimitives;
   const semantics = semanticsProp ?? storeSemantics;
   const vars = systemCssVars({ primitives, semantics }, mode);
+  // The frame itself isn't a token — it's tool chrome around the preview — so
+  // it follows the appearance the mode declared rather than its name.
+  const base = modeBase(semantics, mode);
 
   return (
     <div className={className} style={{ ...vars, ...style }}>
@@ -45,7 +48,7 @@ export function ThemeFrame({
         style={{
           background: tv("surface-base"),
           color: tv("text-primary"),
-          border: `1px solid ${mode === "dark" ? "#232327" : "#e4e4e7"}`,
+          border: `1px solid ${base === "dark" ? "#232327" : "#e4e4e7"}`,
           fontFamily: "var(--ark-font-sans)",
         }}
         className="overflow-hidden rounded-xl"

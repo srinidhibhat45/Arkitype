@@ -18,6 +18,8 @@ import type { PublishedSnapshot } from "@/lib/publish";
 import {
   RADII_NAMES,
   componentStatus,
+  elevationOf,
+  modeDefsOf,
   shadowToCss,
   type PreviewMode,
 } from "@/store/useDesignSystem";
@@ -67,7 +69,9 @@ export function PublicStyleguide({
   );
 
   const radiusNames = primitives.radiusNames ?? RADII_NAMES;
-  const shadows = primitives.elevation[mode] ?? [];
+  // Every mode owns its ramp; one that hasn't been given its own reads the one
+  // matching how it presents.
+  const shadows = elevationOf(primitives, semantics, mode);
 
   const lanes = COMPONENT_LANES.map((lane) => ({
     ...lane,
@@ -85,16 +89,18 @@ export function PublicStyleguide({
             <p className="text-[12px] text-fg-mute">Design system</p>
           </div>
           <div className="flex shrink-0 items-center gap-1 rounded-lg border border-line p-0.5">
-            {(["light", "dark"] as PreviewMode[]).map((m) => (
+            {/* Every mode the file ships with, not just the two — a published
+                system with a High-contrast column is publishing that column. */}
+            {modeDefsOf(snapshot.semantics).map((m) => (
               <button
-                key={m}
+                key={m.id}
                 type="button"
-                onClick={() => setMode(m)}
-                className={`rounded-md px-2.5 py-1 text-[12px] capitalize transition-colors ${
-                  mode === m ? "bg-ink-raised text-fg" : "text-fg-mute hover:text-fg-dim"
+                onClick={() => setMode(m.id)}
+                className={`rounded-md px-2.5 py-1 text-[12px] transition-colors ${
+                  mode === m.id ? "bg-ink-raised text-fg" : "text-fg-mute hover:text-fg-dim"
                 }`}
               >
-                {m}
+                {m.name}
               </button>
             ))}
           </div>

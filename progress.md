@@ -2,6 +2,249 @@
 
 > Compressed memory checkpoint. Update after every compiled module.
 
+## Status: ✅ THE WHOLE COMPONENT LIBRARY IS ON THE MAP — implemented (2026-08-10)
+
+**The lanes ran to a shared floor, and three of the four were mostly empty.**
+Each tier plate was stretched to the depth of the deepest lane, so a complete
+lane drew a thousand pixels of tinted nothing under its last card — which says
+"something belongs here and is missing" about a lane that is in fact finished.
+Each plate now stops at its own last card (`bands`, `VariableCanvas`). Measured
+after: 3376 / 1618 / 944 / 3514px, instead of four identical 3514s.
+
+**The component lane held two cards out of a fifty-three component library.**
+`usageCollections` was built from *stored overrides only*. That kept it small
+and made it useless: the one thing you come to a map for — see where a component
+gets its colour, then point it somewhere else — could only be done for wiring
+you'd already done somewhere else. It's now derived from `COMPONENT_SPECS` and
+`COMPONENT_LANES`:
+
+- **53 cards, 376 rows**, in the library's own lane order (Controls · Display ·
+  Navigation · Patterns), not alphabetical — a component sits where it sits in
+  the Components step.
+- Every property on the binding it **actually renders from**: the schema's
+  default until you move it, your override after. Both are real wires, so the
+  edges into this lane finally mean something; defaults are drawn a shade back
+  and carry `usage.overridden: false`.
+- A stateful property earns extra rows only for the states the schema genuinely
+  distinguishes (Button's background on hover and active — not its focus, which
+  *is* its default), plus any state you've overridden. Button is 20 rows rather
+  than 34; Toast is 5.
+- Colour rows resolve through the chain to a real hex via `bindingSwatch`,
+  instead of the black chip `RowMark` was drawing for a missing swatch.
+
+**Volume, handled by folding rather than filtering.** `VarCollection.
+defaultCollapsed` starts every untouched component folded, so the lane reads as
+a list of 53 names and the customised ones are the cards already open. That
+needs two exception lists on the store (`collapsed` / `expanded`, replacing
+`toggleVariableCollapsed` with `setVariableCollapsed(id, collapsed)`), because
+the map now has two starting points. Both sets lists — the table's and the
+rail's — sub-head the component entries by lane.
+
+Unlink is hidden wherever there's nothing stored to cut: a default is *moved*,
+not cut. Where it does apply it now reads "Back to default".
+
+Verified live: all four plates end on their own cards; 53 cards in the lane;
+binding Toast's background to `brand-500` from the table stores the override,
+shows "Back to default", and reverts to `role:surface-elevated` with the full
+neutral-100 → surface-elevated → Container · Background chain. `tsc` clean.
+
+## Status: ✅ PANEL SWITCHES FOUND A HOME + PRIMITIVES GOT A ROUTE — implemented (2026-08-10)
+
+Two follow-ups to the panel work below.
+
+**The switches were invisible, and position was why.** Sitting them together in
+the middle of the chrome cluster made them the third and fourth 32px bordered
+icon in a row of identical ones. They now sit at the **two ends of the top bar,
+each over the panel it controls** — the placement every editor that has ever
+shipped this control uses, and the one that needs no explaining. One glyph per
+side (`PanelLeft` / `PanelRight`, never swapped: an icon that changes shape
+under the cursor reads as two different buttons); what changes is its state.
+
+**Primitives had no way out of Variables.** Add/remove for every primitive scale
+has always existed — it's the Tokens panel in the left rail (Colors, Spacing,
+Radius, Font Families, Font Scale Steps, Elevation, Motion, each with its own
+Add and per-row delete). Nothing was missing except a route to it, which is what
+made the primitive sets feel read-only. No second editor was built.
+
+- `primitiveHome(collection)` (`lib/variableGraph.ts`) maps a primitive set to
+  its two real homes: the **step** that tunes the values, and the **Tokens
+  section** that adds and removes steps.
+- `focusTokenSection(section)` switches the left tab to Tokens, **un-hides the
+  left panel if it's away** (the destination is inside it), and bumps a tick;
+  `StageRail` scrolls to `#token-section-<id>` and rings it for 1.6s, so the
+  panel says what it scrolled to instead of leaving you to guess.
+- Three surfaces offer it: the table's primitive footer (`PrimitiveActions`),
+  the inspector's action bar — generalised from a colour-only "Edit this ramp"
+  to every kind — and a footer on the map's primitive cards, where the token
+  cards' "New variable" sits.
+- `hasCardFooter()` is now the single predicate for "this card draws a footer",
+  read by both `cardHeight` (layout) and the canvas (render), since the height
+  reserved and the row drawn have to agree.
+
+Verified live: Spacing → "Add or remove steps" lands on the Tokens panel's
+Spacing section with its Add button and all eight steps; the same from a colour
+ramp's card on the map lands on Colors; and doing it with the rail hidden brings
+the rail back first. `tsc` clean, production build green.
+
+## Status: ✅ BOTH SIDE PANELS CAN BE PUT AWAY — implemented (2026-08-10)
+
+`panels: { left, right }` on the store (persisted alongside `chromeTheme` — a
+chrome preference, not file data), with `togglePanel`, `setPanel` and
+`toggleAllPanels`. `StageRail` and both inspectors (`StepScaffold`'s aside and
+`VariablesView`'s) return `null` when their side is off, so the canvas takes the
+full width rather than sitting next to an empty gutter.
+
+- **The switches are in the top bar, not on the panels.** A control docked
+  inside a panel disappears with it; the top bar is the one thing always on
+  screen, so whatever you put away is one click from coming back. The icons
+  state which way round things are (`PanelLeftClose` ⇄ `PanelLeft`).
+- `⌘\` / `Ctrl+\` hides both — and, if either is already hidden, brings both
+  back, because that's the gesture people actually reach for. Ignored while a
+  text field has focus.
+- **Nothing is narrowed to an icon strip.** A half-rail still costs the canvas
+  ~48px and can no longer say what anything is; a panel is either there or it
+  isn't.
+- Two things that would otherwise be lost with a hidden panel are kept:
+  `StepScaffold` re-renders **Back / Continue** as a floating pair in the
+  canvas's bottom-right (the wizard nav lives in the inspector footer), and the
+  guided tour restores both panels on start, since two of its four stops *are*
+  the panels.
+
+## Status: ✅ STANDALONE MODES + TYPED VARIABLES — implemented (2026-08-10)
+
+Four things the Variables surfaces were still getting wrong: a custom mode had
+to declare itself a light or a dark one, the map had exactly one shape, adding
+a set meant finding one button at the bottom of the canvas, and a component
+token could only ever hold a colour.
+
+**A mode stands on its own.** `ModeDef.base` is now optional and means
+*override*, not parent.
+
+- `modeBase(semantics, mode, primitives?)` reads a mode's appearance off its own
+  `surface-base` — through its aliases, by luminance where a ramp is to hand and
+  by step number where it isn't. Nothing declares a parent; the table's column
+  chip says "reads as dark" and the menu offers Auto / Light / Dark.
+- **Elevation is per mode.** `ElevationTokens` gains an index signature keyed by
+  mode id (light and dark stay named keys, so every existing read still types).
+  `elevationOf(primitives, semantics, mode)` falls back to the appearance ramp
+  for a mode that hasn't got its own yet; `addVariableMode` clones one,
+  `removeVariableMode` drops it, and add/rename/remove *level* apply to every
+  ramp at once via `mapElevation` — a shadow name has to mean the same rung in
+  every column. `ShapeStep` previews and edits all of them, not two.
+- Light and dark are still undeletable, but the reason changed and the copy
+  with it: they're the file's export contract (`:root`/`.dark`, the contrast
+  audit), not the two appearances everything else descends from.
+
+**Variables carry a type.** `TokenKind` moves into the store; a token's value
+grammar grows an explicit prefix past colour — `space:3`, `radius:md`,
+`text:sm`, `weight:medium`, `font:body`, `shadow:low`, `duration:fast`,
+`ease:out`, `px:12` — deliberately the same vocabulary `lib/binding.ts` uses.
+
+- `tokenKind()` follows `@alias` chains until something declares a type;
+  colour is the answer when nothing does, so every pre-typed file is unchanged.
+  `resolveTokenCss()` resolves colours to a hex (the audit needs one) and
+  everything else to the `var()` of the primitive it names, so a radius token
+  re-reads its scale the moment the scale moves.
+- The graph treats a typed value as a real edge: `valueSource` maps it to the
+  primitive node, `tokenValueFor` is the inverse (what a dropped wire writes),
+  `findIssues` validates it against its own scale rather than reporting a
+  missing swatch, and `acceptsKind` does the rest — the picker only ever offers
+  variables of the same type, so an illegal link can't be made.
+- The seed component sets carry what a component *is*: `button-radius`,
+  `-padding-x/y`, `-gap`, `-font-size`, `-font-weight`; `card-radius`,
+  `-padding`, `-gap`, `-shadow`; `input-radius`, `-padding-x/y`, `-font-size`.
+  `backfillComponentShape` tops up an older file's set **only when its token
+  list still reads exactly as it shipped**, so a set anyone has touched is left
+  alone; idempotent by construction.
+- Exports follow: CSS emits the var() indirection, Tailwind routes each token
+  into the scale that matches its kind (`colors` keeps only colours),
+  Figma exports typed tokens as FLOAT/STRING aliased to the primitive, and the
+  docs' extra-mode blocks use `resolveTokenCss`. `freezeTokenValue` is what
+  "unlink, keep the current value" writes — a hex for a colour, `px:N` for
+  anything measured, and nothing at all for a kind with no literal form.
+
+**The map has two shapes.** `autoLayout(collections, collapsed, layout)`:
+`"lanes"` is the fixed single column per tier, `"packed"` wraps each band into
+as many sub-columns as it needs to stay ~780px deep, so a whole system fits a
+screen. Card drags persist per layout (a position that means something in one
+means nothing in the other), and `fitWidth` fits both dimensions in packed.
+
+**Creating a set happens where you're looking.** Every band header on the map
+carries a `New set` button in its own accent, and every tier heading in the
+table's sets list carries a `+`; both open the create panel already on that
+tier (`variablesUI.createKind`). The card footer's `New variable` wears its
+card's accent instead of being the faintest thing on it, and adding a variable
+picks what it holds before naming it (`addRole(group, name, kind)`, seeded by
+`seedValueFor`).
+
+Verified live on :3111: Card and Button sets show their radius/padding/type
+rows resolving to real px against this file's scales; the CSS export emits
+`--ark-button-radius: var(--ark-radius-md)` and Tailwind keeps `colors`
+colour-only; a third mode flipped its own reading to "dark" the moment its
+`surface-base` moved to `neutral-900`, and `ShapeStep` grew a third elevation
+preview and a third Editing tab for it. `tsc --noEmit` clean, production build
+green.
+
+## Status: ✅ MODES AS A LIST + A LEGIBLE VARIABLES MAP — implemented (2026-08-10)
+
+Three things the Variables surfaces were getting wrong: modes were hardcoded to
+two, the map's cards moved whenever a neighbour changed height, and its
+connections could be pointed at but never opened.
+
+**Modes are a list, not a pair.** `semantics.modeDefs: ModeDef[]` (`{ id, name,
+base }`) alongside `semantics.modes: Record<modeId, Record<token, value>>`;
+`PreviewMode` widens to a mode id. Light and dark are permanent (elevation
+ramps, the contrast audit and the `:root`/`.dark` pair every export writes are
+defined in terms of the two) but renameable; anything past them is the user's,
+added from the table's `+ Mode` and managed from its own column header.
+
+- A custom mode declares `base: "light" | "dark"` — its *appearance*. Everything
+  outside the token map now asks `modeBase(semantics, mode)` rather than
+  comparing the id to `"dark"`: `ThemeFrame`'s border, `systemCssVars`' shadow
+  ramp, `useTone`, the disabled/alert fallbacks in `CoreComponents`.
+- Every action that touched two maps now iterates `modeDefsOf`: `addRole`,
+  `createVariableSet`, `removeRole`, `renameRole`, `removeGroup`,
+  `backfillComponentTier`, `countTokens`, `togglePreviewMode` (cycles rather
+  than flips). New modes seed from an existing one — an empty column is every
+  token in the file dangling at once.
+- Exports carry them: CSS emits `[data-ark-mode="<id>"]` past `:root`/`.dark`,
+  the Figma bundle gives the Semantics collection one Figma mode per mode, and
+  the generated docs get a block each. The contrast audit and both preview
+  switchers (top bar, Studio) enumerate modes instead of assuming two.
+- Persist **v15**; `backfillModes` repairs a def with no map and a map with no
+  def, and runs unconditionally on cloud loads (rows carry no version).
+
+**One column per lane on the map.** `autoLayout` stops packing a tier into
+balanced sub-columns. It costs height (which you scroll) and buys a stable
+order (which you can't get any other way): a set is always where you last saw
+it, and every connection runs cleanly between two columns instead of
+criss-crossing inside one. Initial framing is `fitWidth` — a true fit renders a
+4,500px-deep map at 8%, where nothing has a name.
+
+**Connections you can open.** Ribbons were white, unselectable, and reported a
+count you then couldn't chase.
+
+- A ribbon now wears the tier colour of the values it carries, and **clicking it
+  opens a list of its links by name** — each row jumps to the variable or cuts
+  the link. That's the fix for "it says five and I can't find them".
+- Linking accepts drag *or* click-then-click, and while a link is in flight
+  **every legal target stays lit while the rest fade** — the rule is answered
+  before the drop, not after. `Esc` cancels; a status bar counts the targets.
+- Two controls removed, one kept: `Wires: Bundled/All/Focus` → `Links:
+  Summary/All`, and the Elbow/Curve routing toggle is gone (one routing, the one
+  whose shared trunks can be traced). `VariableEdge` carries `modes: string[]` +
+  `binding: boolean` instead of a single-mode enum, so a dash now means "not in
+  every mode" rather than "light only".
+- `VariablesUI` dropped `wireStyle`/`wireDensity` for `links`, and `editMode`'s
+  `"both"` became `"all"` — it's never persisted, so no migration.
+
+Verified live on :3111 through a temporary `/varcheck` harness (added,
+exercised, removed): added/renamed/deleted a third mode and watched the table,
+the inspector's per-mode editors and the map's dashes all follow; opened a
+ribbon and read its ten links; wired `surface-sunken → neutral-400` by drag and
+confirmed it landed in all three modes; armed a link by click and saw 43 legal
+targets lit. Clean console, `tsc` clean, production build passes.
+
 ## Status: ✅ DEPLOYED + SEO — implemented (2026-08-04)
 
 Live at **arkitype.srinidhibhat.com**. Full rationale in `HANDOFF.md` §7b.

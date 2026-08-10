@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, Check, Copy, Download, Globe, Loader2 } from "lucide-react";
-import { countTokens, useDesignSystem } from "@/store/useDesignSystem";
+import { countTokens, modeDefsOf, useDesignSystem } from "@/store/useDesignSystem";
 import { getPublication, publishSnapshot, unpublish, type PublishedRecord } from "@/lib/publish";
 import { compileFigmaBundle } from "@/lib/figma";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
@@ -415,7 +415,13 @@ export function ShipStep() {
               </div>
               <div className="flex justify-between">
                 <span className="text-fg-mute">Modes</span>
-                <span className="text-fg-dim">Light · Dark</span>
+                {/* Every mode the file carries, not the two it used to be
+                    limited to — each one ships as its own block. */}
+                <span className="text-fg-dim">
+                  {modeDefsOf(state.semantics)
+                    .map((m) => m.name)
+                    .join(" · ")}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-fg-mute">Payload</span>

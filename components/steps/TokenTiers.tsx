@@ -12,7 +12,15 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { PreviewMode, SemanticGroup, useDesignSystem } from "@/store/useDesignSystem";
-import { resolveToken, resolveTokenValue, alphaOfValue, applyAlphaToValue } from "@/lib/tokens";
+import {
+  alphaOfValue,
+  applyAlphaToValue,
+  describeTokenValue,
+  resolveToken,
+  resolveTokenValue,
+  tokenKind,
+} from "@/lib/tokens";
+import { KIND_LABEL, KindIcon } from "@/components/variables/VariableBits";
 import { isValidHex, stripAlpha, withAlpha } from "@/lib/color";
 import { CanvasSection, Tooltip } from "@/components/ui/controls";
 import { checkContrast } from "@/lib/a11y";
@@ -90,6 +98,10 @@ export function ModeValueEditor({ mode, token }: { mode: PreviewMode; token: str
   const alpha = alphaOfValue(value);
   const isRawHex = value.trim().startsWith("#");
   const badHex = isRawHex && !isValidHex(value.trim());
+  // A token that holds a radius or a spacing step gets a value field and the
+  // px it works out to — a colour well and an opacity slider would be two
+  // controls that can't do anything to it.
+  const kind = tokenKind({ semantics }, token);
 
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
@@ -98,6 +110,35 @@ export function ModeValueEditor({ mode, token }: { mode: PreviewMode; token: str
     const t = draft.trim();
     if (t !== value) setSemantic(mode, token, t);
   };
+
+  if (kind !== "color") {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span
+          title={`${KIND_LABEL[kind]} — points at the ${kind} scale`}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line bg-ink-panel"
+        >
+          <KindIcon kind={kind} size={12} />
+        </span>
+        <input
+          type="text"
+          spellCheck={false}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            if (e.key === "Escape") setDraft(value);
+          }}
+          placeholder={kind === "size" ? "text:sm" : `${kind}:…`}
+          className="h-7 w-full min-w-0 rounded-md border border-line bg-ink-panel px-2 font-mono text-[11px] text-fg-dim transition-colors focus:border-line-strong focus:text-fg focus:outline-none"
+        />
+        <span className="w-12 shrink-0 text-right font-mono text-[10px] text-fg-mute">
+          {describeTokenValue(primitives, value) || "—"}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-1.5">

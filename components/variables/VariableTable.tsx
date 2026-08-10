@@ -16,33 +16,50 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ChevronDown,
   Copy,
   Check,
   Link2,
-  Palette,
   Plus,
   Search,
+  SlidersHorizontal,
   Trash2,
   TriangleAlert,
   Unlink,
-  X,
 } from "lucide-react";
-import { PreviewMode, RADII_NAMES, useDesignSystem } from "@/store/useDesignSystem";
+import {
+  ModeBase,
+  ModeDef,
+  PreviewMode,
+  RADII_NAMES,
+  TokenKind,
+  isBuiltInMode,
+  modeBase,
+  modeDefsOf,
+  useDesignSystem,
+} from "@/store/useDesignSystem";
 import {
   TIER_META,
   TIER_ORDER,
+  VarCollection,
+  VarKind,
   VarNode,
   VarTier,
   VariableGraph,
   acceptsKind,
   bindingFor,
   nodeTokenName,
+  primitiveHome,
   tierColor,
+  tokenValueFor,
   wouldCycle,
 } from "@/lib/variableGraph";
-import { resolveTokenValue, splitAlpha } from "@/lib/tokens";
+import { describeTokenValue, resolveTokenValue, splitAlpha, splitTypedValue } from "@/lib/tokens";
 import { isValidHex, stripAlpha, withAlpha } from "@/lib/color";
-import { KindIcon, Swatch, TierBadge } from "@/components/variables/VariableBits";
+import { KIND_LABEL, KindIcon, Swatch, TierBadge } from "@/components/variables/VariableBits";
+
+/** The types a new variable can be created as, in the order they're offered. */
+const NEW_VARIABLE_KINDS: TokenKind[] = ["color", "space", "radius", "size", "weight", "font", "shadow"];
 
 /* ────────────────────────── row grouping ────────────────────────── */
 
@@ -100,27 +117,48 @@ export function blockRows(nodes: VarNode[]): RowBlock[] {
 /* ────────────────────────── value cells ────────────────────────── */
 
 /** How a stored value presents itself in a cell. */
-function readValue(value: string): { kind: "alias" | "ref" | "literal" | "empty"; label: string; alpha: number | null } {
+function readValue(value: string): {
+  kind: "alias" | "ref" | "literal" | "typed" | "empty";
+  label: string;
+  alpha: number | null;
+} {
   const trimmed = (value ?? "").trim();
   if (!trimmed) return { kind: "empty", label: "—", alpha: null };
   const { base, alpha } = splitAlpha(trimmed);
   if (base.startsWith("@")) return { kind: "alias", label: base.slice(1), alpha };
   if (base.startsWith("#")) return { kind: "literal", label: base.toUpperCase(), alpha };
+  const typed = splitTypedValue(base);
+  // A typed value reads as the primitive it names — "radius-md", not
+  // "radius:md": the same name the Radius set shows it under.
+  if (typed) {
+    return {
+      kind: "typed",
+      label: typed.prefix === "px" ? `${typed.rest}px` : `${typed.prefix}-${typed.rest}`,
+      alpha: null,
+    };
+  }
   return { kind: "ref", label: base, alpha };
 }
 
 /**
- * The chip inside a cell — swatch, then what the value *says*. An alias reads
+ * The chip inside a cell — a mark, then what the value *says*. An alias reads
  * as the name it follows (the point of aliasing); a literal reads as its hex,
- * because there's nothing else to call it.
+ * because there's nothing else to call it; a radius or a space reads as the
+ * step it names, with the px it currently works out to alongside.
  */
 function ValueChip({
   value,
   resolved,
+  detail,
+  kind = "color",
   muted,
 }: {
   value: string;
+  /** Resolved hex — colours only. */
   resolved?: string;
+  /** Concrete value ("8px", "600") — everything else. */
+  detail?: string;
+  kind?: VarKind;
   muted?: boolean;
 }) {
   const v = readValue(value);
@@ -132,7 +170,11 @@ function ValueChip({
           : "border-line bg-ink"
       }`}
     >
-      {v.kind === "empty" ? null : <Swatch hex={resolved} size={11} />}
+      {v.kind === "empty" ? null : kind === "color" ? (
+        <Swatch hex={resolved} size={11} />
+      ) : (
+        <KindIcon kind={kind} size={11} />
+      )}
       <span
         className={`min-w-0 truncate font-mono text-[10.5px] leading-none ${
           muted ? "text-fg-mute" : "text-fg-dim"
@@ -142,6 +184,9 @@ function ValueChip({
       </span>
       {v.alpha !== null ? (
         <span className="shrink-0 font-mono text-[9px] leading-none text-fg-mute">{v.alpha}%</span>
+      ) : null}
+      {detail ? (
+        <span className="shrink-0 font-mono text-[9px] leading-none text-fg-mute">{detail}</span>
       ) : null}
     </span>
   );
@@ -216,11 +261,13 @@ function CellEditor({
   );
 
   const pick = (provider: VarNode) => {
+    const radiusNames = primitives.radiusNames ?? [...RADII_NAMES];
     if (node.tier === "usage" && node.usage) {
-      const binding = bindingFor(provider, primitives.radiusNames ?? [...RADII_NAMES]);
+      const binding = bindingFor(provider, radiusNames);
       if (binding) setComponentBinding(node.usage.componentId, node.usage.storageKey, binding);
     } else if (token && mode) {
-      setSemantic(mode, token, provider.tier === "primitive" ? provider.path : `@${provider.path}`);
+      const value = tokenValueFor(provider, radiusNames);
+      if (value) setSemantic(mode, token, value);
     }
     onClose();
   };
@@ -232,15 +279,34 @@ function CellEditor({
     onClose();
   };
 
-  const resolved = mode ? resolveTokenValue({ primitives, semantics }, mode, current) : undefined;
+  const isColor = node.kind === "color";
+  const resolved =
+    mode && isColor ? resolveTokenValue({ primitives, semantics }, mode, current) : undefined;
 
   return (
     <div
       ref={wrapRef}
       className="absolute left-0 top-full z-40 mt-1 w-[280px] overflow-hidden rounded-lg border border-line-strong bg-ink-raised shadow-2xl"
     >
-      {/* raw value — colour well plus the reference/hex grammar */}
-      {token && mode ? (
+      {/* raw value — the colour well only where a colour is what's being held */}
+      {token && mode && !isColor ? (
+        <div className="border-b border-line p-2">
+          <input
+            autoFocus
+            value={draft}
+            spellCheck={false}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitRaw}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRaw();
+              if (e.key === "Escape") setDraft(current);
+            }}
+            placeholder={`${node.kind === "size" ? "text:sm" : `${node.kind}:…`}, @token…`}
+            className="h-6 w-full min-w-0 rounded border border-line bg-ink px-1.5 font-mono text-[11px] text-fg placeholder:text-fg-mute focus:border-line-strong focus:outline-none"
+          />
+        </div>
+      ) : null}
+      {token && mode && isColor ? (
         <div className="flex items-center gap-1.5 border-b border-line p-2">
           <label
             className="relative h-6 w-6 shrink-0 cursor-pointer overflow-hidden rounded border border-line-strong"
@@ -288,8 +354,8 @@ function CellEditor({
       <div className="max-h-[240px] overflow-y-auto py-0.5">
         {matches.length === 0 ? (
           <p className="px-2 py-2.5 text-[10.5px] leading-relaxed text-fg-mute">
-            Nothing here can feed this one — a colour takes a colour, and a link can&apos;t loop
-            back on itself.
+            Nothing here can feed this one — a {KIND_LABEL[node.kind].toLowerCase()} takes a{" "}
+            {KIND_LABEL[node.kind].toLowerCase()}, and a link can&apos;t loop back on itself.
           </p>
         ) : (
           (["primitive", "semantic", "component"] as VarTier[]).map((tier) => {
@@ -308,7 +374,11 @@ function CellEditor({
                     onClick={() => pick(c)}
                     className="flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors hover:bg-ink-hover"
                   >
-                    <Swatch hex={c.swatch?.[mode ?? "light"]} size={11} />
+                    {c.kind === "color" ? (
+                      <Swatch hex={c.swatch?.[mode ?? "light"]} size={11} />
+                    ) : (
+                      <KindIcon kind={c.kind} size={11} />
+                    )}
                     <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-fg-dim">
                       {c.path}
                     </span>
@@ -323,7 +393,10 @@ function CellEditor({
         )}
       </div>
 
-      {node.tier === "usage" && node.usage ? (
+      {/* Only where there's something stored to drop. A property still on the
+          binding it ships with has nothing to clear, and the way to change it
+          is to pick a source above. */}
+      {node.tier === "usage" && node.usage?.overridden ? (
         <button
           type="button"
           onClick={() => {
@@ -333,7 +406,7 @@ function CellEditor({
           className="flex w-full items-center justify-center gap-1.5 border-t border-line px-2 py-1.5 text-[10.5px] text-fg-mute transition-colors hover:bg-ink-hover hover:text-fg"
         >
           <Unlink size={10} />
-          Clear binding
+          Back to default
         </button>
       ) : null}
     </div>
@@ -355,9 +428,15 @@ function ValueCell({
   const semantics = useDesignSystem((s) => s.semantics);
 
   const value = mode ? (node.raw?.[mode] ?? "") : node.ref;
-  const resolved = mode
-    ? resolveTokenValue({ primitives, semantics }, mode, value)
-    : graph.nodes[graph.incoming[node.id]?.[0] ?? ""]?.swatch?.light;
+  const isColor = node.kind === "color";
+  const resolved = !isColor
+    ? undefined
+    : mode
+      ? resolveTokenValue({ primitives, semantics }, mode, value)
+      : graph.nodes[graph.incoming[node.id]?.[0] ?? ""]?.swatch?.light;
+  // What the value actually works out to right now — the thing a radius or a
+  // spacing token is really being asked.
+  const detail = isColor || !mode ? undefined : describeTokenValue(primitives, value);
 
   return (
     <div className="relative">
@@ -372,11 +451,225 @@ function ValueCell({
           open ? "bg-ink-hover" : ""
         }`}
       >
-        <ValueChip value={value} resolved={resolved} />
+        <ValueChip value={value} resolved={resolved} detail={detail} kind={node.kind} />
       </button>
       {open ? (
         <CellEditor node={node} mode={mode} graph={graph} onClose={() => setOpen(false)} />
       ) : null}
+    </div>
+  );
+}
+
+/* ────────────────────────── mode columns ────────────────────────── */
+
+/**
+ * One mode's column header, and everything you can do to that mode.
+ *
+ * Modes live in the header rather than in a settings panel because a mode *is*
+ * a column: the place you notice you want another one is while looking at the
+ * two you have, and the place you'd go to rename or drop one is the thing with
+ * its name on it.
+ */
+function ModeHeader({ def, canDelete }: { def: ModeDef; canDelete: boolean }) {
+  const renameVariableMode = useDesignSystem((s) => s.renameVariableMode);
+  const setVariableModeBase = useDesignSystem((s) => s.setVariableModeBase);
+  const removeVariableMode = useDesignSystem((s) => s.removeVariableMode);
+  const addVariableMode = useDesignSystem((s) => s.addVariableMode);
+  const primitives = useDesignSystem((s) => s.primitives);
+  const semantics = useDesignSystem((s) => s.semantics);
+
+  const [open, setOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const builtIn = isBuiltInMode(def.id);
+  /** How this mode reads — from its own surfaces unless someone pinned it. */
+  const reads = modeBase(semantics, def.id, primitives);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} className="relative flex min-w-0 items-center gap-1">
+      <span className="min-w-0 truncate text-[10.5px] font-semibold text-fg-mute">{def.name}</span>
+      {!builtIn ? (
+        <span
+          title={
+            def.base
+              ? `Pinned: this mode is treated as ${def.base}`
+              : `Reads as ${reads}, from its own surface-base`
+          }
+          className={`shrink-0 rounded border px-1 font-mono text-[8px] leading-[13px] ${
+            def.base ? "border-line-strong text-fg-dim" : "border-line text-fg-mute"
+          }`}
+        >
+          {reads}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => {
+          setOpen((o) => !o);
+          setConfirmDelete(false);
+        }}
+        title={`${def.name} — rename, duplicate${canDelete ? ", delete" : ""}`}
+        aria-label={`${def.name} options`}
+        className="shrink-0 rounded p-0.5 text-fg-mute transition-colors hover:bg-ink-hover hover:text-fg"
+      >
+        <ChevronDown size={10} />
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 top-6 z-40 w-[220px] overflow-hidden rounded-lg border border-line-strong bg-ink-raised p-2 shadow-2xl">
+          <EditableName
+            value={def.name}
+            title="Rename this mode"
+            onCommit={(next) => renameVariableMode(def.id, next)}
+            className="mb-2 h-7 w-full rounded border border-line bg-ink px-1.5 text-[11.5px] font-semibold text-fg focus:border-line-strong focus:outline-none"
+          />
+
+          {builtIn ? (
+            <p className="mb-2 text-[10px] leading-snug text-fg-mute">
+              Light and Dark can&apos;t be removed — they&apos;re the pair every CSS export writes
+              as <span className="font-mono">:root</span> and{" "}
+              <span className="font-mono">.dark</span>, and the pair the contrast audit reports
+              against. Every other mode stands entirely on its own.
+            </p>
+          ) : (
+            <div className="mb-2">
+              <p className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.07em] text-fg-mute">
+                Reads as
+              </p>
+              <div className="grid grid-cols-3 gap-1 rounded border border-line bg-ink p-0.5">
+                {([null, "light", "dark"] as Array<ModeBase | null>).map((b) => (
+                  <button
+                    key={b ?? "auto"}
+                    type="button"
+                    onClick={() => setVariableModeBase(def.id, b)}
+                    title={
+                      b === null
+                        ? "Work it out from this mode's own surface-base — nothing to declare"
+                        : `Treat this mode as ${b}, whatever its surfaces say`
+                    }
+                    className={`rounded py-1 text-[10px] font-bold capitalize transition-colors ${
+                      (def.base ?? null) === b ? "bg-fg text-ink" : "text-fg-mute hover:text-fg-dim"
+                    }`}
+                  >
+                    {b ?? "auto"}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[9.5px] leading-snug text-fg-mute">
+                This mode owns its values and its own shadow ramp. All this decides is which way
+                non-token chrome leans — auto reads it off your own{" "}
+                <span className="font-mono">surface-base</span> ({reads}).
+              </p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              addVariableMode(`${def.name} copy`, def.id);
+              setOpen(false);
+            }}
+            title="A new standalone mode, its values copied from this one to start with"
+            className="mb-1 flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-[11px] text-fg-mute transition-colors hover:bg-ink-hover hover:text-fg"
+          >
+            <Copy size={10} />
+            New mode from this one
+          </button>
+
+          {canDelete ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!confirmDelete) {
+                  setConfirmDelete(true);
+                  window.setTimeout(() => setConfirmDelete(false), 4000);
+                  return;
+                }
+                removeVariableMode(def.id);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-[11px] transition-colors ${
+                confirmDelete
+                  ? "bg-red-500/10 text-red-400"
+                  : "text-fg-mute hover:bg-ink-hover hover:text-red-400"
+              }`}
+            >
+              <Trash2 size={10} />
+              {confirmDelete ? "Delete — every value in it goes" : "Delete this mode"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ──────────────────── where a primitive is really edited ──────────────────── */
+
+/**
+ * A primitive scale isn't a list you type into — it's generated. A ramp comes
+ * from a seed, spacing from a base × multipliers, type from a base × a ratio.
+ * So Variables doesn't try to be a second editor for them; it names the two
+ * places the real editing happens and takes you to either in one click.
+ *
+ * Both destinations already exist and always have. What was missing was any way
+ * to get to them from here, which is what made the primitive sets feel read-only.
+ */
+export function PrimitiveActions({ collection }: { collection: VarCollection }) {
+  const setPendingFocus = useDesignSystem((s) => s.setPendingFocus);
+  const goToStep = useDesignSystem((s) => s.goToStep);
+  const focusTokenSection = useDesignSystem((s) => s.focusTokenSection);
+
+  const home = primitiveHome(collection);
+  if (!home) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2.5">
+      <p className="min-w-0 flex-1 text-[10.5px] leading-snug text-fg-mute">
+        Primitives are generated scales, so they&apos;re tuned where they&apos;re generated —
+        everything aliased to them follows whatever you set there.
+      </p>
+
+      {home.section ? (
+        <button
+          type="button"
+          onClick={() => focusTokenSection(home.section!)}
+          title={`Open the Tokens panel at ${home.sectionLabel} — where steps are added and removed`}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-line px-2 py-1 text-[10.5px] font-semibold text-fg-dim transition-colors hover:border-line-strong hover:bg-ink-hover hover:text-fg"
+        >
+          <Plus size={11} />
+          Add or remove steps
+        </button>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => {
+          if (home.anchor) setPendingFocus({ step: home.step, anchor: home.anchor });
+          goToStep(home.step);
+        }}
+        title={`Tune these values on the ${home.stepLabel} step`}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-line px-2 py-1 text-[10.5px] font-semibold text-fg-dim transition-colors hover:border-line-strong hover:bg-ink-hover hover:text-fg"
+      >
+        <SlidersHorizontal size={11} />
+        Edit in {home.stepLabel}
+      </button>
     </div>
   );
 }
@@ -392,7 +685,8 @@ function SetsList({
   graph: VariableGraph;
   activeId: string | null;
   onPick: (id: string) => void;
-  onNew: () => void;
+  /** Opens the create panel, on the tier that asked for it. */
+  onNew: (kind?: "semantic" | "component") => void;
 }) {
   return (
     <div className="flex h-full w-[212px] shrink-0 flex-col border-r border-line bg-ink-panel">
@@ -400,7 +694,7 @@ function SetsList({
         <span className="text-[11.5px] font-bold text-fg">Sets</span>
         <button
           type="button"
-          onClick={onNew}
+          onClick={() => onNew()}
           title="Create a new set of variables"
           className="inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 text-[10px] font-semibold text-fg-mute transition-colors hover:border-line-strong hover:bg-ink-hover hover:text-fg"
         >
@@ -413,38 +707,64 @@ function SetsList({
         {TIER_ORDER.map((tier) => {
           const inTier = graph.collections.filter((c) => c.tier === tier);
           if (inTier.length === 0) return null;
+          // Primitives are generated scales and usage is the wiring you've
+          // already done — neither is a place a set can be *added*.
+          const canAdd = tier === "semantic" || tier === "component";
           return (
             <div key={tier} className="mb-2">
-              <p
+              <div
                 className="flex items-center gap-1.5 px-3 pb-1 pt-1 text-[9px] font-bold uppercase tracking-[0.08em]"
                 style={{ color: tierColor(tier) }}
               >
                 <TierBadge tier={tier} size={11} />
-                {TIER_META[tier].plural}
-              </p>
-              {inTier.map((c) => {
-                const active = activeId === c.id;
-                return (
+                <span className="min-w-0 flex-1 truncate">{TIER_META[tier].plural}</span>
+                {canAdd ? (
                   <button
-                    key={c.id}
                     type="button"
-                    onClick={() => onPick(c.id)}
-                    className={`flex w-full items-center gap-2 px-3 py-[5px] text-left transition-colors ${
-                      active ? "bg-ink-raised" : "hover:bg-ink-hover"
-                    }`}
-                    style={active ? { boxShadow: `inset 2px 0 0 ${tierColor(tier)}` } : undefined}
+                    onClick={() => onNew(tier as "semantic" | "component")}
+                    title={`New set of ${TIER_META[tier].plural.toLowerCase()}`}
+                    aria-label={`New set of ${TIER_META[tier].plural.toLowerCase()}`}
+                    className="shrink-0 rounded p-0.5 transition-colors hover:bg-ink-hover"
+                    style={{ color: tierColor(tier) }}
                   >
-                    <span
-                      className={`min-w-0 flex-1 truncate text-[11.5px] ${
-                        active ? "font-semibold text-fg" : "text-fg-dim"
-                      }`}
-                    >
-                      {c.label}
-                    </span>
-                    <span className="shrink-0 font-mono text-[10px] text-fg-mute">
-                      {c.nodes.length}
-                    </span>
+                    <Plus size={12} />
                   </button>
+                ) : null}
+              </div>
+              {inTier.map((c, i) => {
+                const active = activeId === c.id;
+                // Fifty-three components in one flat list is a wall of names.
+                // They already come in the library's own four lanes, so the
+                // list says which one it's in each time that changes.
+                const lane = c.source?.laneLabel;
+                const newLane = !!lane && lane !== inTier[i - 1]?.source?.laneLabel;
+                return (
+                  <div key={c.id}>
+                    {newLane ? (
+                      <p className="px-3 pb-0.5 pt-1.5 text-[8.5px] font-bold uppercase tracking-[0.09em] text-fg-mute">
+                        {lane}
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => onPick(c.id)}
+                      className={`flex w-full items-center gap-2 px-3 py-[5px] text-left transition-colors ${
+                        active ? "bg-ink-raised" : "hover:bg-ink-hover"
+                      }`}
+                      style={active ? { boxShadow: `inset 2px 0 0 ${tierColor(tier)}` } : undefined}
+                    >
+                      <span
+                        className={`min-w-0 flex-1 truncate text-[11.5px] ${
+                          active ? "font-semibold text-fg" : "text-fg-dim"
+                        }`}
+                      >
+                        {c.label}
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] text-fg-mute">
+                        {c.nodes.length}
+                      </span>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -500,7 +820,7 @@ export function VariableTable({
 }: {
   graph: VariableGraph;
   /** Opens the create panel, which the workspace owns so the map shares it. */
-  onNewSet: () => void;
+  onNewSet: (kind?: "semantic" | "component") => void;
 }) {
   const ui = useDesignSystem((s) => s.variablesUI);
   const selectVariable = useDesignSystem((s) => s.selectVariable);
@@ -512,9 +832,16 @@ export function VariableTable({
   const removeGroup = useDesignSystem((s) => s.removeGroup);
   const setPendingFocus = useDesignSystem((s) => s.setPendingFocus);
   const goToStep = useDesignSystem((s) => s.goToStep);
+  const semantics = useDesignSystem((s) => s.semantics);
+  const addVariableMode = useDesignSystem((s) => s.addVariableMode);
+
+  const modeDefs = useMemo(() => modeDefsOf(semantics), [semantics]);
 
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
+  /** What the next new variable will hold. Sticky, since a run of additions to
+   *  one set is usually a run of the same type. */
+  const [newKind, setNewKind] = useState<TokenKind>("color");
   const [confirmDeleteSet, setConfirmDeleteSet] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -566,7 +893,13 @@ export function VariableTable({
 
   const isTokenSet = active?.tier === "semantic" || active?.tier === "component";
   const isPrimitive = active?.tier === "primitive";
-  const columns: Array<PreviewMode | null> = isTokenSet ? ["light", "dark"] : [null];
+  // One column per mode on a token set; a single value column everywhere else
+  // (primitives hold one raw value, and a component binding is mode-independent).
+  const columns: Array<ModeDef | null> = isTokenSet ? modeDefs : [null];
+  // Enough width that no column collapses to a swatch and an ellipsis; past
+  // three or four modes the table scrolls sideways rather than crushing itself.
+  const gridTemplate = `minmax(180px, 1.1fr) repeat(${columns.length}, minmax(150px, 1fr))`;
+  const gridMinWidth = 180 + columns.length * 150 + (columns.length + 1) * 12 + 24;
 
   return (
     <div className="relative flex min-h-0 flex-1 bg-ink">
@@ -625,10 +958,22 @@ export function VariableTable({
               <button
                 type="button"
                 onClick={() => setAdding(true)}
+                title="Add a variable to this set — a colour, a radius, a spacing step…"
                 className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] font-semibold text-fg-mute transition-colors hover:border-line-strong hover:bg-ink-hover hover:text-fg"
               >
                 <Plus size={11} />
                 Variable
+              </button>
+            ) : null}
+            {isTokenSet ? (
+              <button
+                type="button"
+                onClick={() => addVariableMode(`Mode ${modeDefs.length + 1}`, "light")}
+                title="Add a mode — a new column, copied from Light, that every variable gets its own value in. Rename it from its header."
+                className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] font-semibold text-fg-mute transition-colors hover:border-line-strong hover:bg-ink-hover hover:text-fg"
+              >
+                <Plus size={11} />
+                Mode
               </button>
             ) : null}
             {isTokenSet && active?.source?.groupLabel ? (
@@ -658,23 +1003,29 @@ export function VariableTable({
           </div>
         </div>
 
+        {/* Head and body scroll together, sideways as well as down — a file
+            with five modes is a wide table, not five crushed columns. */}
+        <div className="min-h-0 flex-1 overflow-auto">
+          <div style={{ minWidth: isTokenSet ? gridMinWidth : undefined }}>
         {/* column head */}
         <div
-          className="grid shrink-0 items-center gap-3 border-b border-line bg-ink-panel px-3 py-2"
-          style={{
-            gridTemplateColumns: `minmax(160px, 1.1fr) repeat(${columns.length}, minmax(140px, 1fr))`,
-          }}
+          className="sticky top-0 z-20 grid shrink-0 items-center gap-3 border-b border-line bg-ink-panel px-3 py-2"
+          style={{ gridTemplateColumns: gridTemplate }}
         >
           <span className="text-[10.5px] font-semibold text-fg-mute">Name</span>
-          {columns.map((c, i) => (
-            <span key={c ?? i} className="text-[10.5px] font-semibold capitalize text-fg-mute">
-              {c ?? (isPrimitive ? "Value" : "Bound to")}
-            </span>
-          ))}
+          {columns.map((c, i) =>
+            c ? (
+              <ModeHeader key={c.id} def={c} canDelete={!isBuiltInMode(c.id)} />
+            ) : (
+              <span key={i} className="text-[10.5px] font-semibold text-fg-mute">
+                {isPrimitive ? "Value" : "Bound to"}
+              </span>
+            )
+          )}
         </div>
 
         {/* rows */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div>
           {blocks.length === 0 ? (
             <p className="p-6 text-center text-[11.5px] leading-relaxed text-fg-mute">
               {q
@@ -707,9 +1058,7 @@ export function VariableTable({
                     <div
                       key={node.id}
                       onClick={() => selectVariable(node.id)}
-                      style={{
-                        gridTemplateColumns: `minmax(160px, 1.1fr) repeat(${columns.length}, minmax(140px, 1fr))`,
-                      }}
+                      style={{ gridTemplateColumns: gridTemplate }}
                       className={`group/row grid cursor-pointer items-center gap-3 border-b border-line px-3 py-1.5 transition-colors ${
                         selected ? "bg-ink-raised" : "hover:bg-ink-panel/60"
                       }`}
@@ -777,7 +1126,7 @@ export function VariableTable({
                             </span>
                           </div>
                         ) : (
-                          <ValueCell key={mode ?? i} node={node} mode={mode} graph={graph} />
+                          <ValueCell key={mode?.id ?? i} node={node} mode={mode?.id ?? null} graph={graph} />
                         )
                       )}
                     </div>
@@ -791,20 +1140,50 @@ export function VariableTable({
           {isTokenSet && active?.addTo ? (
             <div className="px-3 py-2">
               {adding ? (
-                <input
-                  autoFocus
-                  placeholder="new variable name…"
-                  onBlur={() => setAdding(false)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") setAdding(false);
-                    if (e.key === "Enter") {
-                      const v = (e.target as HTMLInputElement).value.trim();
-                      if (v && active.addTo) addRole(active.addTo.groupLabel, v);
-                      setAdding(false);
-                    }
-                  }}
-                  className="h-7 w-[260px] rounded-md border border-line-strong bg-ink-panel px-2 font-mono text-[11px] text-fg placeholder:text-fg-mute focus:outline-none"
-                />
+                <div className="flex items-center gap-1.5">
+                  {/* What it holds is picked before it's named, because the
+                      type decides what the new row can be pointed at. */}
+                  <div className="flex shrink-0 rounded-md border border-line bg-ink-panel p-0.5">
+                    {NEW_VARIABLE_KINDS.map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        // mousedown, not click: the name field's blur would
+                        // close the whole row before a click ever landed.
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setNewKind(k);
+                        }}
+                        title={KIND_LABEL[k]}
+                        aria-label={KIND_LABEL[k]}
+                        aria-pressed={newKind === k}
+                        className={`rounded p-1 transition-colors ${
+                          newKind === k ? "bg-fg text-ink" : "text-fg-mute hover:text-fg"
+                        }`}
+                      >
+                        <KindIcon
+                          kind={k}
+                          size={11}
+                          className={newKind === k ? "!text-ink" : ""}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    autoFocus
+                    placeholder={`new ${KIND_LABEL[newKind].toLowerCase()} variable…`}
+                    onBlur={() => setAdding(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setAdding(false);
+                      if (e.key === "Enter") {
+                        const v = (e.target as HTMLInputElement).value.trim();
+                        if (v && active.addTo) addRole(active.addTo.groupLabel, v, newKind);
+                        setAdding(false);
+                      }
+                    }}
+                    className="h-7 w-[260px] rounded-md border border-line-strong bg-ink-panel px-2 font-mono text-[11px] text-fg placeholder:text-fg-mute focus:outline-none"
+                  />
+                </div>
               ) : (
                 <button
                   type="button"
@@ -818,35 +1197,17 @@ export function VariableTable({
             </div>
           ) : null}
 
-          {isPrimitive ? (
-            <div className="flex items-center gap-2 px-3 py-2.5">
-              <p className="text-[10.5px] leading-snug text-fg-mute">
-                Primitives hold raw values — everything aliased to them follows whatever you set
-                here.
-              </p>
-              {active?.kind === "color" && active.source?.familyId ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingFocus({ step: "colour", anchor: active.source!.familyId! });
-                    goToStep("colour");
-                  }}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line px-2 py-1 text-[10.5px] text-fg-mute transition-colors hover:border-line-strong hover:text-fg"
-                >
-                  <Palette size={10} />
-                  Edit this ramp
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+          {isPrimitive && active ? <PrimitiveActions collection={active} /> : null}
 
           {active?.tier === "usage" ? (
             <p className="flex items-start gap-1.5 px-3 py-2.5 text-[10.5px] leading-snug text-fg-mute">
               <Link2 size={11} className="mt-px shrink-0" />
-              These are the properties this component has actually been bound to — the rest fall
-              back to its defaults.
+              Every property this component styles, on the binding it renders from — its
+              default until you point it somewhere else.
             </p>
           ) : null}
+        </div>
+          </div>
         </div>
       </div>
 

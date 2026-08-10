@@ -88,6 +88,7 @@ export function StepScaffold({
   const goToStep = useDesignSystem((s) => s.goToStep);
   const completeStep = useDesignSystem((s) => s.completeStep);
   const done = useDesignSystem((s) => s.journey.done);
+  const showInspector = useDesignSystem((s) => s.panels.right);
 
   const meta = STEP_META[step];
   const next = nextStep(step);
@@ -120,7 +121,7 @@ export function StepScaffold({
   }, [step, next, prev, completeStep, goToStep]);
 
   return (
-    <div className="flex h-full min-h-0 flex-1">
+    <div className="relative flex h-full min-h-0 flex-1">
       {/* Center Canvas — padding scales with the screen so a 13" laptop spends
           its pixels on the work rather than on margin. */}
       <div
@@ -137,7 +138,51 @@ export function StepScaffold({
         </div>
       </div>
 
+      {/* Back / Continue lives in the inspector's footer, so putting the
+          inspector away would otherwise take the whole guided flow with it. It
+          comes back as a floating pair pinned to the corner it used to occupy —
+          the one thing from that panel the canvas can't do without. */}
+      {!showInspector ? (
+        <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-lg border border-line bg-ink-raised/95 p-1.5 shadow-lg backdrop-blur">
+          {prev ? (
+            <button
+              type="button"
+              onClick={() => goToStep(prev)}
+              title="Previous step (⌘←)"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-ink px-2.5 text-[12px] font-medium text-fg-mute transition-colors hover:bg-ink-hover hover:text-fg"
+            >
+              <ArrowLeft size={13} />
+              Back
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => completeStep(step)}
+            title="Next step (⌘→)"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[12px] font-medium text-ink transition hover:opacity-90"
+          >
+            {finished ? (
+              <>
+                Shipped
+                <Check size={13} />
+              </>
+            ) : next ? (
+              <>
+                Continue
+                <ArrowRight size={13} />
+              </>
+            ) : (
+              <>
+                Finish system
+                <Check size={13} />
+              </>
+            )}
+          </button>
+        </div>
+      ) : null}
+
       {/* Right Property Inspector */}
+      {!showInspector ? null : (
       <aside
         id="workspace-right-inspector"
         style={{ width: `${inspectorWidth}px` }}
@@ -219,6 +264,7 @@ export function StepScaffold({
           </div>
         </div>
       </aside>
+      )}
     </div>
   );
 }

@@ -21,17 +21,37 @@
  */
 import {
   ArkitypeState,
+  ModeDef,
   PreviewMode,
   RADII_NAMES,
   SemanticGroup,
+  TokenKind,
+  modeDefsOf,
   shadowToCss,
 } from "@/store/useDesignSystem";
-import { resolveRef, resolveTokenValue, splitAlpha } from "@/lib/tokens";
-import { parseBinding } from "@/lib/binding";
+import {
+  describeTokenValue,
+  resolveRef,
+  resolveTokenValue,
+  splitAlpha,
+  splitTypedValue,
+  tokenKind,
+  valueKind,
+} from "@/lib/tokens";
+import { bindingSwatch, describeBinding, parseBinding } from "@/lib/binding";
 import { rampStepLabels } from "@/lib/color";
 import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
-import { COMPONENT_SPECS, BindingType, STATE_LABEL, CState } from "@/lib/componentSchema";
+import {
+  COMPONENT_SPECS,
+  BindingType,
+  ComponentSpec,
+  PropSpec,
+  STATE_LABEL,
+  CState,
+  bindingKey,
+  defBinding,
+} from "@/lib/componentSchema";
 
 /* ────────────────────────────── model ────────────────────────────── */
 
@@ -108,19 +128,10 @@ export function tierColor(tier: VarTier, alpha = 1): string {
 /**
  * What a node *carries*. Connections are only legal between matching kinds
  * (you can't alias a radius step into a colour role), so this is the type
- * system of the canvas.
+ * system of the canvas. Shared with the store, since a token now declares its
+ * own kind through its value (see `lib/tokens.ts`).
  */
-export type VarKind =
-  | "color"
-  | "space"
-  | "radius"
-  | "size"
-  | "weight"
-  | "font"
-  | "shadow"
-  | "duration"
-  | "ease"
-  | "dimension";
+export type VarKind = TokenKind;
 
 export interface VarNode {
   /** Stable across rebuilds: "prim:color:brand-600", "tok:surface-base", "use:button:container.bg". */
@@ -143,7 +154,18 @@ export interface VarNode {
   /** Right-aligned secondary text on the row (px value, weight, family…). */
   detail?: string;
   /** Set on usage nodes so a drop can be validated against the prop's type. */
-  usage?: { componentId: string; storageKey: string; propKey: string; state?: CState; type: BindingType };
+  usage?: {
+    componentId: string;
+    storageKey: string;
+    propKey: string;
+    state?: CState;
+    type: BindingType;
+    /**
+     * False when this row is still on the schema's default binding — nothing is
+     * stored for it, so there is a wire to *move* but nothing to cut.
+     */
+    overridden: boolean;
+  };
 }
 
 export interface VarCollection {
@@ -157,18 +179,40 @@ export interface VarCollection {
   /** Where "+ Add" writes, for the tiers that accept new variables inline. */
   addTo?: { kind: "role" | "componentToken"; groupLabel: string };
   /** Group/family this card came from, so the inspector can act on it. */
-  source?: { groupLabel?: string; familyId?: string; componentId?: string };
+  source?: { groupLabel?: string; familyId?: string; componentId?: string; laneLabel?: string };
+  /**
+   * Folded on the map until someone asks for it. The component lane holds every
+   * component in the library, and a lane that opened all of them at once would
+   * be four hundred rows deep — so the ones nobody has customised read as a list
+   * of names, one click from their rows. Unfolding sticks (see `VariablesUI`).
+   */
+  defaultCollapsed?: boolean;
 }
 
-/** One alias. `mode` is "both" when light and dark agree — the common case. */
+/**
+ * One connection.
+ *
+ * A token alias holds in some set of modes — usually all of them, since most
+ * tokens point at the same place whatever the mode; the ones that differ are
+ * exactly the interesting ones. A component binding holds in every mode by
+ * construction (it resolves to a `var()`, which flips on its own), so it
+ * carries `binding: true` and an empty mode list rather than pretending to be
+ * mode-specific.
+ */
 export interface VarEdge {
   id: string;
   from: string;
   to: string;
-  mode: PreviewMode | "both" | "binding";
+  /** Modes this alias applies in. Empty on a binding. */
+  modes: PreviewMode[];
+  binding: boolean;
   /** Alpha the consumer applies on top of the source, if any. */
   alpha: number | null;
 }
+
+/** True when an alias holds in every mode the file has — the common case. */
+export const isEveryMode = (edge: VarEdge, all: number): boolean =>
+  edge.binding || edge.modes.length >= all;
 
 export interface VarIssue {
   nodeId: string;
@@ -204,19 +248,90 @@ export function nodeTokenName(id: string): string | null {
 
 /* ────────────────────────────── build ────────────────────────────── */
 
-const MODES: PreviewMode[] = ["light", "dark"];
+/** The file's modes, in table order. Light and dark are always among them. */
+const modesOf = (state: GraphState): ModeDef[] => modeDefsOf(state.semantics);
 
 /**
  * The node a stored token *value* points at, or null when the value is a
- * literal (a raw hex) or dangles. Alpha suffixes are stripped first — a
- * "brand-600/40" still points at brand-600, it just lands there at 40%.
+ * literal (a raw hex, a "px:" dimension) or dangles. Alpha suffixes are
+ * stripped first — a "brand-600/40" still points at brand-600, it just lands
+ * there at 40%.
+ *
+ * Typed values ("radius:md", "space:3") point at the primitive of that type, so
+ * a component token's corner is as much a wire on the map as its fill is.
  */
-function valueSource(value: string): { id: string; alpha: number | null } | null {
+function valueSource(
+  state: GraphState,
+  value: string
+): { id: string; alpha: number | null } | null {
   if (!value) return null;
   const { base, alpha } = splitAlpha(value.trim());
   if (!base || base.startsWith("#")) return null;
   if (base.startsWith("@")) return { id: tokenNodeId(base.slice(1)), alpha };
-  return { id: colorNodeId(base), alpha };
+
+  const typed = splitTypedValue(base);
+  if (!typed) return { id: colorNodeId(base), alpha };
+
+  switch (typed.prefix) {
+    case "space":
+      return { id: `prim:space:${typed.rest}`, alpha: null };
+    case "radius": {
+      const names = state.primitives.radiusNames ?? [...RADII_NAMES];
+      const name = names.includes(typed.rest) ? typed.rest : names[Number(typed.rest)];
+      return name ? { id: `prim:radius:${name}`, alpha: null } : null;
+    }
+    case "text":
+      return { id: `prim:size:${typed.rest}`, alpha: null };
+    case "weight":
+      return { id: `prim:weight:${typed.rest}`, alpha: null };
+    case "font":
+      return { id: `prim:font:${typed.rest}`, alpha: null };
+    case "shadow":
+      return { id: `prim:shadow:${typed.rest}`, alpha: null };
+    case "duration":
+      return { id: `prim:duration:${typed.rest}`, alpha: null };
+    case "ease":
+      return { id: `prim:ease:${typed.rest}`, alpha: null };
+    default:
+      return null; // px: — a literal, with nothing to point at
+  }
+}
+
+/**
+ * The inverse: the value that points a token at a given node — the thing
+ * written when a wire is dropped or a source picked. A colour primitive keeps
+ * the bare grammar the colour surfaces already write; every other type names
+ * itself, so the value says what it is without needing its consumer to.
+ */
+export function tokenValueFor(node: VarNode, radiusNames: string[]): string | null {
+  if (node.tier === "usage") return null;
+  if (node.tier !== "primitive") return `@${node.path}`;
+
+  const [, group, rest] = node.id.split(":");
+  switch (group) {
+    case "color":
+      return rest;
+    case "space":
+      return `space:${rest}`;
+    case "radius":
+      // The node id already carries the step's *name*, which is the form that
+      // survives a scale being re-ordered — so it's the form that's written.
+      return `radius:${radiusNames.includes(rest) ? rest : (radiusNames[0] ?? rest)}`;
+    case "size":
+      return `text:${rest}`;
+    case "weight":
+      return `weight:${rest}`;
+    case "font":
+      return `font:${rest}`;
+    case "shadow":
+      return `shadow:${rest}`;
+    case "duration":
+      return `duration:${rest}`;
+    case "ease":
+      return `ease:${rest}`;
+    default:
+      return null;
+  }
 }
 
 /** The node a component *binding* points at, or null for literals. */
@@ -443,6 +558,7 @@ function primitiveCollections(state: GraphState): VarCollection[] {
 /** Semantic + component token collections, one card per group. */
 function tokenCollections(state: GraphState): VarCollection[] {
   const { groups, modes } = state.semantics;
+  const defs = modesOf(state);
   return groups.map((g: SemanticGroup) => {
     const tier: VarTier = g.kind === "component" ? "component" : "semantic";
     const id = `${tier}:${g.label}`;
@@ -455,23 +571,31 @@ function tokenCollections(state: GraphState): VarCollection[] {
       source: { groupLabel: g.label },
       addTo: { kind: tier === "component" ? ("componentToken" as const) : ("role" as const), groupLabel: g.label },
       nodes: g.tokens
-        .filter((token) => modes.light[token] !== undefined || modes.dark[token] !== undefined)
+        .filter((token) => defs.some((d) => modes[d.id]?.[token] !== undefined))
         .map((token) => {
-          const raw = { light: modes.light[token] ?? "", dark: modes.dark[token] ?? "" };
+          // A token's type is a property of what it holds, not of the set it
+          // sits in — so a Button set can carry its corner and its padding
+          // beside its fill, and each row is checked against its own type.
+          const kind = tokenKind(state, token);
+          const raw: Record<string, string> = {};
+          const swatch: Record<string, string> = {};
+          for (const d of defs) {
+            raw[d.id] = modes[d.id]?.[token] ?? "";
+            if (kind === "color") swatch[d.id] = resolveTokenValue(state, d.id, raw[d.id]);
+          }
           return {
             id: tokenNodeId(token),
             collectionId: id,
             tier,
-            kind: "color" as const,
+            kind,
             label: token,
             path: token,
             ref: `@${token}`,
             cssVar: `--ark-${token}`,
             raw,
-            swatch: {
-              light: resolveTokenValue(state, "light", raw.light),
-              dark: resolveTokenValue(state, "dark", raw.dark),
-            },
+            ...(kind === "color"
+              ? { swatch }
+              : { detail: describeTokenValue(state.primitives, raw[defs[0]?.id ?? "light"] ?? "") }),
           };
         }),
     };
@@ -479,62 +603,219 @@ function tokenCollections(state: GraphState): VarCollection[] {
 }
 
 /**
- * The consuming end: component properties the user has actually bound. Only
- * overridden bindings are stored, so this column stays small and honest — it
- * shows the wiring someone chose, not the 800 defaults they didn't.
+ * One row of a component card: a property (in a state, where the property has
+ * states) and the binding it actually renders from.
+ */
+interface UsageRow {
+  /** The key this property is stored under — "container.bg", "container.bg@hover". */
+  storageKey: string;
+  state?: CState;
+  /** The binding in force: the stored override, or the schema's default. */
+  binding: string;
+  /** True when that binding came from the store rather than the schema. */
+  overridden: boolean;
+}
+
+/**
+ * The rows one property contributes.
+ *
+ * A stateful property earns extra rows only for the states that are actually
+ * *different* — Button's background is a separate colour on hover and on
+ * active, but its focus colour is its default colour, and five identical rows
+ * per property would bury the two that matter. Any state you have overridden
+ * appears whether the schema distinguishes it or not, because by then it is
+ * different by definition.
+ */
+function usageRows(
+  spec: ComponentSpec,
+  p: PropSpec,
+  bindings: Record<string, string>
+): UsageRow[] {
+  if (!p.stateful) {
+    const stored = bindings[p.key];
+    return [
+      { storageKey: p.key, binding: stored ?? defBinding(p), overridden: stored !== undefined },
+    ];
+  }
+
+  const states = p.states ?? spec.states;
+  const base = states[0];
+  const baseDef = defBinding(p, base);
+  const out: UsageRow[] = [];
+  for (const st of states) {
+    const storageKey = bindingKey(p.key, st);
+    const stored = bindings[storageKey];
+    const def = defBinding(p, st);
+    if (st !== base && stored === undefined && def === baseDef) continue;
+    out.push({ storageKey, state: st, binding: stored ?? def, overridden: stored !== undefined });
+  }
+  return out;
+}
+
+/**
+ * The consuming end: every component in the library, and every property each
+ * one styles.
+ *
+ * This lane used to hold only the bindings someone had overridden by hand,
+ * which kept it small and made it useless — a file with fifty-three components
+ * showed two cards, and the one thing you come to a map for (see where a
+ * component gets its colour, then point it somewhere else) could only be done
+ * for wiring you had already done somewhere else. So every component is here,
+ * always, each property sitting on the binding it really renders from: the
+ * schema's default until you move it, your own after. Moving one is the same
+ * gesture either way, which is the whole point of having them in one place.
+ *
+ * Order is the component library's own — Controls, Display, Navigation,
+ * Patterns, in the order the lanes list them — so a component is where it is in
+ * the Components step, not somewhere else because of its initial letter.
  */
 function usageCollections(state: GraphState): VarCollection[] {
-  const labelOf: Record<string, string> = {};
-  for (const lane of COMPONENT_LANES) for (const item of lane.items) labelOf[item.id] = item.label;
-
+  const defs = modesOf(state);
+  const radiusNames = state.primitives.radiusNames ?? [...RADII_NAMES];
   const out: VarCollection[] = [];
-  for (const [componentId, cfg] of Object.entries(state.components)) {
-    const bindings = cfg?.bindings;
-    if (!bindings) continue;
-    const spec = COMPONENT_SPECS[componentId];
-    const propByKey: Record<string, { label: string; type: BindingType }> = {};
-    for (const part of spec?.parts ?? []) {
-      for (const p of part.props) propByKey[p.key] = { label: `${part.label} · ${p.label}`, type: p.type };
-    }
 
-    const nodes: VarNode[] = [];
-    for (const storageKey of Object.keys(bindings).sort()) {
-      const at = storageKey.indexOf("@");
-      const propKey = at === -1 ? storageKey : storageKey.slice(0, at);
-      const state_ = at === -1 ? undefined : (storageKey.slice(at + 1) as CState);
-      const spec_ = propByKey[propKey];
-      const stateSuffix = state_ ? ` (${STATE_LABEL[state_] ?? state_})` : "";
-      nodes.push({
-        id: usageNodeId(componentId, storageKey),
-        collectionId: `use:${componentId}`,
+  for (const lane of COMPONENT_LANES) {
+    for (const item of lane.items) {
+      const spec = COMPONENT_SPECS[item.id];
+      if (!spec) continue;
+      const bindings = state.components[item.id]?.bindings ?? {};
+      const collectionId = `use:${item.id}`;
+
+      const nodes: VarNode[] = [];
+      let changed = 0;
+      for (const part of spec.parts) {
+        for (const p of part.props) {
+          const base = (p.states ?? spec.states)[0];
+          for (const row of usageRows(spec, p, bindings)) {
+            const kind = bindingKindOf(p.type);
+            const suffix =
+              row.state && row.state !== base ? ` (${STATE_LABEL[row.state] ?? row.state})` : "";
+            if (row.overridden) changed += 1;
+
+            // A bound colour resolves through the whole chain to a hex, so the
+            // row can show the colour it lands on rather than the name of the
+            // thing that decides it.
+            const swatch: Record<PreviewMode, string> = {};
+            if (kind === "color") {
+              for (const d of defs) {
+                const hex = bindingSwatch(state, d.id, row.binding);
+                if (hex) swatch[d.id] = hex;
+              }
+            }
+
+            nodes.push({
+              id: usageNodeId(item.id, row.storageKey),
+              collectionId,
+              tier: "usage",
+              kind,
+              label: `${part.label} · ${p.label}${suffix}`,
+              path: `${item.label} · ${p.key}${suffix}`,
+              ref: row.binding,
+              cssVar: "",
+              ...(Object.keys(swatch).length > 0 ? { swatch } : {}),
+              detail: describeBinding(row.binding, radiusNames).label,
+              usage: {
+                componentId: item.id,
+                storageKey: row.storageKey,
+                propKey: p.key,
+                state: row.state,
+                type: p.type,
+                overridden: row.overridden,
+              },
+            });
+          }
+        }
+      }
+      if (nodes.length === 0) continue;
+
+      out.push({
+        id: collectionId,
+        label: item.label,
+        note: changed > 0 ? `${lane.label.toLowerCase()} · ${changed} changed` : lane.label.toLowerCase(),
         tier: "usage",
-        kind: bindingKindOf(spec_?.type),
-        label: (spec_?.label ?? propKey) + stateSuffix,
-        path: `${labelOf[componentId] ?? componentId} · ${propKey}${stateSuffix}`,
-        ref: bindings[storageKey],
-        cssVar: "",
-        detail: bindings[storageKey],
-        usage: {
-          componentId,
-          storageKey,
-          propKey,
-          state: state_,
-          type: spec_?.type ?? "color",
-        },
+        kind: "color",
+        source: { componentId: item.id, laneLabel: lane.label },
+        // A component you've customised is the interesting card, so it opens.
+        // The rest keep the lane to a readable list of names.
+        defaultCollapsed: changed === 0,
+        nodes,
       });
     }
-    if (nodes.length === 0) continue;
-    out.push({
-      id: `use:${componentId}`,
-      label: labelOf[componentId] ?? componentId,
-      note: `${nodes.length} bound ${nodes.length === 1 ? "property" : "properties"}`,
-      tier: "usage",
-      kind: "color",
-      source: { componentId },
-      nodes,
-    });
   }
-  return out.sort((a, b) => a.label.localeCompare(b.label));
+  return out;
+}
+
+/* ────────────────────── where a primitive is edited ────────────────────── */
+
+/**
+ * Primitives are generated scales, not a list you type into: a ramp comes from
+ * a seed, spacing from a base × multipliers, type from a base × a ratio. So the
+ * Variables surfaces don't try to be a second editor for them — they say where
+ * the real one is and take you there.
+ *
+ * Two destinations, because they answer two different questions:
+ *   • the **step** tunes the scale — the generator, the curve, each value
+ *   • the **Tokens panel** changes its *shape* — add a step, remove one, rename
+ *
+ * Both already exist and are the only places either edit has ever happened;
+ * this is the route to them, not a copy of them.
+ */
+export interface PrimitiveHome {
+  /** The builder step that tunes this scale's values. */
+  step: "colour" | "type" | "space" | "shape" | "motion";
+  /** That step's name, for the button. */
+  stepLabel: string;
+  /** The Tokens-panel section that adds and removes steps, if it has one. */
+  section?: string;
+  /** What the Tokens panel calls that section. */
+  sectionLabel?: string;
+  /** Anchor for the step's own "scroll to this" mechanism, where it has one. */
+  anchor?: string;
+}
+
+export function primitiveHome(collection: VarCollection): PrimitiveHome | null {
+  if (collection.tier !== "primitive") return null;
+
+  if (collection.id.startsWith("colors:")) {
+    return {
+      step: "colour",
+      stepLabel: "Colour",
+      section: "colors",
+      sectionLabel: "Colors",
+      anchor: collection.source?.familyId,
+    };
+  }
+
+  switch (collection.id) {
+    case "scale:space":
+      return { step: "space", stepLabel: "Spacing", section: "spacing", sectionLabel: "Spacing" };
+    case "scale:radius":
+      return { step: "shape", stepLabel: "Shape", section: "radius", sectionLabel: "Radius" };
+    case "scale:size":
+      return {
+        step: "type",
+        stepLabel: "Typography",
+        section: "type-steps",
+        sectionLabel: "Font Scale Steps",
+      };
+    case "scale:weight":
+      // Weights are tuned on the Type step; the Tokens panel has no separate
+      // section for them, so there's nowhere honest to send an "add" to.
+      return { step: "type", stepLabel: "Typography" };
+    case "scale:font":
+      return { step: "type", stepLabel: "Typography", section: "fonts", sectionLabel: "Font Families" };
+    case "scale:shadow":
+      return {
+        step: "shape",
+        stepLabel: "Shape",
+        section: "elevation",
+        sectionLabel: "Elevation (Shadows)",
+      };
+    case "scale:motion":
+      return { step: "motion", stepLabel: "Motion", section: "motion", sectionLabel: "Motion" };
+    default:
+      return null;
+  }
 }
 
 /** A prop's binding type, expressed in the graph's kind vocabulary. */
@@ -581,39 +862,42 @@ export function buildVariableGraph(state: GraphState): VariableGraph {
   }
 
   // ── edges ──
-  // Token aliases are per mode; a pair present in both collapses to "both" so
-  // the common case draws one line instead of two stacked on the same path.
-  const perMode: Record<string, { from: string; to: string; alpha: number | null; modes: Set<PreviewMode> }> = {};
-  for (const mode of MODES) {
-    for (const [token, value] of Object.entries(state.semantics.modes[mode])) {
+  // Token aliases are per mode, but the same pair usually recurs across every
+  // mode — so they're collected once and carry the list of modes they hold in,
+  // rather than stacking N identical lines on one path.
+  const perPair: Record<string, { from: string; to: string; alpha: number | null; modes: PreviewMode[] }> = {};
+  for (const def of modesOf(state)) {
+    for (const [token, value] of Object.entries(state.semantics.modes[def.id] ?? {})) {
       const to = tokenNodeId(token);
       if (!nodes[to]) continue; // a value with no group — not on the canvas
-      const src = valueSource(value);
+      const src = valueSource(state, value);
       if (!src || !nodes[src.id]) continue;
       const key = `${src.id}→${to}`;
-      const entry = (perMode[key] ??= { from: src.id, to, alpha: src.alpha, modes: new Set() });
-      entry.modes.add(mode);
+      const entry = (perPair[key] ??= { from: src.id, to, alpha: src.alpha, modes: [] });
+      entry.modes.push(def.id);
       if (src.alpha !== null) entry.alpha = src.alpha;
     }
   }
 
-  const edges: VarEdge[] = Object.entries(perMode).map(([key, e]) => ({
+  const edges: VarEdge[] = Object.entries(perPair).map(([key, e]) => ({
     id: `a:${key}`,
     from: e.from,
     to: e.to,
-    mode: e.modes.size === 2 ? "both" : e.modes.has("light") ? "light" : "dark",
+    modes: e.modes,
+    binding: false,
     alpha: e.alpha,
   }));
 
   // Component bindings — mode-independent by construction (a binding resolves
-  // to a var(), and the var flips per mode on its own).
-  for (const [componentId, cfg] of Object.entries(state.components)) {
-    for (const [storageKey, binding] of Object.entries(cfg?.bindings ?? {})) {
-      const to = usageNodeId(componentId, storageKey);
-      if (!nodes[to]) continue;
-      const from = bindingSource(state, binding);
+  // to a var(), and the var flips per mode on its own). Read off the usage
+  // nodes rather than the store, since a property's binding is its default
+  // until someone overrides it and a default is every bit as much a wire.
+  for (const c of collections) {
+    if (c.tier !== "usage") continue;
+    for (const n of c.nodes) {
+      const from = bindingSource(state, n.ref);
       if (!from || !nodes[from]) continue;
-      edges.push({ id: `b:${from}→${to}`, from, to, mode: "binding", alpha: null });
+      edges.push({ id: `b:${from}→${n.id}`, from, to: n.id, modes: [], binding: true, alpha: null });
     }
   }
 
@@ -636,17 +920,35 @@ export function buildVariableGraph(state: GraphState): VariableGraph {
  */
 function findIssues(state: GraphState, nodes: Record<string, VarNode>): VarIssue[] {
   const issues: VarIssue[] = [];
-  for (const mode of MODES) {
-    const map = state.semantics.modes[mode];
+  for (const def of modesOf(state)) {
+    const mode = def.id;
+    const map = state.semantics.modes[mode] ?? {};
     for (const [token, value] of Object.entries(map)) {
       const id = tokenNodeId(token);
       if (!nodes[id]) continue;
       const { base } = splitAlpha((value ?? "").trim());
       if (!base) {
-        issues.push({ nodeId: id, mode, type: "broken", message: `${token} has no ${mode} value` });
+        issues.push({ nodeId: id, mode, type: "broken", message: `${token} has no value in ${def.name}` });
         continue;
       }
       if (base.startsWith("#")) continue;
+
+      // A typed value names a primitive of its own type: it's sound exactly
+      // when that primitive is still in the file.
+      const typed = splitTypedValue(base);
+      if (typed) {
+        if (typed.prefix === "px") continue;
+        const src = valueSource(state, base);
+        if (!src || !nodes[src.id]) {
+          issues.push({
+            nodeId: id,
+            mode,
+            type: "broken",
+            message: `${token} points at ${base}, which isn't in the ${typed.kind} scale`,
+          });
+        }
+        continue;
+      }
 
       if (base.startsWith("@")) {
         // Walk the alias chain, watching for a repeat.
@@ -659,7 +961,7 @@ function findIssues(state: GraphState, nodes: Record<string, VarNode>): VarIssue
               nodeId: id,
               mode,
               type: "cycle",
-              message: `${token} → @${cur} loops back on itself in ${mode}`,
+              message: `${token} → @${cur} loops back on itself in ${def.name}`,
             });
             broken = true;
             break;
@@ -678,6 +980,20 @@ function findIssues(state: GraphState, nodes: Record<string, VarNode>): VarIssue
           }
           const nb = splitAlpha(next.trim()).base;
           if (!nb.startsWith("@")) {
+            // The chain ends on a typed value — sound if that scale still has
+            // the step, and never a "missing swatch" (it isn't a colour).
+            const endTyped = splitTypedValue(nb);
+            if (endTyped) {
+              if (endTyped.prefix !== "px" && !nodes[valueSource(state, nb)?.id ?? ""]) {
+                issues.push({
+                  nodeId: id,
+                  mode,
+                  type: "broken",
+                  message: `${token} resolves through @${cur} to ${nb}, which isn't in the ${endTyped.kind} scale`,
+                });
+              }
+              break;
+            }
             if (!nb.startsWith("#") && resolveRef(state.primitives, nb) === "#ff00ff") {
               issues.push({
                 nodeId: id,
@@ -819,7 +1135,8 @@ export function planConnection(
 
   const token = nodeTokenName(consumerId);
   if (!token) return { ok: false, reason: "Unknown token" };
-  const value = provider.tier === "primitive" ? provider.path : `@${provider.path}`;
+  const value = tokenValueFor(provider, state.primitives.radiusNames ?? [...RADII_NAMES]);
+  if (!value) return { ok: false, reason: `${provider.label} can't be pointed at` };
   return {
     ok: true,
     kind: "token",
@@ -888,10 +1205,17 @@ export function resolutionChain(
     }
     const raw = cur.raw?.[mode] ?? "";
     chain.push({ nodeId: cur.id, label: cur.path, value: raw, swatch: cur.swatch?.[mode] });
-    const src = valueSource(raw);
+    const src = valueSource(state, raw);
+    const wasTyped = splitTypedValue(splitAlpha(raw.trim()).base);
     cur = src ? graph.nodes[src.id] : undefined;
     if (!cur && raw.trim().startsWith("#")) {
       chain.push({ nodeId: null, label: "literal", value: raw.trim(), swatch: raw.trim() });
+    } else if (!cur && wasTyped) {
+      chain.push({
+        nodeId: null,
+        label: "literal",
+        value: describeTokenValue(state.primitives, raw.trim()) || raw.trim(),
+      });
     }
   }
   return chain;
@@ -904,9 +1228,7 @@ export const ROW_H = 22;
 export const CARD_HEAD_H = 34;
 export const CARD_FOOT_H = 22;
 export const CARD_GAP_Y = 26;
-export const SUBCOL_GAP = 30;
-export const TIER_GAP = 148;
-export const MAX_COL_H = 940;
+export const TIER_GAP = 168;
 /** Headroom above the cards, where each band writes its name. */
 export const BAND_HEAD_H = 46;
 /** Breathing room inside a band's tinted plate. */
@@ -921,6 +1243,15 @@ export interface CardBox {
 }
 
 /**
+ * Whether a card draws a footer strip — "New variable" on a set you author, the
+ * way out to its editor on a generated scale. One predicate, because the height
+ * the layout reserves and the row the card renders have to agree or every wire
+ * below it lands a few pixels off.
+ */
+export const hasCardFooter = (c: VarCollection): boolean =>
+  !!c.addTo || (c.tier === "primitive" && primitiveHome(c) !== null);
+
+/**
  * A card's height. A collapsed card is its header and nothing else — the main
  * lever against wire crowding, since every wire into a collapsed collection
  * lands on that one header instead of fanning across forty rows.
@@ -928,57 +1259,72 @@ export interface CardBox {
 export const cardHeight = (c: VarCollection, collapsed?: ReadonlySet<string>): number =>
   collapsed?.has(c.id)
     ? CARD_HEAD_H
-    : CARD_HEAD_H + c.nodes.length * ROW_H + (c.addTo ? CARD_FOOT_H : 6);
+    : CARD_HEAD_H + c.nodes.length * ROW_H + (hasCardFooter(c) ? CARD_FOOT_H : 6);
+
+/** Gap between the sub-columns a packed band wraps itself into. */
+export const PACK_GAP_X = 24;
 
 /**
- * Tier-banded auto-layout. Each tier gets its own plate on the canvas, and
- * value flows left to right across them — so "where am I in the chain" is a
- * question the arrangement answers before any colour does.
+ * How deep a packed band is allowed to run before it wraps into another
+ * sub-column. Deep enough that a tall card (a 10-step ramp, a 30-token set)
+ * never sits alone in a column of its own, shallow enough that four bands fit
+ * a screen at a readable zoom.
+ */
+const PACK_TARGET_H = 780;
+
+/**
+ * Tier-banded auto-layout, in one of two shapes.
  *
- * Within a band, cards are packed into *balanced* columns rather than filling
- * one to MAX_COL_H and spilling the remainder into a stub next to it: the
- * primitive tier is by far the tallest, and an even split is what keeps it
- * from towering over the other three.
+ * **Lanes** is one column per tier: every set at a known place in a single
+ * list, so "Surface" is where you last saw it whatever an unrelated ramp did,
+ * and every wire runs cleanly left to right between two columns. The cost is
+ * depth — a full system is several thousand pixels of scroll, which is a poor
+ * way to see the shape of a system.
+ *
+ * **Packed** wraps each band into as many sub-columns as it needs to stay
+ * roughly {@link PACK_TARGET_H} deep, so the whole file fits a screen. It reads
+ * in the same order — down a column, then across — so it's the same map at a
+ * different aspect ratio, not a different one.
+ *
+ * The order either way is the order the graph was built in — colour ramps then
+ * scales, then the file's own groups in the order the file lists them — because
+ * that's the order the table's sets list and the rail use. One order everywhere.
  */
 export function autoLayout(
   collections: VarCollection[],
-  collapsed?: ReadonlySet<string>
+  collapsed?: ReadonlySet<string>,
+  layout: "lanes" | "packed" = "lanes"
 ): Record<string, CardBox> {
   const boxes: Record<string, CardBox> = {};
   let xCursor = 0;
 
   for (const tier of TIER_ORDER) {
-    // Tallest first: big ramps anchor the top of each column, and the short
-    // cards fill in around them instead of stranding a column half empty.
-    const inTier = collections
-      .filter((c) => c.tier === tier)
-      .sort(
-        (a, b) => cardHeight(b, collapsed) - cardHeight(a, collapsed) || a.label.localeCompare(b.label)
-      );
+    const inTier = collections.filter((c) => c.tier === tier);
     if (inTier.length === 0) continue;
 
-    const heights = inTier.map((c) => cardHeight(c, collapsed) + CARD_GAP_Y);
-    const total = heights.reduce((s, h) => s + h, 0);
-    const cols = Math.max(1, Math.ceil(total / MAX_COL_H));
-    const target = total / cols;
+    // Never wrap below the tallest card — a column shorter than its own
+    // contents would put every card in a column of its own.
+    const heights = inTier.map((c) => cardHeight(c, collapsed));
+    const target =
+      layout === "packed"
+        ? Math.max(PACK_TARGET_H, ...heights)
+        : Number.POSITIVE_INFINITY;
 
-    const colY = new Array<number>(cols).fill(0);
-    let col = 0;
+    let y = 0;
+    let column = 0;
     inTier.forEach((c, i) => {
-      // Start the next column once this one has had its share — unless we're
-      // on the last column, which takes whatever is left.
-      if (col < cols - 1 && colY[col] > 0 && colY[col] + heights[i] / 2 > target) col += 1;
-      boxes[c.id] = {
-        id: c.id,
-        x: xCursor + col * (CARD_W + SUBCOL_GAP),
-        y: colY[col],
-        w: CARD_W,
-        h: cardHeight(c, collapsed),
-      };
-      colY[col] += heights[i];
+      const h = heights[i];
+      // Wrap once this card would overrun the target — but never on the first
+      // card of a column, which has to go somewhere.
+      if (y > 0 && y + h > target) {
+        column += 1;
+        y = 0;
+      }
+      boxes[c.id] = { id: c.id, x: xCursor + column * (CARD_W + PACK_GAP_X), y, w: CARD_W, h };
+      y += h + CARD_GAP_Y;
     });
 
-    xCursor += cols * (CARD_W + SUBCOL_GAP) - SUBCOL_GAP + TIER_GAP;
+    xCursor += (column + 1) * (CARD_W + PACK_GAP_X) - PACK_GAP_X + TIER_GAP;
   }
   return boxes;
 }
@@ -989,14 +1335,6 @@ export function rowIndex(collection: VarCollection, nodeId: string): number {
 }
 
 /* ────────────────────────── wire routing ────────────────────────── */
-
-/**
- * How a connection is drawn. Two routings, because they answer different
- * questions: elbows share their trunk, so a dozen wires leaving one ramp read
- * as one bundle you can trace; curves keep each wire's own identity, which is
- * easier when two cards sit almost on top of each other.
- */
-export type WireStyle = "stepped" | "curved";
 
 export interface Point {
   x: number;
@@ -1019,25 +1357,31 @@ export function curvedPath(a: Point, b: Point): string {
   return `M ${a.x} ${a.y} C ${a.x + r} ${a.y}, ${b.x - r} ${b.y}, ${b.x} ${b.y}`;
 }
 
-/** The elbow's trunk — the x every stepped wire between these two turns on. */
+/** The elbow's trunk — the x every wire between these two turns on. */
 function trunkX(a: Point, b: Point): number {
   return a.x + Math.max(30, (b.x - a.x) / 2);
 }
 
+/** True when there's room between two anchors for an elbow to turn. */
+const canElbow = (a: Point, b: Point): boolean => b.x - a.x >= 76;
+
 /**
- * Right-angle routing with rounded corners: out of the source, along a shared
- * vertical trunk, and into the consumer. Falls back to a curve when the two
- * anchors are too close (or the wire runs backwards) for an elbow to have room
- * to turn.
+ * How every connection is drawn: out of the source, along a shared vertical
+ * trunk, and into the consumer, with rounded corners. One routing rather than a
+ * choice of two — wires that share a trunk are the ones you can actually trace,
+ * and asking someone to pick a spline style before they can read their own
+ * tokens was a setting pretending to be a feature.
+ *
+ * Falls back to a curve when the anchors are too close (or the wire runs
+ * backwards, past a card someone dragged) for an elbow to have room to turn.
  */
-export function steppedPath(a: Point, b: Point): string {
-  const dx = b.x - a.x;
+export function wirePath(a: Point, b: Point): string {
   const dy = b.y - a.y;
-  if (dx < 76) return curvedPath(a, b);
+  if (!canElbow(a, b)) return curvedPath(a, b);
   if (Math.abs(dy) < 1) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
   const mx = trunkX(a, b);
   const down = dy > 0 ? 1 : -1;
-  const r = Math.min(10, Math.abs(dy) / 2, dx / 2 - 4);
+  const r = Math.min(10, Math.abs(dy) / 2, (b.x - a.x) / 2 - 4);
   return [
     `M ${a.x} ${a.y}`,
     `L ${mx - r} ${a.y}`,
@@ -1048,14 +1392,9 @@ export function steppedPath(a: Point, b: Point): string {
   ].join(" ");
 }
 
-export const wirePath = (a: Point, b: Point, style: WireStyle): string =>
-  style === "curved" ? curvedPath(a, b) : steppedPath(a, b);
-
-/** Where the wire's own controls sit — its visual middle, in graph coordinates. */
-export function wireMid(a: Point, b: Point, style: WireStyle): Point {
-  if (style === "stepped" && b.x - a.x >= 76) {
-    return { x: trunkX(a, b), y: (a.y + b.y) / 2 };
-  }
+/** Where a wire's own controls sit — its visual middle, in graph coordinates. */
+export function wireMid(a: Point, b: Point): Point {
+  if (canElbow(a, b)) return { x: trunkX(a, b), y: (a.y + b.y) / 2 };
   const r = curveReach(a, b);
   const c1 = { x: a.x + r, y: a.y };
   const c2 = { x: b.x - r, y: b.y };
@@ -1063,4 +1402,142 @@ export function wireMid(a: Point, b: Point, style: WireStyle): Point {
     x: (a.x + 3 * c1.x + 3 * c2.x + b.x) / 8,
     y: (a.y + 3 * c1.y + 3 * c2.y + b.y) / 8,
   };
+}
+
+/* ────────────────────────── bundling ────────────────────────── */
+
+/**
+ * Every alias running between the same two sets, drawn once.
+ *
+ * Three hundred hairlines between the same handful of cards is a weave, not a
+ * map: no single wire can be followed, and the only thing the picture actually
+ * says — "Surface is built out of Neutral" — is the thing you can't see. A
+ * bundle says it in one stroke, keeps the count the weave was spending three
+ * hundred strokes to imply, and carries its members so the ribbon can be opened
+ * and read link by link rather than only pointed at.
+ */
+export interface WireBundle {
+  id: string;
+  /** Collection ids, source and consumer. */
+  from: string;
+  to: string;
+  /** The edge ids this ribbon stands in for — what its popover lists. */
+  members: string[];
+  /** How many aliases this ribbon stands in for. */
+  count: number;
+  /** Where it leaves and lands: the mean of its members' own anchors, so the
+   *  ribbon points at where the wires actually are rather than at a card's
+   *  midpoint. */
+  a: Point;
+  b: Point;
+  /** Its visual middle, for the count chip. */
+  mid: Point;
+  d: string;
+}
+
+/**
+ * Group resolved wires into one ribbon per pair of sets.
+ *
+ * `collectionOf` maps a node id to the card it sits on; a node the caller can't
+ * place (hidden set, filtered row) drops its wire from the bundle rather than
+ * inventing a home for it.
+ */
+export function bundleWires(
+  wires: Array<{ id: string; from: string; to: string; a: Point; b: Point }>,
+  collectionOf: (nodeId: string) => string | null
+): WireBundle[] {
+  const groups = new Map<string, { from: string; to: string; members: string[]; a: Point[]; b: Point[] }>();
+  for (const w of wires) {
+    const from = collectionOf(w.from);
+    const to = collectionOf(w.to);
+    if (!from || !to) continue;
+    const id = `${from}→${to}`;
+    const g = groups.get(id) ?? { from, to, members: [], a: [], b: [] };
+    g.members.push(w.id);
+    g.a.push(w.a);
+    g.b.push(w.b);
+    groups.set(id, g);
+  }
+
+  const mean = (pts: Point[]): Point => ({
+    x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+    y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+  });
+
+  const out: WireBundle[] = [];
+  groups.forEach((g, id) => {
+    const a = mean(g.a);
+    const b = mean(g.b);
+    out.push({
+      id,
+      from: g.from,
+      to: g.to,
+      members: g.members,
+      count: g.members.length,
+      a,
+      b,
+      mid: wireMid(a, b),
+      d: wirePath(a, b),
+    });
+  });
+  return out;
+}
+
+/**
+ * Points along a route, ordered from its middle outwards.
+ *
+ * A ribbon's label wants the middle, but the middle is often behind a card —
+ * and a label sitting on top of a row of real tokens hides data to report a
+ * number. Walking outwards from the middle finds the nearest stretch of the
+ * same ribbon that's actually in the open.
+ */
+export function wireSamples(a: Point, b: Point, n = 13): Point[] {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const stepped = canElbow(a, b) && Math.abs(dy) >= 1;
+
+  const at = (t: number): Point => {
+    if (stepped) {
+      // Out along a.y, down the shared trunk, in along b.y — length-weighted so
+      // samples are spread evenly over the route rather than over its corners.
+      const mx = trunkX(a, b);
+      const legs = [mx - a.x, Math.abs(dy), b.x - mx];
+      const total = legs[0] + legs[1] + legs[2];
+      let d = t * total;
+      if (d <= legs[0]) return { x: a.x + d, y: a.y };
+      d -= legs[0];
+      if (d <= legs[1]) return { x: mx, y: a.y + Math.sign(dy) * d };
+      return { x: mx + (d - legs[1]), y: b.y };
+    }
+    const r = curveReach(a, b);
+    const p0 = a;
+    const p1 = { x: a.x + r, y: a.y };
+    const p2 = { x: b.x - r, y: b.y };
+    const u = 1 - t;
+    return {
+      x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * b.x,
+      y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * b.y,
+    };
+  };
+
+  // 0.5 first, then 0.5 ± one step, ± two steps… so the caller can take the
+  // first point that clears and still be as close to the middle as possible.
+  const out: Point[] = [at(0.5)];
+  const span = 0.38;
+  for (let i = 1; i <= Math.floor(n / 2); i++) {
+    const d = (span * i) / Math.floor(n / 2);
+    out.push(at(0.5 - d), at(0.5 + d));
+  }
+  return out;
+}
+
+/**
+ * How thick a ribbon carrying `count` aliases is drawn, against the busiest
+ * ribbon on the canvas. Square-rooted, because the useful comparison is "a lot
+ * more" versus "a little more" — linear scaling would make one forty-wire
+ * bundle a slab and leave every four-wire bundle a hairline again.
+ */
+export function bundleWidth(count: number, max: number): number {
+  const t = max <= 1 ? 1 : Math.sqrt(Math.min(count, max) / max);
+  return 2.4 + t * 5.2;
 }

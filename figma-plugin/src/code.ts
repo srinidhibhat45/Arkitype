@@ -184,7 +184,9 @@ figma.ui.onmessage = async (msg) => {
 // Variable Sync Engine
 async function syncVariables(bundle: any) {
   log("Starting variable synchronization...", "info");
-  
+  // Fresh run, fresh warnings — `warnOnce` dedupes within a sync, not forever.
+  warnedKeys.clear();
+
   const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
 
   // 1. Get or Create Primitives Collection
@@ -300,17 +302,36 @@ async function syncVariables(bundle: any) {
       const varName = bundleVar.name;
       const type = bundleVar.resolvedType;
       
-      // Check if variable exists
-      let figmaVar = allFigmaVars.find(v => 
+      // Reuse the existing variable only if it is the *same type*. A variable's
+      // resolvedType is fixed at creation, so one that changed type between
+      // syncs (a token that was a plain radius and is now a colour, or a
+      // name our collection inherited from an earlier schema) can't be
+      // rewritten in place — matching on name alone handed the rest of the
+      // sync a FLOAT where it expected a COLOR, and binding it as a paint
+      // threw "can only bind color variables to color".
+      let figmaVar = allFigmaVars.find(v =>
         v.variableCollectionId === targetColl.id && v.name === varName
       );
-      
+
+      if (figmaVar && figmaVar.resolvedType !== type) {
+        log(
+          `"${varName}" exists as ${figmaVar.resolvedType} but the system now defines it as ${type} — replacing it.`,
+          "warning"
+        );
+        try {
+          figmaVar.remove();
+        } catch (err: any) {
+          log(`Could not replace "${varName}": ${err.message}`, "warning");
+        }
+        figmaVar = undefined;
+      }
+
       if (!figmaVar) {
         // Under documentAccess: "dynamic-page" (incremental mode) createVariable
         // must be handed the collection NODE, not its id.
         figmaVar = figma.variables.createVariable(varName, targetColl, type);
       }
-      
+
       variableMap.set(`${isSemantics ? "Semantics" : "Primitives"}/${varName}`, figmaVar);
 
       // Set literal values for each mode
@@ -548,15 +569,67 @@ async function buildDesignSystemFile(bundle: any) {
 
 /* ── infrastructure helpers ── */
 
+/**
+ * "Primitives/<name>" | "Semantics/<name>" → the variable in *our* collections.
+ *
+ * This used to bucket by elimination — anything not in "Arkitype / Primitives"
+ * was filed under "Semantics" — which quietly swept up every foreign
+ * collection in the user's file. A variable named `radius/md` belonging to
+ * some other library then overwrote our semantic entry of the same name (Map
+ * last-write-wins, in whatever order Figma returned them), and the sync later
+ * handed that FLOAT to `setBoundVariableForPaint`: "can only bind color
+ * variables to color", with the whole generate dying on it.
+ *
+ * Only the two collections we own are mapped, matched by id rather than by
+ * exclusion.
+ */
 async function buildFigmaVarsMap(): Promise<Map<string, Variable>> {
   const collections = await figma.variables.getLocalVariableCollectionsAsync();
+  const bucket = new Map<string, string>();
   const primitivesColl = collections.find(c => c.name === "Arkitype / Primitives");
+  const semanticsColl = collections.find(c => c.name === "Arkitype / Semantics");
+  if (primitivesColl) bucket.set(primitivesColl.id, "Primitives");
+  if (semanticsColl) bucket.set(semanticsColl.id, "Semantics");
   const map = new Map<string, Variable>();
   (await figma.variables.getLocalVariablesAsync()).forEach(v => {
-    const colName = primitivesColl && v.variableCollectionId === primitivesColl.id ? "Primitives" : "Semantics";
-    map.set(`${colName}/${v.name}`, v);
+    const colName = bucket.get(v.variableCollectionId);
+    if (colName) map.set(`${colName}/${v.name}`, v);
   });
   return map;
+}
+
+/**
+ * A variable to bind as a paint, or null.
+ *
+ * Every `setBoundVariableForPaint` call site funnels through here. Both
+ * collections mix types by design — `Semantics/radius/md` is a FLOAT sitting
+ * one key away from `Semantics/bg/surface` — so a binding whose path drifts
+ * onto a non-colour token is a plain data bug, not something worth aborting a
+ * 53-component generate over. Returning null lets the caller fall back to its
+ * literal colour, which is what it already does when the variable is missing.
+ */
+function colorVar(
+  figmaVarsMap: Map<string, Variable>,
+  key: string
+): Variable | null {
+  const v = figmaVarsMap.get(key);
+  if (!v) return null;
+  if (v.resolvedType !== "COLOR") {
+    warnOnce(
+      `ark:nonColorBind:${key}`,
+      `"${key}" is a ${v.resolvedType} variable, not COLOR — painted with a literal instead of binding it.`
+    );
+    return null;
+  }
+  return v;
+}
+
+/** Log a message at most once per sync, keyed however the caller likes. */
+const warnedKeys = new Set<string>();
+function warnOnce(key: string, message: string): void {
+  if (warnedKeys.has(key)) return;
+  warnedKeys.add(key);
+  log(message, "warning");
 }
 
 /** Read a primitive variable's literal value straight from the bundle. */
@@ -699,7 +772,7 @@ async function buildCoverPage(page: PageNode, bundle: any, figmaVarsMap: Map<str
   accentBar.name = "accent";
   accentBar.resize(220, 10);
   accentBar.cornerRadius = 99;
-  const accentVar = figmaVarsMap.get("Semantics/action/primary/default");
+  const accentVar = colorVar(figmaVarsMap, "Semantics/action/primary/default");
   accentBar.fills = accentVar
     ? [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: DOC.accent }, "color", accentVar)]
     : [{ type: "SOLID", color: DOC.accent }];
@@ -779,7 +852,7 @@ async function buildColourPage(page: PageNode, bundle: any, figmaVarsMap: Map<st
       swatch.cornerRadius = 10;
       swatch.strokes = [{ type: "SOLID", color: DOC.line }];
       swatch.strokeWeight = 1;
-      const fVar = figmaVarsMap.get(`Primitives/${v.name}`);
+      const fVar = colorVar(figmaVarsMap, `Primitives/${v.name}`);
       swatch.fills = fVar
         ? [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 } }, "color", fVar)]
         : [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 } }];
@@ -803,7 +876,7 @@ async function buildColourPage(page: PageNode, bundle: any, figmaVarsMap: Map<st
     sw.cornerRadius = 6;
     sw.strokes = [{ type: "SOLID", color: DOC.line }];
     sw.strokeWeight = 1;
-    const fVar = figmaVarsMap.get(`Semantics/${v.name}`);
+    const fVar = colorVar(figmaVarsMap, `Semantics/${v.name}`);
     sw.fills = fVar
       ? [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 } }, "color", fVar)]
       : [];
@@ -1858,7 +1931,7 @@ function applyIconColor(
   figmaVarsMap: Map<string, Variable>
 ) {
   if (colorBinding && colorBinding.type === "ALIAS") {
-    const fVar = figmaVarsMap.get(`${colorBinding.collection}/${colorBinding.path}`);
+    const fVar = colorVar(figmaVarsMap, `${colorBinding.collection}/${colorBinding.path}`);
     if (fVar) {
       node.fills = [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", fVar)];
     }
@@ -1912,7 +1985,7 @@ function sem(path: string): { type: "ALIAS"; collection: "Semantics"; path: stri
 
 /** Solid paint bound to a semantic variable, with a literal fallback. */
 function semPaint(figmaVarsMap: Map<string, Variable>, path: string, fallback: RGB): Paint[] {
-  const fVar = figmaVarsMap.get(`Semantics/${path}`);
+  const fVar = colorVar(figmaVarsMap, `Semantics/${path}`);
   if (fVar) {
     return [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: fallback }, "color", fVar)];
   }
@@ -1959,7 +2032,7 @@ async function createTextHelper(
   
   if (colorBinding) {
     if (colorBinding.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${colorBinding.collection}/${colorBinding.path}`);
+      const fVar = colorVar(figmaVarsMap, `${colorBinding.collection}/${colorBinding.path}`);
       if (fVar) {
         text.fills = [
           figma.variables.setBoundVariableForPaint(
@@ -2046,7 +2119,7 @@ async function createFrameHelper(
   // Background
   if (bgBinding) {
     if (bgBinding.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${bgBinding.collection}/${bgBinding.path}`);
+      const fVar = colorVar(figmaVarsMap, `${bgBinding.collection}/${bgBinding.path}`);
       if (fVar) {
         frame.fills = [
           figma.variables.setBoundVariableForPaint(
@@ -2068,7 +2141,7 @@ async function createFrameHelper(
   // Border
   if (borderBinding) {
     if (borderBinding.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${borderBinding.collection}/${borderBinding.path}`);
+      const fVar = colorVar(figmaVarsMap, `${borderBinding.collection}/${borderBinding.path}`);
       if (fVar) {
         frame.strokes = [
           figma.variables.setBoundVariableForPaint(
@@ -2135,7 +2208,7 @@ async function drawComponentNode(
   const bgBinding = styles["container.bg"];
   if (bgBinding) {
     if (bgBinding.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${bgBinding.collection}/${bgBinding.path}`);
+      const fVar = colorVar(figmaVarsMap, `${bgBinding.collection}/${bgBinding.path}`);
       if (fVar) {
         node.fills = [
           figma.variables.setBoundVariableForPaint(
@@ -2160,7 +2233,7 @@ async function drawComponentNode(
 
   if (borderBinding) {
     if (borderBinding.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${borderBinding.collection}/${borderBinding.path}`);
+      const fVar = colorVar(figmaVarsMap, `${borderBinding.collection}/${borderBinding.path}`);
       if (fVar) {
         node.strokes = [
           figma.variables.setBoundVariableForPaint(
@@ -2723,7 +2796,7 @@ async function drawAvatarGroup(node: ComponentNode, styles: any, options: any, f
 
     const bg = styles[bgKey];
     if (bg && bg.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${bg.collection}/${bg.path}`);
+      const fVar = colorVar(figmaVarsMap, `${bg.collection}/${bg.path}`);
       if (fVar) cell.fills = [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", fVar)];
     } else {
       cell.fills = semPaint(figmaVarsMap, "surface/subtle", { r: 0.9, g: 0.9, b: 0.93 });
@@ -2731,7 +2804,7 @@ async function drawAvatarGroup(node: ComponentNode, styles: any, options: any, f
 
     const ring = styles["avatar.ring"];
     if (ring && ring.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${ring.collection}/${ring.path}`);
+      const fVar = colorVar(figmaVarsMap, `${ring.collection}/${ring.path}`);
       if (fVar) {
         cell.strokes = [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 1, g: 1, b: 1 } }, "color", fVar)];
       }
@@ -2830,7 +2903,7 @@ async function drawJumplist(node: ComponentNode, styles: any, options: any, figm
     }
     const markerBinding = active ? styles["marker.active"] : styles["marker.track"];
     if (markerBinding && markerBinding.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${markerBinding.collection}/${markerBinding.path}`);
+      const fVar = colorVar(figmaVarsMap, `${markerBinding.collection}/${markerBinding.path}`);
       if (fVar) {
         marker.fills = [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", fVar)];
       }
@@ -2942,7 +3015,7 @@ async function drawSelectionControl(
   const bgBinding = styles[bgKey] || styles["dot.bg"] || styles["dot.fill"];
   if (bgBinding && checked) {
     if (bgBinding.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${bgBinding.collection}/${bgBinding.path}`);
+      const fVar = colorVar(figmaVarsMap, `${bgBinding.collection}/${bgBinding.path}`);
       if (fVar) control.fills = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', fVar)];
     } else if (bgBinding.value) {
       control.fills = [{ type: 'SOLID', color: hexToFigmaRgb(bgBinding.value.toString()) }];
@@ -2956,7 +3029,7 @@ async function drawSelectionControl(
   if (!checked) {
     const borderBinding = styles["box.borderOff"] || styles["dot.border"];
     if (borderBinding && borderBinding.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${borderBinding.collection}/${borderBinding.path}`);
+      const fVar = colorVar(figmaVarsMap, `${borderBinding.collection}/${borderBinding.path}`);
       if (fVar) {
         control.strokes = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', fVar)];
         control.strokeWeight = 1.5;
@@ -3020,7 +3093,7 @@ async function drawSwitchControl(
   const trackKey = checked ? "switchTrack.on" : "switchTrack.off";
   const trackBinding = styles[trackKey];
   if (trackBinding && trackBinding.type === "ALIAS") {
-    const fVar = figmaVarsMap.get(`${trackBinding.collection}/${trackBinding.path}`);
+    const fVar = colorVar(figmaVarsMap, `${trackBinding.collection}/${trackBinding.path}`);
     if (fVar) track.fills = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', fVar)];
   } else {
     track.fills = checked
@@ -3130,7 +3203,7 @@ async function drawBadgeTag(node: ComponentNode, styles: any, options: any, comp
     dot.resize(6, 6);
     const dotBinding = styles["statusDot.color"];
     if (dotBinding && dotBinding.type === "ALIAS") {
-      const fVar = figmaVarsMap.get(`${dotBinding.collection}/${dotBinding.path}`);
+      const fVar = colorVar(figmaVarsMap, `${dotBinding.collection}/${dotBinding.path}`);
       dot.fills = fVar
         ? [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0.2, g: 0.8, b: 0.5 } }, 'color', fVar)]
         : semPaint(figmaVarsMap, "feedback/success/text", { r: 0.2, g: 0.8, b: 0.5 });
@@ -3351,7 +3424,7 @@ async function drawAlertToastBanner(node: ComponentNode, styles: any, options: a
   // The bundle injects a tone-accurate accent (indicator.color) per variant.
   const indicatorBinding = styles["indicator.color"];
   if (indicatorBinding && indicatorBinding.type === "ALIAS") {
-    const fVar = figmaVarsMap.get(`${indicatorBinding.collection}/${indicatorBinding.path}`);
+    const fVar = colorVar(figmaVarsMap, `${indicatorBinding.collection}/${indicatorBinding.path}`);
     indicator.fills = fVar
       ? [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: toneFallback }, 'color', fVar)]
       : semPaint(figmaVarsMap, `feedback/${tone}/text`, toneFallback);
@@ -3476,7 +3549,7 @@ async function drawCardModal(node: ComponentNode, styles: any, options: any, com
     b.paddingTop = 8; b.paddingBottom = 8;
     b.cornerRadius = 6;
     if (primary) {
-      const activeVar = figmaVarsMap.get("Semantics/action/primary/default");
+      const activeVar = colorVar(figmaVarsMap, "Semantics/action/primary/default");
       b.fills = activeVar
         ? [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', activeVar)]
         : [{ type: 'SOLID', color: { r: 0.38, g: 0.4, b: 0.95 } }];
@@ -3529,7 +3602,7 @@ async function drawInteractiveNavigation(node: ComponentNode, styles: any, optio
     tab1.paddingBottom = 6;
     tab1.fills = [];
     
-    const activeVar = figmaVarsMap.get("Semantics/action/primary/default");
+    const activeVar = colorVar(figmaVarsMap, "Semantics/action/primary/default");
     if (activeVar) {
       tab1.strokes = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', activeVar)];
     } else {

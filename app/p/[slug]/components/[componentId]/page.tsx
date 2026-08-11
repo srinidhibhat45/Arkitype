@@ -9,6 +9,7 @@ import { createServerClient, isSupabaseConfigured } from "@/lib/supabase/server"
 import type { PublishedSnapshot } from "@/lib/publish";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 import { PublicComponentPage } from "@/components/public/PublicComponentPage";
+import { PublicThemeScript } from "@/components/public/PublicThemeScript";
 
 export const dynamic = "force-dynamic";
 
@@ -63,10 +64,16 @@ export default async function PublishedComponentPage({
   const snapshot = await fetchSnapshot(params.slug);
   if (!snapshot || !componentLabel(params.componentId)) notFound();
   return (
-    <PublicComponentPage
-      snapshot={snapshot}
-      slug={params.slug}
-      componentId={params.componentId}
-    />
+    <>
+      <PublicThemeScript
+        semantics={snapshot.semantics}
+        primitives={snapshot.primitives}
+      />
+      <PublicComponentPage
+        snapshot={snapshot}
+        slug={params.slug}
+        componentId={params.componentId}
+      />
+    </>
   );
 }

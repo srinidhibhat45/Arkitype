@@ -258,7 +258,7 @@ export function ShipStep() {
                 </p>
                 <p className="mb-3 text-[11px] leading-relaxed text-fg-mute">
                   {publication
-                    ? "Anyone with this link can read the system — foundations, tokens, and every component with its usage docs. No account needed."
+                    ? "Anyone with this link can read the system — colour, roles, type, spacing, shape, motion and every component, each its own section. Follows the reader's light/dark preference. No account needed."
                     : "Publishes a frozen copy of this system to a shareable link. Later edits stay private until you republish."}
                 </p>
 
@@ -556,7 +556,8 @@ export function ShipStep() {
                 <p className="text-[12px] leading-relaxed text-fg-mute">
                   Last published{" "}
                   {publication ? new Date(publication.publishedAt).toLocaleString() : "—"}. The page
-                  shows the system as it was at that moment — foundations, the full token set, and
+                  shows the system as it was at that moment, split into the same sections you built
+                  it in — Colour, Roles, Typography, Spacing, Shape &amp; elevation, Motion, and
                   every component with its usage documentation and lifecycle status.
                 </p>
               </div>

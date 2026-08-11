@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import { createServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import type { PublishedSnapshot } from "@/lib/publish";
 import { PublicStyleguide } from "@/components/public/PublicStyleguide";
+import { PublicThemeScript } from "@/components/public/PublicThemeScript";
 
 export const dynamic = "force-dynamic";
 
@@ -73,5 +74,13 @@ export default async function PublishedStyleguidePage({
 }) {
   const snapshot = await fetchSnapshot(params.slug);
   if (!snapshot) notFound();
-  return <PublicStyleguide snapshot={snapshot} slug={params.slug} />;
+  return (
+    <>
+      <PublicThemeScript
+        semantics={snapshot.semantics}
+        primitives={snapshot.primitives}
+      />
+      <PublicStyleguide snapshot={snapshot} slug={params.slug} />
+    </>
+  );
 }

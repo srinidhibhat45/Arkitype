@@ -524,6 +524,68 @@
       .log-warning { color: #f59e0b; }
     }
 
+    /* Progress
+     *
+     * A full generate is a minutes-long job. Without this the plugin looked
+     * identical whether it was working or wedged, which is exactly how a slow
+     * component phase got read as a crash. */
+    .progress-wrap {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--ink-panel);
+      flex-shrink: 0;
+    }
+
+    .progress-wrap.active { display: flex; }
+
+    .progress-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+    }
+
+    .progress-phase {
+      font-weight: 600;
+      color: var(--fg);
+    }
+
+    .progress-count {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 10px;
+      color: var(--fg-mute);
+      flex-shrink: 0;
+    }
+
+    .progress-track {
+      height: 4px;
+      border-radius: 999px;
+      background: var(--line);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: var(--fg);
+      transition: width 0.2s ease;
+    }
+
+    .progress-detail {
+      font-size: 10.5px;
+      color: var(--fg-mute);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     /* Alert Banner */
     .alert-banner {
       padding: 8px 12px;
@@ -613,6 +675,16 @@
     <button type="button" class="alert-close" onclick="closeAlert()" aria-label="Dismiss">&times;</button>
   </div>
 
+  <!-- Progress -->
+  <div class="progress-wrap" id="progressWrap" role="status" aria-live="polite">
+    <div class="progress-head">
+      <span class="progress-phase" id="progressPhase">Working…</span>
+      <span class="progress-count" id="progressCount"></span>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <span class="progress-detail" id="progressDetail"></span>
+  </div>
+
   <!-- Panels -->
   <div class="panels">
     <!-- Import Panel -->
@@ -693,7 +765,15 @@
         case 'schema-status':
           updateStatus(msg.detected, msg.projectName, msg.tokenCount, msg.componentCount, msg.pageCount);
           break;
+        case 'progress':
+          showProgress(msg.phase, msg.done, msg.total, msg.detail);
+          break;
+        case 'progress-done':
+          hideProgress();
+          break;
         case 'sync-complete':
+          hideProgress();
+          setBusy(false);
           showAlert(msg.success ? 'success' : 'error', msg.message);
           break;
         case 'sync-url':
@@ -921,9 +1001,44 @@
       });
     }
 
+    /* ── Progress ─────────────────────────────────────────────────────────
+     * The plugin reports a phase, a count, and what it is on right now. A
+     * generate touches hundreds of nodes per component, so "still going" has
+     * to be visible or a slow run is indistinguishable from a dead one. */
+    function showProgress(phase, done, total, detail) {
+      const wrap = document.getElementById('progressWrap');
+      wrap.classList.add('active');
+      document.getElementById('progressPhase').innerText = phase;
+      document.getElementById('progressCount').innerText =
+        total > 1 ? `${done} / ${total}` : '';
+      const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+      document.getElementById('progressFill').style.width = `${pct}%`;
+      document.getElementById('progressDetail').innerText = detail || '';
+    }
+
+    function hideProgress() {
+      document.getElementById('progressWrap').classList.remove('active');
+      document.getElementById('progressFill').style.width = '0%';
+    }
+
+    /* Both actions rewrite the same file, so neither may run twice at once —
+     * a second click mid-generate would have two passes fighting over the same
+     * component sets. */
+    function setBusy(busy, label) {
+      syncVarsBtn.disabled = busy || !activeSchema;
+      buildLibraryBtn.disabled = busy || !activeSchema;
+      pullBtn.disabled = busy;
+      buildLibraryBtn.innerText = busy && label === 'generate'
+        ? 'Generating…'
+        : 'Generate Design System File';
+      syncVarsBtn.innerText = busy && label === 'sync' ? 'Syncing…' : 'Sync Variables';
+    }
+
     // Sync Commands
     function syncVariables() {
       if (!activeSchema) return;
+      setBusy(true, 'sync');
+      showProgress('Variables', 0, 1, 'starting');
       addLog(`[UI] Dispatching Sync Variables request for '${activeSchema.meta.generator}'...`, 'info');
       parent.postMessage({
         pluginMessage: {
@@ -935,7 +1050,10 @@
 
     function buildComponentLibrary() {
       if (!activeSchema) return;
+      setBusy(true, 'generate');
+      showProgress('Starting', 0, 1, 'preparing the file');
       addLog(`[UI] Generating design system file (pages, foundations, component sheets)...`, 'info');
+      addLog(`[UI] A full kit is ${activeSchema.components ? activeSchema.components.length : 0} component sheets plus the icon library — this takes a few minutes. Progress is shown above.`, 'info');
       parent.postMessage({
         pluginMessage: {
           type: 'generate-components',

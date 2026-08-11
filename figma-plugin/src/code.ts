@@ -63,6 +63,31 @@ function log(text: string, level: 'info' | 'success' | 'warning' | 'error' = 'in
   figma.ui.postMessage({ type: 'log', text, level });
 }
 
+/* ── progress + yielding ────────────────────────────────────────────────────
+ *
+ * A full generate builds ~53 component sheets plus the icon library and seven
+ * foundation pages. All of that runs on Figma's single main thread, and a
+ * plugin that never returns to the event loop looks *identical to a hang*:
+ * Figma stops painting, the iframe's log console freezes mid-list, and the
+ * user reasonably concludes it died "at components".
+ *
+ * `yieldToUi` hands the thread back so Figma repaints and the queued
+ * postMessages actually land, and `progress` drives a real bar in the UI so a
+ * slow step reads as slow rather than broken.
+ */
+function progress(phase: string, done: number, total: number, detail = ''): void {
+  figma.ui.postMessage({ type: 'progress', phase, done, total, detail });
+}
+
+function progressDone(): void {
+  figma.ui.postMessage({ type: 'progress-done' });
+}
+
+/** Return to the event loop so Figma can paint and deliver queued messages. */
+function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 // Helper: Report sync status to UI (document-wide, all pages).
 // Uses the async document APIs required under `documentAccess: "dynamic-page"`.
 async function updateStatusInUi() {
@@ -184,38 +209,71 @@ async function syncVariables(bundle: any) {
     log("Created collection 'Arkitype / Semantics'", "success");
   }
 
-  // Semantics has "Light" and "Dark" modes
-  let lightModeId = "";
-  let darkModeId = "";
-  
-  // Align modes in Semantics robustly
-  const semModes = semanticsColl.modes;
-  if (semModes.length === 1) {
-    semanticsColl.renameMode(semModes[0].modeId, "Light");
-    lightModeId = semModes[0].modeId;
-    darkModeId = semanticsColl.addMode("Dark");
-    log("Aligned Semantics collection to Light/Dark modes", "info");
-  } else {
-    // Check if we have light/dark modes
-    const lightMode = semModes.find(m => m.name.toLowerCase().includes("light"));
-    const darkMode = semModes.find(m => m.name.toLowerCase().includes("dark"));
-    
-    if (lightMode) {
-      lightModeId = lightMode.modeId;
-      if (lightMode.name !== "Light") semanticsColl.renameMode(lightModeId, "Light");
-    } else {
-      lightModeId = semModes[0].modeId;
-      semanticsColl.renameMode(lightModeId, "Light");
+  /* Align the Semantics collection to EVERY mode the bundle declares.
+   *
+   * This used to hard-code Light and Dark and route every other mode's values
+   * onto the Light column — so a file with a High-contrast mode published
+   * three columns of work into two, silently, last-write-wins. The bundle
+   * already carries its own mode list (lib/figma.ts), so mirror it: reuse a
+   * Figma mode when one matches by name, rename the collection's default onto
+   * the first bundle mode, and add the rest.
+   *
+   * Figma caps modes per collection by plan tier; addMode throws past the cap.
+   * That's reported once and the extra modes are dropped rather than failing
+   * the whole sync. */
+  const bundleSemanticColl = (bundle.collections || []).find((c: any) =>
+    String(c.name || "").indexOf("Semantics") !== -1
+  );
+  const bundleModes: Array<{ modeId: string; name: string }> =
+    (bundleSemanticColl && bundleSemanticColl.modes && bundleSemanticColl.modes.length)
+      ? bundleSemanticColl.modes
+      : [{ modeId: LIGHT_MODE, name: "Light" }, { modeId: DARK_MODE, name: "Dark" }];
+
+  /** bundle modeId ("mode:dark") → this file's Figma modeId. */
+  const semModeIds = new Map<string, string>();
+  const claimed = new Set<string>();
+
+  for (let i = 0; i < bundleModes.length; i++) {
+    const wanted = bundleModes[i];
+    const existing = semanticsColl.modes.find(
+      m => !claimed.has(m.modeId) && m.name.toLowerCase() === wanted.name.toLowerCase()
+    );
+    if (existing) {
+      semModeIds.set(wanted.modeId, existing.modeId);
+      claimed.add(existing.modeId);
+      continue;
     }
-    
-    if (darkMode) {
-      darkModeId = darkMode.modeId;
-      if (darkMode.name !== "Dark") semanticsColl.renameMode(darkModeId, "Dark");
-    } else {
-      darkModeId = semModes[1].modeId;
-      semanticsColl.renameMode(darkModeId, "Dark");
+    // The collection's own default mode is unnamed-by-intent ("Mode 1") — take
+    // it over for the first bundle mode rather than stranding it.
+    const spare = semanticsColl.modes.find(m => !claimed.has(m.modeId));
+    if (spare && (i === 0 || /^mode \d+$/i.test(spare.name))) {
+      semanticsColl.renameMode(spare.modeId, wanted.name);
+      semModeIds.set(wanted.modeId, spare.modeId);
+      claimed.add(spare.modeId);
+      continue;
+    }
+    try {
+      const added = semanticsColl.addMode(wanted.name);
+      semModeIds.set(wanted.modeId, added);
+      claimed.add(added);
+    } catch (e: any) {
+      log(
+        `Couldn't add mode '${wanted.name}' — ${e.message}. Figma limits modes per collection by plan; that mode's values were skipped.`,
+        "warning"
+      );
     }
   }
+
+  /* Fallback for a bundle value keyed by a mode we couldn't create: prefer the
+   * file's first mode over silently writing it onto Light. */
+  const firstSemModeId = semanticsColl.modes[0].modeId;
+  const semModeFor = (bundleModeKey: string): string | null =>
+    semModeIds.get(bundleModeKey) ?? (semModeIds.size === 0 ? firstSemModeId : null);
+
+  log(
+    `Semantics modes aligned: ${bundleModes.map(m => m.name).join(" · ")}`,
+    "info"
+  );
 
   const allFigmaVars = await figma.variables.getLocalVariablesAsync();
   const variableMap = new Map<string, Variable>(); // maps "CollectionName/path" -> Variable object
@@ -223,12 +281,22 @@ async function syncVariables(bundle: any) {
   // 3. Pass 1: Create all variables and set literal values
   log("Pass 1: Creating variables and writing literal values...", "info");
   const bundleCollections = bundle.collections;
-  
+  const totalVars = bundleCollections.reduce(
+    (n: number, c: any) => n + bundleVarArray(c).length,
+    0
+  );
+  let varsDone = 0;
+
   for (const bundleColl of bundleCollections) {
     const isSemantics = bundleColl.name.includes("Semantics");
     const targetColl = isSemantics ? semanticsColl : primitivesColl;
-    
+
     for (const bundleVar of bundleVarArray(bundleColl)) {
+      if (varsDone % 50 === 0) {
+        progress("Variables", varsDone, totalVars, `${varsDone}/${totalVars}`);
+        await yieldToUi();
+      }
+      varsDone++;
       const varName = bundleVar.name;
       const type = bundleVar.resolvedType;
       
@@ -247,13 +315,16 @@ async function syncVariables(bundle: any) {
 
       // Set literal values for each mode
       for (const [modeKey, modeVal] of Object.entries(bundleVar.valuesByMode)) {
-        let figmaModeId = isSemantics ? (modeKey === DARK_MODE ? darkModeId : lightModeId) : primModeId;
-        
+        const figmaModeId = isSemantics ? semModeFor(modeKey) : primModeId;
+        // A mode this file couldn't create (plan mode cap) — reported once
+        // during alignment; don't smear its values onto another column.
+        if (!figmaModeId) continue;
+
         // Skip alias bindings in first pass
         if (modeVal && typeof modeVal === "object" && (modeVal as any).type === "VARIABLE_ALIAS") {
           continue;
         }
-        
+
         // Write literal value
         try {
           if (type === "COLOR" && typeof modeVal === "object") {
@@ -279,8 +350,9 @@ async function syncVariables(bundle: any) {
       if (!figmaVar) continue;
       
       for (const [modeKey, modeVal] of Object.entries(bundleVar.valuesByMode)) {
-        let figmaModeId = isSemantics ? (modeKey === DARK_MODE ? darkModeId : lightModeId) : primModeId;
-        
+        const figmaModeId = isSemantics ? semModeFor(modeKey) : primModeId;
+        if (!figmaModeId) continue;
+
         if (modeVal && typeof modeVal === "object" && (modeVal as any).type === "VARIABLE_ALIAS") {
           const aliasVal = modeVal as any;
           const targetVar = variableMap.get(`Primitives/${aliasVal.id}`);
@@ -298,6 +370,8 @@ async function syncVariables(bundle: any) {
   }
   
   // 5. Elevation tokens → shared local effect styles.
+  progress("Variables", totalVars, totalVars, "elevation styles");
+  await yieldToUi();
   await ensureElevationStyles(bundle);
 
   log(`Synced ${variableMap.size} variables successfully.`, "success");
@@ -379,21 +453,53 @@ async function buildDesignSystemFile(bundle: any) {
     (p) => p.getPluginData(PAGE_KEY) !== "" && !expectedKeys.has(p.getPluginData(PAGE_KEY))
   );
 
-  /* Documentation pages (fully rebuilt each sync) */
-  await buildCoverPage(coverPage, bundle, figmaVarsMap);
-  await buildGettingStartedPage(startPage, bundle);
-  await buildColourPage(colourPage, bundle, figmaVarsMap);
-  await buildTypographyPage(typePage, bundle);
-  await buildSpacePage(spacePage, bundle, figmaVarsMap);
-  await buildShapePage(shapePage, bundle, figmaVarsMap);
-  await buildMotionPage(motionPage, bundle);
+  /* Documentation pages (fully rebuilt each sync). Each is one progress tick,
+   * with a yield after it so Figma repaints between pages instead of freezing
+   * for the whole run. */
+  const foundations: Array<[string, () => Promise<void>]> = [
+    ["Cover", () => buildCoverPage(coverPage, bundle, figmaVarsMap)],
+    ["Getting started", () => buildGettingStartedPage(startPage, bundle)],
+    ["Colour", () => buildColourPage(colourPage, bundle, figmaVarsMap)],
+    ["Typography", () => buildTypographyPage(typePage, bundle)],
+    ["Space & Layout", () => buildSpacePage(spacePage, bundle, figmaVarsMap)],
+    ["Shape & Elevation", () => buildShapePage(shapePage, bundle, figmaVarsMap)],
+    ["Motion", () => buildMotionPage(motionPage, bundle)],
+  ];
+  for (let i = 0; i < foundations.length; i++) {
+    const [name, build] = foundations[i];
+    progress("Foundations", i, foundations.length, name);
+    await build();
+    await yieldToUi();
+  }
 
   /* Icon library — must exist before component pages so icon slots can place
-   * instances of it. */
-  await buildIconLibraryPage(bundle, figmaVarsMap, iconsOrder);
+   * instances of it. Several hundred components get created here, so it is its
+   * own progress phase rather than a silent pause. */
+  progress("Icon library", 0, 1, "building swappable icon set");
+  await yieldToUi();
+  try {
+    await buildIconLibraryPage(bundle, figmaVarsMap, iconsOrder);
+  } catch (iconErr: any) {
+    // The icon library is an enhancement, not a prerequisite. It used to be
+    // unguarded, so one failure here (a font that won't load, a combine that
+    // Figma rejects) aborted the whole run before a single component was
+    // drawn — indistinguishable, from the outside, from "it stops at
+    // components". Icon slots fall back to plain dots and the kit still ships.
+    ICON_LIB = null;
+    log(`Icon library skipped: ${iconErr.message}. Components will use plain icon placeholders.`, "warning");
+  }
+  await yieldToUi();
 
-  /* Component pages (sets preserved across syncs) */
-  const existingSets = collectExistingComponents();
+  /* Component pages (sets preserved across syncs).
+   *
+   * The document is indexed ONCE here. Every lookup in the loop below is a map
+   * hit — see indexDocument() for why re-scanning per component is what broke
+   * this step. */
+  progress("Components", 0, components.length, "indexing document");
+  await yieldToUi();
+  const index = indexDocument();
+
+  let built = 0;
   for (const { lane, page } of lanePages) {
     let y = 100;
     y = await buildLaneHeader(page, lane, y);
@@ -401,13 +507,20 @@ async function buildDesignSystemFile(bundle: any) {
       const comp = components.find((c: any) => c.id === cid);
       if (!comp) continue;
       try {
+        progress("Components", built, components.length, comp.name);
         log(`Building sheet for '${comp.name}'...`, "info");
-        y = await buildComponentSection(page, comp, figmaVarsMap, y, existingSets);
+        y = await buildComponentSection(page, comp, figmaVarsMap, y, index);
       } catch (compErr: any) {
         log(`Error building '${comp.name}': ${compErr.message}`, "error");
       }
+      built++;
+      // Hand the thread back between components: with 53 sheets this is the
+      // difference between a plugin that reports what it's doing and one that
+      // looks frozen.
+      await yieldToUi();
     }
   }
+  progress("Components", components.length, components.length, "done");
 
   /* Now that live sets have been rescued onto their new pages, drop stale
    * Arkitype pages — but only if nothing user-made is left on them. */
@@ -429,6 +542,7 @@ async function buildDesignSystemFile(bundle: any) {
 
   await appendChangelogEntry(changelogPage, bundle);
   figma.root.setPluginData("ark:lastSync", new Date().toISOString());
+  progressDone();
   log("Design system file complete.", "success");
 }
 
@@ -943,23 +1057,66 @@ async function buildLaneHeader(page: PageNode, lane: any, y: number): Promise<nu
 }
 
 /** Index every Arkitype component set/component in the document. */
-function collectExistingComponents(): Map<string, ComponentSetNode | ComponentNode> {
-  const map = new Map<string, ComponentSetNode | ComponentNode>();
-  const nodes = figma.root.findAll(n =>
-    (n.type === "COMPONENT_SET" || n.type === "COMPONENT") &&
-    !(n.parent && n.parent.type === "COMPONENT_SET")
-  ) as Array<ComponentSetNode | ComponentNode>;
-  for (const n of nodes) {
-    const tagged = n.getPluginData(COMP_KEY);
-    if (tagged) {
-      map.set(tagged, n);
-    } else if (n.name.startsWith("Arkitype / ")) {
-      // Legacy naming from the pre-pages exporter
-      const legacy = n.name.slice("Arkitype / ".length).toLowerCase();
-      if (!map.has(legacy)) map.set(legacy, n);
+/**
+ * One pass over the document, producing everything the component loop needs to
+ * look things up: the live component sets to update in place, and the old
+ * sheet frames to replace.
+ *
+ * This used to be two separate scans, the second of which
+ * (`figma.root.findAll` for a component's old sheet) ran *inside* the
+ * per-component loop. That made the cost quadratic in the worst possible way:
+ * every one of ~53 components re-walked a document that each previous
+ * component had just made bigger, reading plugin data off every node it
+ * touched. On a full kit that is millions of scene-graph reads, and it is what
+ * made a generate appear to die once it reached the components — the
+ * foundations pages finished fast, then the first few sheets landed, then it
+ * ground to a halt with no error to show for it.
+ *
+ * Indexing once is O(document). The loop then does map lookups.
+ */
+interface DocIndex {
+  /** componentId → the live component set/component to update in place. */
+  sets: Map<string, ComponentSetNode | ComponentNode>;
+  /** componentId → previously generated sheet frames, to be replaced. */
+  sections: Map<string, SceneNode[]>;
+}
+
+function indexDocument(): DocIndex {
+  const sets = new Map<string, ComponentSetNode | ComponentNode>();
+  const sections = new Map<string, SceneNode[]>();
+
+  // A single traversal that answers both questions. `findAll` on the root with
+  // a predicate that always returns false still visits every node, so we use
+  // it purely as the walker and collect into the maps as we go.
+  figma.root.findAll((n) => {
+    // findAll's predicate is typed over PageNode | SceneNode; only scene nodes
+    // ever carry a section tag (they're the sheet frames we created).
+    const sectionId = n.type === "PAGE" ? "" : n.getPluginData(SECTION_KEY);
+    if (sectionId) {
+      const scene = n as SceneNode;
+      const list = sections.get(sectionId);
+      if (list) list.push(scene);
+      else sections.set(sectionId, [scene]);
     }
-  }
-  return map;
+
+    if (
+      (n.type === "COMPONENT_SET" || n.type === "COMPONENT") &&
+      !(n.parent && n.parent.type === "COMPONENT_SET")
+    ) {
+      const node = n as ComponentSetNode | ComponentNode;
+      const tagged = node.getPluginData(COMP_KEY);
+      if (tagged) {
+        sets.set(tagged, node);
+      } else if (node.name.startsWith("Arkitype / ")) {
+        // Legacy naming from the pre-pages exporter
+        const legacy = node.name.slice("Arkitype / ".length).toLowerCase();
+        if (!sets.has(legacy)) sets.set(legacy, node);
+      }
+    }
+    return false;
+  });
+
+  return { sets, sections };
 }
 
 /** Per-component grid cell sizing (generous, prevents overlaps). */
@@ -1143,15 +1300,20 @@ async function buildComponentSection(
   comp: any,
   figmaVarsMap: Map<string, Variable>,
   y: number,
-  existingSets: Map<string, ComponentSetNode | ComponentNode>
+  index: DocIndex
 ): Promise<number> {
-  /* Rescue the live component set from the old sheet before rebuilding it. */
-  const oldSections = figma.root.findAll(n => n.getPluginData(SECTION_KEY) === comp.id);
+  const existingSets = index.sets;
+
+  /* Rescue the live component set from the old sheet before rebuilding it.
+   * The sheets come from the document index built once up front — scanning for
+   * them here is what used to make a full generate quadratic. */
+  const oldSections = (index.sections.get(comp.id) ?? []).filter((s) => !s.removed);
   const liveSet = existingSets.get(comp.id);
   if (liveSet && oldSections.some(s => isAncestorOf(s, liveSet))) {
     page.appendChild(liveSet);
   }
   oldSections.forEach(s => s.remove());
+  index.sections.delete(comp.id);
 
   const docs = comp.docs || {};
 
@@ -1436,7 +1598,15 @@ async function buildIconLibraryPage(
   }
 
   const fresh: ComponentNode[] = [];
+  let iconIndex = 0;
   for (const name of names) {
+    // Several hundred icons: report and breathe periodically so this phase
+    // reads as progress rather than a stall.
+    if (iconIndex % 40 === 0) {
+      progress("Icon library", iconIndex, names.length, `${iconIndex}/${names.length} icons`);
+      await yieldToUi();
+    }
+    iconIndex++;
     let comp = components.get(name);
     if (!comp) {
       comp = figma.createComponent();

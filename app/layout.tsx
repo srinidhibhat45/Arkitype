@@ -113,7 +113,17 @@ const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${sans.variable} ${serif.variable} ${mono.variable} ${display.variable}`}>
+    // `suppressHydrationWarning` covers <html>'s attributes only, and it is
+    // load-bearing: both the workspace and a published styleguide set the
+    // `dark` class before React hydrates (see components/public/
+    // PublicThemeScript.tsx) so the first paint isn't the wrong theme. That
+    // deliberately makes the client's className differ from the server's,
+    // which React would otherwise report as a mismatch on every public page.
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${sans.variable} ${serif.variable} ${mono.variable} ${display.variable}`}
+    >
       <body className="bg-ink font-sans text-fg antialiased">
         <script
           type="application/ld+json"

@@ -6,7 +6,8 @@ A guided **design-system builder**. Arkitype walks you through a series of
 focused decisions — colour, type, space, shape, motion — turns them into a
 coherent set of design tokens and semantic roles, lets you deeply re-bind
 53 live components to those tokens through a Figma-style component studio,
-and exports the result (docs, Figma variables, or a hosted styleguide link).
+and exports the result (docs, Figma variables, an AI agent guide, or a hosted
+styleguide link).
 
 > Status: alpha (`0.1.0-alpha`). See [`progress.md`](./progress.md) for the
 > detailed build log.
@@ -39,8 +40,9 @@ decision with its own live canvas:
    two independent ways: **form factor** (SaaS console / Mobile / Marketing —
    changes the layout) and **industry** (Fintech / Healthcare / E-commerce —
    changes only the content), plus density and an all-states strip.
-9. **Ship** — export docs and a Figma variables bundle, or **publish** the system
-   as a hosted styleguide.
+9. **Ship** — export docs, a Figma variables bundle, framework config (CSS/
+   Tailwind/MUI), or a Markdown guide for AI coding tools, or **publish** the
+   system as a hosted styleguide.
 
 ## The published styleguide
 

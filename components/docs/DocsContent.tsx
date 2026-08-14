@@ -128,7 +128,7 @@ export function DocsSections() {
               Typography, Spacing, Shape, Motion, Components, Preview, Ship</strong> — where
               each step&apos;s output becomes the next step&apos;s input. By the end you have a
               complete token system, a {COMPONENT_COUNT}-component library built entirely
-              from those tokens, real product screens to stress-test them in, five export
+              from those tokens, real product screens to stress-test them in, six export
               formats to hand off — and a link you can send to anyone who needs to read
               the system without installing a thing.
             </p>
@@ -145,7 +145,7 @@ export function DocsSections() {
               Primitive scale (colour ramp / spacing / radius / type / motion) →
               Semantic role (what a value <em>means</em>, one value per mode) →
               Component (reads roles + scales, never a raw value) → Export
-              (compiled to CSS vars, Tailwind, MUI, Figma, or docs).
+              (compiled to CSS vars, Tailwind, MUI, Figma, docs, or an AI agent guide).
             </Callout>
             <p className="!mt-6">
               If you&apos;d rather try it than read it, the{" "}
@@ -222,7 +222,9 @@ export function DocsSections() {
                     <>
                       Step 8. Grab <strong className="font-medium text-fg">CSS variables</strong> or a{" "}
                       <strong className="font-medium text-fg">Tailwind config</strong> if you want to
-                      use it in code today, or hit{" "}
+                      use it in code today, the{" "}
+                      <strong className="font-medium text-fg">AI agent guide</strong> if an AI coding
+                      tool is about to write that code instead, or hit{" "}
                       <strong className="font-medium text-fg">Publish</strong> to get a shareable link
                       that needs no account and no install. For Figma, publish first, then paste the
                       sync link into{" "}
@@ -513,6 +515,21 @@ export function DocsSections() {
               scale inside three realistic layouts — Article, Split Columns, and a UI
               Card — with adjustable measure (paragraph width) and spacing.
             </p>
+            <Callout title="When a font isn't installed">
+              A font picked from the list loads itself automatically for every
+              reader — nothing to configure. The always-visible{" "}
+              <strong className="font-medium text-fg">custom font stack</strong> field
+              at the bottom of the picker is different: it takes any CSS font stack you
+              type, but Arkitype has no file to fetch for it, so it only renders as
+              chosen on a device that already has that exact font installed — everyone
+              else silently gets the fallback. A small warning icon appears on the
+              picker the moment that&apos;s true for the current device; open it and,
+              when the name is close enough to a real Google Font, one click switches
+              to that instead. Keep the custom font anyway (a licensed brand
+              typeface, say) and every export — including the AI agent guide — scaffolds
+              the <code className="rounded bg-ink-panel px-1 py-0.5 text-[12px]">@font-face</code>{" "}
+              rule you&apos;ll need to self-host it properly.
+            </Callout>
           </Section>
 
           {/* ── 03 Spacing & Layout ─────────────────────────────── */}
@@ -674,8 +691,8 @@ export function DocsSections() {
           {/* ── 08 Ship ──────────────────────────────────────────── */}
           <Section id="step-ship" eyebrow={`Step ${STEP_META.ship.n}`} title={STEP_META.ship.label}>
             <p>
-              Five export artifacts, each copyable to clipboard or downloadable as a
-              real file, switched via one tab strip — plus a sixth tab,{" "}
+              Six export artifacts, each copyable to clipboard or downloadable as a
+              real file, switched via one tab strip — plus a seventh tab,{" "}
               <strong className="font-medium text-fg">Publish</strong>, which puts the
               system on the web at its own link instead of handing over a file. See{" "}
               <a href="#export-formats" className="font-medium text-fg underline underline-offset-2">
@@ -1150,6 +1167,18 @@ export function DocsSections() {
                     </td>
                   </tr>
                   <tr>
+                    <td className="py-3 pr-4 font-medium text-fg">AI agent guide</td>
+                    <td className="py-3 pr-4 text-fg-dim">{`{name}-agent-guide.md`}</td>
+                    <td className="py-3 text-fg-dim">
+                      One self-contained Markdown file for attaching to an AI coding tool —
+                      Claude Projects, Cursor, Antigravity, and similar — as project context:
+                      imperative rules first, then every token already resolved, the full
+                      component contract (variants, states, do/don&apos;t, accessibility), and
+                      the CSS variables file embedded whole, so nothing has to be looked up
+                      anywhere else.
+                    </td>
+                  </tr>
+                  <tr>
                     <td className="py-3 pr-4 font-medium text-fg">Published styleguide</td>
                     <td className="py-3 pr-4 text-fg-dim">a link, not a file</td>
                     <td className="py-3 text-fg-dim">
@@ -1443,8 +1472,12 @@ export function DocsSections() {
                   ),
                 },
                 {
+                  label: "Why is there a warning icon on one of my fonts?",
+                  body: "It's on a font role bound to a custom font stack (typed into the picker's always-visible text field) that isn't installed on this device. Arkitype can only auto-load fonts from the Google Fonts list — it has no file to fetch for a custom entry, so it only renders as chosen wherever that exact font already happens to be installed. Open the picker: if the name is close enough to a real Google Font, one click switches to it; otherwise keep it and self-host it — every export scaffolds the @font-face rule for you.",
+                },
+                {
                   label: "What can I export to?",
-                  body: "A Figma bundle, a Markdown handoff doc, CSS variables, a Tailwind config, or an MUI theme — see Export formats above.",
+                  body: "A Figma bundle, a Markdown handoff doc, CSS variables, a Tailwind config, an MUI theme, or an AI agent guide for tools like Claude or Cursor — see Export formats above.",
                 },
                 {
                   label: "How do I get the system into Figma?",

@@ -20,8 +20,11 @@ import { generateTypeScale, scaleFactorLabel } from "@/lib/typography";
 import { componentOptions, optionValue } from "@/lib/componentSchema";
 import { collectUsedIcons, iconSectionMarkdown } from "@/lib/icons";
 import { FIGMA_PLUGIN_NAME, FIGMA_PLUGIN_URL } from "@/lib/links";
+import { buildGoogleFontUrl, customFontRoles, isGoogleFont, primaryFamilyName } from "@/lib/googleFonts";
 
-const A11Y_PAIRS: Array<[bg: string, fg: string, context: string]> = [
+/** Shared with lib/agentExport.ts so the human handoff and the agent contract
+ *  audit the exact same pairs — one accessibility contract, two renderings. */
+export const A11Y_PAIRS: Array<[bg: string, fg: string, context: string]> = [
   ["surface-base", "text-primary", "Body copy on app background"],
   ["surface-base", "text-secondary", "Secondary copy on app background"],
   ["surface-base", "text-muted", "Muted metadata on app background"],
@@ -127,6 +130,41 @@ export function generateHandoffDocs(state: ArkitypeState): string {
       .join(" · ")}`
   );
   push();
+
+  push("### Fonts");
+  push();
+  const fontRoles = primitives.typography.fontRoles;
+  push(
+    Object.entries(fontRoles)
+      .map(([role, r]) => {
+        const name = primaryFamilyName(r.family);
+        return `\`${role}\` = \`${name}\`${isGoogleFont(r.family) ? " (Google Fonts)" : ""}`;
+      })
+      .join(" · ")
+  );
+  push();
+  const loadUrl = buildGoogleFontUrl(Object.values(fontRoles).map((r) => r.family));
+  if (loadUrl) {
+    push("The Google Fonts roles above need one stylesheet link — nothing renders them without it:");
+    push();
+    push("```html");
+    push(`<link rel="stylesheet" href="${loadUrl}">`);
+    push("```");
+    push();
+  }
+  const selfHost = customFontRoles(fontRoles);
+  if (selfHost.length) {
+    const list = selfHost.map((r) => `\`${r.role}\` (\`${r.name}\`)`).join(", ");
+    push(
+      `${list} ${selfHost.length === 1 ? "isn't" : "aren't"} on Google Fonts, so the link above doesn't cover ${
+        selfHost.length === 1 ? "it" : "them"
+      } — self-host with your own \`@font-face\` (the CSS export scaffolds one per family) or ${
+        selfHost.length === 1 ? "it" : "they"
+      } will only render on a machine that already has ${selfHost.length === 1 ? "it" : "them"} installed.`
+    );
+    push();
+  }
+
   push("### Naming convention (token tiers)");
   push();
   push(

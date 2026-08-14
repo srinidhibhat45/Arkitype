@@ -91,10 +91,36 @@ export const GOOGLE_FONTS: GoogleFont[] = [
   { family: "Big Shoulders Display", category: "display", weights: [100,200,300,400,500,600,700,800,900] },
 ];
 
-const SYSTEM_FONT_NAMES = new Set([
+/**
+ * Families Arkitype treats as already available — a Google Fonts fetch would
+ * be redundant (a real system font) or actively wrong (the app's own default
+ * stacks are led by a name that's only ever meant as an aspirational match,
+ * with real fallbacks doing the work). Exported so the availability checker
+ * (lib/fontAvailability.ts) and the export compilers can agree with the
+ * loader on what counts as "safe" instead of re-deriving it.
+ */
+export const SYSTEM_FONT_NAMES = new Set([
   "Inter","-apple-system","BlinkMacSystemFont","ui-monospace",
   "SF Mono","Menlo","monospace","sans-serif","serif",
 ]);
+
+/** CSS generic family keywords — resolve in every browser, no font file needed. */
+export const GENERIC_FONT_FAMILIES = new Set([
+  "serif", "sans-serif", "monospace", "cursive", "fantasy",
+  "system-ui", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded",
+  "emoji", "math", "fangsong",
+]);
+
+/**
+ * True when a bare family name needs nothing from Arkitype to render
+ * correctly — a CSS generic keyword, or one of the app's own pre-vetted
+ * "system" defaults. Anything else is either a Google Font (auto-loaded — see
+ * {@link isGoogleFont}) or a genuinely custom entry that only renders
+ * wherever that exact font already happens to be installed.
+ */
+export function isSafeFamily(name: string): boolean {
+  return GENERIC_FONT_FAMILIES.has(name.toLowerCase()) || SYSTEM_FONT_NAMES.has(name);
+}
 
 export function primaryFamilyName(stack: string): string {
   return stack.split(",")[0].trim().replace(/['"]/g, "");
@@ -138,6 +164,41 @@ export function buildGoogleFontUrl(families: string[]): string | null {
     .map((f) => "family=" + encodeURIComponent(f) + ":ital,wght@0,100..900;1,100..900")
     .join("&");
   return "https://fonts.googleapis.com/css2?" + params + "&display=swap";
+}
+
+/**
+ * The same stylesheet {@link buildGoogleFontUrl} builds, wrapped as a CSS
+ * `@import` rule — for contexts that ship a CSS file rather than inject a
+ * `<link>` tag (the CSS variables export, a plain stylesheet import). `@import`
+ * rules must lead the file, before any other rule.
+ */
+export function googleFontImportRule(families: string[]): string | null {
+  const url = buildGoogleFontUrl(families);
+  return url ? `@import url("${url}");` : null;
+}
+
+export interface FontRoleLike {
+  family: string;
+}
+
+/**
+ * Font roles Arkitype can't load for a visitor — not a Google Font (which
+ * {@link buildGoogleFontUrl}/FontLoader fetch automatically) and not one of
+ * the app's pre-vetted "system" defaults. Each one only renders correctly
+ * where that exact family already happens to be installed; exports use this
+ * list to prompt a self-hosting `@font-face` note instead of shipping a
+ * silent gap.
+ */
+export function customFontRoles(
+  fontRoles: Record<string, FontRoleLike>
+): Array<{ role: string; name: string; stack: string }> {
+  return Object.entries(fontRoles)
+    .map(([role, r]) => ({
+      role,
+      name: primaryFamilyName(r?.family ?? ""),
+      stack: r?.family ?? "",
+    }))
+    .filter((r) => r.name && !isGoogleFont(r.stack) && !isSafeFamily(r.name));
 }
 
 export const FONT_PAIRINGS: FontPairing[] = [

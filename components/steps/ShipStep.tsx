@@ -13,6 +13,7 @@ import { COMPONENT_LANES } from "@/lib/componentLanes";
 import { WIRED_COMPONENTS } from "@/lib/componentSchema";
 import { generateHandoffDocs } from "@/lib/docs";
 import { compileCssVariables, compileMuiTheme, compileTailwindConfig } from "@/lib/adapters";
+import { compileAgentGuide } from "@/lib/agentExport";
 import { FIGMA_PLUGIN_NAME, FIGMA_PLUGIN_URL } from "@/lib/links";
 import {
   AsideDivider,
@@ -25,7 +26,7 @@ import {
 } from "@/components/ui/controls";
 import { StepScaffold } from "@/components/shell/StepScaffold";
 
-type Artifact = "json" | "docs" | "css" | "tailwind" | "mui";
+type Artifact = "json" | "docs" | "css" | "tailwind" | "mui" | "agent";
 
 /** Publish isn't a downloadable artifact — it's an action with its own surface. */
 type Tab = Artifact | "publish";
@@ -68,6 +69,13 @@ const ARTIFACT_META: Record<
     hint: "light + dark, resolved values",
     filename: () => "arkitype-theme.ts",
     mime: "text/typescript",
+  },
+  agent: {
+    label: "AI agent",
+    title: "AI agent design-system guide",
+    hint: "Markdown · for Claude, Cursor, Antigravity…",
+    filename: (b) => `${b}-agent-guide.md`,
+    mime: "text/markdown",
   },
 };
 
@@ -206,8 +214,9 @@ export function ShipStep() {
   const css = useMemo(() => compileCssVariables(state), [state]);
   const tailwind = useMemo(() => compileTailwindConfig(state), [state]);
   const mui = useMemo(() => compileMuiTheme(state), [state]);
+  const agentGuide = useMemo(() => compileAgentGuide(state), [state]);
 
-  const contentByArtifact: Record<Artifact, string> = { json, docs, css, tailwind, mui };
+  const contentByArtifact: Record<Artifact, string> = { json, docs, css, tailwind, mui, agent: agentGuide };
   const content = contentByArtifact[artifact];
   const variableCount = bundle.collections.reduce(
     (sum, c) => sum + c.variables.length,
@@ -231,8 +240,8 @@ export function ShipStep() {
   return (
     <StepScaffold
       step="ship"
-      title="Five artifacts, ready to hand off"
-      lede="The Figma bundle matches the Plugin API's variable format. The docs give engineers the consumption model, the contrast audit, and copy-paste CSS. CSS vars, Tailwind config, and MUI theme sources turn the same tokens into a running framework config, not just a spec to re-type."
+      title="Six artifacts, ready to hand off"
+      lede="The Figma bundle matches the Plugin API's variable format. The docs give engineers the consumption model, the contrast audit, and copy-paste CSS. CSS vars, Tailwind config, and MUI theme sources turn the same tokens into a running framework config, not just a spec to re-type. The AI agent guide does the same for a coding assistant — rules and resolved values it can build from directly."
       aside={
         <>
           <Field label="Artifact">
@@ -372,6 +381,38 @@ export function ShipStep() {
                     );
                   })}
                 </div>
+              </div>
+            </>
+          )}
+
+          {tab === "agent" && (
+            <>
+              <AsideDivider />
+              <div className="mb-6 rounded-xl border border-line p-4">
+                <p className="mb-3 text-[12px] font-medium text-fg-dim">
+                  Build with this system, not around it
+                </p>
+                <p className="mb-3 text-[11px] leading-relaxed text-fg-mute">
+                  One Markdown file: imperative rules, every token already resolved, the full
+                  component contract, and ready-to-paste CSS. Attach it as project context before
+                  asking an AI coding tool to build or touch UI, and it draws from these exact
+                  tokens instead of improvising its own.
+                </p>
+                <ul className="space-y-2 text-[11px] leading-relaxed text-fg-mute">
+                  <li>
+                    <strong className="font-medium text-fg-dim">Claude</strong> — add it to a
+                    Project&apos;s knowledge, or drop it in the repo for Claude Code to read.
+                  </li>
+                  <li>
+                    <strong className="font-medium text-fg-dim">Cursor</strong> — save as{" "}
+                    <code className="font-mono">.cursor/rules/design-system.md</code>, or
+                    @-mention the file.
+                  </li>
+                  <li>
+                    <strong className="font-medium text-fg-dim">Antigravity, Windsurf, others</strong>{" "}
+                    — attach it wherever the tool takes project or repo context.
+                  </li>
+                </ul>
               </div>
             </>
           )}
@@ -525,6 +566,8 @@ export function ShipStep() {
               ? "The published site is generated from the same token state as every other artifact here — there's no second copy to keep in sync, and nothing to hand-author."
               : artifact === "json"
               ? "The plugin builds a complete kit — Cover, Foundations, and one page per component with usage docs, variant grids, component properties, elevation effect styles, and token-bound layers. Re-running it after edits updates everything in place, so instances and overrides survive."
+              : artifact === "agent"
+                ? "Compiled from the same token pipeline as every artifact here, reframed as instructions: rules first, then every value already resolved, then a per-component contract detailed enough to implement from cold. Re-export after edits — an agent working from a stale copy is the same drift problem as a stale style guide."
               : artifact === "tailwind"
                 ? "Colours/scales reference the --ark-* CSS variables — download the CSS vars artifact too and import it once, globally."
                 : artifact === "mui"

@@ -10,6 +10,7 @@ import { rampStepLabels } from "@/lib/color";
 import { resolveToken, systemCssVars, tokenKind } from "@/lib/tokens";
 import { generateTypeScale, STEP_DEFS } from "@/lib/typography";
 import { ICON_FONT_CSS, ICON_LIBRARY } from "@/lib/icons";
+import { customFontRoles, googleFontImportRule } from "@/lib/googleFonts";
 
 type TokenState = Pick<ArkitypeState, "primitives" | "semantics">;
 
@@ -17,6 +18,51 @@ const cssBlock = (vars: Record<string, string>, indent = "  "): string =>
   Object.entries(vars)
     .map(([k, v]) => `${indent}${k}: ${v};`)
     .join("\n");
+
+/**
+ * A copy-paste `@font-face` scaffold for one custom family — the file this CSS
+ * ships in has no way to load it (see {@link fontLoadingCss}), so the person
+ * pasting it in needs the exact shape, not just a warning that something's
+ * missing.
+ */
+function fontFaceScaffold(name: string, roles: string[]): string[] {
+  return [
+    `/* ${roles.join(" + ")} → "${name}" isn't on Google Fonts — nothing above loads`,
+    ` * it. Self-host once you have the files (point src at wherever you host them): */`,
+    "/*",
+    "@font-face {",
+    `  font-family: "${name}";`,
+    `  src: url("/fonts/${name.replace(/\s+/g, "-")}.woff2") format("woff2");`,
+    "  font-weight: 100 900;",
+    "  font-display: swap;",
+    "}",
+    "*/",
+  ];
+}
+
+/**
+ * The `@import` that actually loads the system's Google Fonts, plus a ready
+ * `@font-face` scaffold for any role that isn't one — without this, "select a
+ * font" and "the font renders" were two different, silently disconnected
+ * promises: the variables below reference `--ark-font-*` by name, but nothing
+ * in the file ever fetched it, so it only ever showed up on a machine that
+ * already happened to have it installed.
+ */
+function fontLoadingCss(fontRoles: TokenState["primitives"]["typography"]["fontRoles"]): string[] {
+  const importRule = googleFontImportRule(Object.values(fontRoles).map((r) => r.family));
+  const custom = customFontRoles(fontRoles);
+  // Dedupe by family — two roles sharing one custom face only need one scaffold.
+  const byName = new Map<string, string[]>();
+  custom.forEach((r) => byName.set(r.name, [...(byName.get(r.name) ?? []), r.role]));
+
+  const lines = ["/* Fonts — load before anything below references them. */"];
+  if (importRule) lines.push(importRule);
+  if (!importRule && byName.size === 0) {
+    lines.push("/* No Google Fonts in this system — every font role is a system stack. */");
+  }
+  byName.forEach((roles, name) => lines.push(...fontFaceScaffold(name, roles)));
+  return lines;
+}
 
 /** A real, drop-in CSS custom-properties file — the one export format that
  *  didn't exist at all before (Ship step only offered Figma JSON + docs). */
@@ -44,6 +90,8 @@ export function compileCssVariables(state: TokenState): string {
     ...(extra.length
       ? ['/* Any further mode: set data-ark-mode="<id>" on the same element. */']
       : []),
+    "",
+    ...fontLoadingCss(state.primitives.typography.fontRoles),
     "",
     `/* Icon library — ${ICON_LIBRARY.name} (${ICON_LIBRARY.license}). */`,
     `/* Load the font, then render: <span class="${ICON_LIBRARY.className}">search</span>. */`,

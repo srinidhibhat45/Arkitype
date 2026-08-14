@@ -7,13 +7,16 @@
  * • Custom font stack fallback — always-visible text field
  */
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Search, X } from "lucide-react";
 import {
   GOOGLE_FONTS,
   FontCategory,
   buildGoogleFontUrl,
+  matchGoogleFont,
   primaryFamilyName,
 } from "@/lib/googleFonts";
+import { Tooltip } from "@/components/ui/controls";
+import { useFontAvailability } from "@/lib/fontAvailability";
 
 const CATEGORY_TABS: Array<{ label: string; value: FontCategory | "all" }> = [
   { label: "All", value: "all" },
@@ -27,6 +30,36 @@ interface Props {
   value: string;
   onChange: (family: string) => void;
   placeholder?: string;
+}
+
+/**
+ * Compact "this font won't render for everyone" indicator. Silent unless the
+ * family is a custom (non-Google) entry that isn't installed on this device —
+ * Google Fonts and Arkitype's own system defaults never reach "missing" (see
+ * useFontAvailability). Informational only: this sits inside a hover tooltip,
+ * so the fix lives in the picker's popover instead (below), not here.
+ */
+export function FontAvailabilityBadge({ family }: { family: string }) {
+  const availability = useFontAvailability(family);
+  if (availability !== "missing") return null;
+  const name = primaryFamilyName(family);
+  return (
+    <Tooltip
+      side="top"
+      content={
+        <>
+          <span className="font-mono text-fg">{name}</span> isn&apos;t installed on this
+          device, so it&apos;s rendering as a fallback right now — for you, and for anyone
+          else without it. Arkitype can only auto-load Google Fonts; open the picker to
+          switch to one, or keep this if you&apos;re relying on a local/self-hosted install.
+        </>
+      }
+    >
+      <span className="inline-flex shrink-0 items-center text-amber-400">
+        <AlertTriangle size={11} />
+      </span>
+    </Tooltip>
+  );
 }
 
 /** Lazy-loads a preview stylesheet for fonts visible in the list */
@@ -55,6 +88,7 @@ export function FontPicker({ value, onChange, placeholder }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const currentName = primaryFamilyName(value);
+  const availability = useFontAvailability(value);
 
   // Close on outside click
   useEffect(() => {
@@ -91,6 +125,12 @@ export function FontPicker({ value, onChange, placeholder }: Props) {
 
   const isCustom =
     !!value && !GOOGLE_FONTS.some((f) => f.family === currentName);
+  // A same-name (or near-alias) hit in the catalog — the one-click fix when
+  // the font the user typed turns out to already be a Google Font under a
+  // slightly different spelling ("sohne-var" etc.). Only worth computing for
+  // a custom value that's actually missing; a font already rendering fine
+  // doesn't need an escape hatch.
+  const googleMatch = isCustom && availability === "missing" ? matchGoogleFont(value) : null;
 
   return (
     <div ref={ref} className="relative">
@@ -106,6 +146,7 @@ export function FontPicker({ value, onChange, placeholder }: Props) {
         >
           {currentName || placeholder || "Choose font…"}
         </span>
+        <FontAvailabilityBadge family={value} />
         <ChevronDown
           size={13}
           className={`shrink-0 text-fg-mute transition-transform ${open ? "rotate-180" : ""}`}
@@ -228,6 +269,44 @@ export function FontPicker({ value, onChange, placeholder }: Props) {
                 Apply
               </button>
             </div>
+
+            {isCustom && availability === "missing" && (
+              <div className="mt-2 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-2.5 py-2">
+                <p className="flex items-start gap-1.5 text-[10.5px] leading-relaxed text-amber-200/90">
+                  <AlertTriangle size={11} className="mt-0.5 shrink-0 text-amber-400" />
+                  <span>
+                    <strong className="font-semibold text-amber-300">
+                      &quot;{currentName}&quot;
+                    </strong>{" "}
+                    isn&apos;t installed on this device — it renders as a fallback until it
+                    is, for anyone. Arkitype can only auto-load Google Fonts; a desktop font
+                    needs to already be installed, or self-hosted with your own{" "}
+                    <code className="font-mono">@font-face</code> rule.
+                  </span>
+                </p>
+                {googleMatch ? (
+                  <button
+                    type="button"
+                    onClick={() => select(googleMatch.family)}
+                    className="mt-2 w-full rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] font-semibold text-amber-200 transition-colors hover:bg-amber-500/20"
+                  >
+                    Use &quot;{googleMatch.family}&quot; from Google Fonts instead
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategory("all");
+                      setQuery("");
+                      inputRef.current?.focus();
+                    }}
+                    className="mt-2 w-full rounded-md border border-line px-2 py-1.5 text-[10.5px] font-semibold text-fg-dim transition-colors hover:border-line-strong hover:text-fg"
+                  >
+                    Browse Google Fonts alternatives
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

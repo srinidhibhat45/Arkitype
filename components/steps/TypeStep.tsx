@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/controls";
 import { StepScaffold } from "@/components/shell/StepScaffold";
 import { RotateCcw, Trash2, Plus, Sparkles, ChevronDown } from "lucide-react";
-import { FontPicker } from "@/components/ui/FontPicker";
+import { FontAvailabilityBadge, FontPicker } from "@/components/ui/FontPicker";
 import { FONT_PAIRINGS } from "@/lib/googleFonts";
 
 const ROUNDING_OPTIONS: Array<{ label: string; value: RoundingMode }> = [
@@ -317,7 +317,10 @@ export function TypeStep() {
           <div className="mb-2 text-[12px] font-medium text-fg-dim">Font roles</div>
           {(Object.keys(ROLE_LABEL) as FontRoleId[]).map((role) => (
             <div key={role} className="mb-3">
-              <div className="mb-1 text-[11px] text-fg-mute">{ROLE_LABEL[role]}</div>
+              <div className="mb-1 flex items-center gap-1.5 text-[11px] text-fg-mute">
+                {ROLE_LABEL[role]}
+                <FontAvailabilityBadge family={typography.fontRoles[role].family} />
+              </div>
               <FontPicker
                 value={typography.fontRoles[role].family}
                 onChange={(family) => setFontRole(role, { family })}

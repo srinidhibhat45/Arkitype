@@ -10,6 +10,7 @@ import type { PublishedSnapshot } from "@/lib/publish";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 import { PublicComponentPage } from "@/components/public/PublicComponentPage";
 import { PublicThemeScript } from "@/components/public/PublicThemeScript";
+import { PublicFontLinks } from "@/components/public/PublicFontLinks";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,7 @@ export default async function PublishedComponentPage({
   if (!snapshot || !componentLabel(params.componentId)) notFound();
   return (
     <>
+      <PublicFontLinks fontRoles={snapshot.primitives.typography.fontRoles} />
       <PublicThemeScript
         semantics={snapshot.semantics}
         primitives={snapshot.primitives}

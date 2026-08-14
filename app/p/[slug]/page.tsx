@@ -13,6 +13,7 @@ import { createServerClient, isSupabaseConfigured } from "@/lib/supabase/server"
 import type { PublishedSnapshot } from "@/lib/publish";
 import { PublicStyleguide } from "@/components/public/PublicStyleguide";
 import { PublicThemeScript } from "@/components/public/PublicThemeScript";
+import { PublicFontLinks } from "@/components/public/PublicFontLinks";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,7 @@ export default async function PublishedStyleguidePage({
   if (!snapshot) notFound();
   return (
     <>
+      <PublicFontLinks fontRoles={snapshot.primitives.typography.fontRoles} />
       <PublicThemeScript
         semantics={snapshot.semantics}
         primitives={snapshot.primitives}

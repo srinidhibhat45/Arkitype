@@ -636,6 +636,52 @@ export function DocsSections() {
               shows as a badge on the published styleguide so a teammate can tell
               &ldquo;use this&rdquo; from &ldquo;we&apos;re replacing this&rdquo; without asking.
             </p>
+            <h3 className="!mt-8 text-base font-medium text-fg">Templates: a different starting point</h3>
+            <p>
+              The default layout for a compound component is one opinion about how it
+              should be built. Ten of them —{" "}
+              <strong className="font-medium text-fg">
+                Alert, Toast, Banner, Card, Empty state, Accordion, Dropdown menu, List item,
+                Feed item and Popover
+              </strong>{" "}
+              — let you swap that opinion for one modeled on a design system that has
+              been through years of real use. Open{" "}
+              <strong className="font-medium text-fg">Templates</strong> in the studio
+              toolbar and pick from:
+            </p>
+            <FieldList
+              items={[
+                {
+                  label: "Material 3 — Google",
+                  body: "Tonal filled surfaces, no borders, generous corner radii, and actions as plain text rather than boxed buttons.",
+                },
+                {
+                  label: "Apple (HIG) — Human Interface Guidelines",
+                  body: "A neutral elevated card carrying the tone in a small tinted icon badge instead of a wash; inset grouped rows with hairline dividers, and a trailing chevron where the whole row is the affordance.",
+                },
+                {
+                  label: "IBM Carbon — IBM",
+                  body: "Square corners, a bold left accent bar, flat fills, ruled dividers, and underlined text links in place of buttons.",
+                },
+              ]}
+            />
+            <p className="!mt-6">
+              A template changes <em>structure only</em>. It never brings the source
+              system&apos;s colours with it: every template resolves through the same
+              token chain as the default, so a Carbon alert is drawn in{" "}
+              <em>your</em> ramp, in whichever mode you&apos;re previewing. Any part
+              you&apos;ve already rebound keeps that binding, and every option — tone,
+              icon, dismissible, action, counts, labels — keeps working, so nothing in
+              the inspector goes dead when you switch.
+            </p>
+            <Callout title="Once, then forget">
+              Templates sit behind one small toolbar button rather than a step of their
+              own, because this is a decision you make at most once per component. Your
+              choice is saved with the file, exports with it, and shows on the published
+              styleguide. Leave it alone and every component renders exactly as it always
+              has — <strong className="font-medium text-fg">Arkitype (Original)</strong>{" "}
+              is simply the first card in the picker.
+            </Callout>
             <Callout title="The 4-skeleton rule">
               Three components — <strong className="font-medium text-fg">Modal, Tabs,</strong> and{" "}
               <strong className="font-medium text-fg">Table</strong> — carry four predefined

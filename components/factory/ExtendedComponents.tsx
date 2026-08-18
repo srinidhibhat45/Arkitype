@@ -37,6 +37,7 @@ import {
   useComponentBindings,
 } from "@/lib/componentSchema";
 import { pxNum, TokenButton } from "./CoreComponents";
+import { TemplateTextAction, MATERIAL_RADIUS, APPLE_RADIUS } from "./templateKit";
 
 /* ────────────────────────────── Chip ────────────────────────────── */
 
@@ -211,6 +212,7 @@ export function TokenPopover({
   showAction = true,
   elevation = "high",
   resolve = NO_BINDINGS,
+  template,
 }: {
   placement?: Placement;
   radiusStep?: number;
@@ -221,6 +223,8 @@ export function TokenPopover({
   showAction?: boolean;
   elevation?: string;
   resolve?: Resolver;
+  /** Template id — see lib/componentTemplates.ts. */
+  template?: string;
 }) {
   const r = resolve;
   const bg = r("container.bg") ?? tv("surface-elevated");
@@ -231,6 +235,48 @@ export function TokenPopover({
   const buttonResolve = useComponentBindings("button");
   const childButtonResolve = createChildResolver("button", resolve, buttonResolve);
   const actionOpts = instances?.action ?? {};
+  const actionLabel = (actionOpts.label as string) ?? "Apply";
+
+  // ── Templates (lib/componentTemplates.ts). Structure is near-identical
+  // across the four systems — a surface, a title/body, an optional close and
+  // action — so what varies is captured as a skin rather than four copies of
+  // the same JSX. `arrowBorder` matters: the borderless templates would
+  // otherwise draw a hairline outline on the arrow that the card itself
+  // doesn't have.
+  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+
+  const skin: Record<
+    string,
+    { radius: string | number; borderCss: string; arrowBorder: string; pad: string; ruleAboveAction?: boolean }
+  > = {
+    arkitype: {
+      radius: rv(radiusStep),
+      borderCss: `${r("container.borderWidth") ?? "1px"} solid ${border}`,
+      arrowBorder: border,
+      pad: `${sv(2)} ${sv(3)}`,
+    },
+    material3: {
+      radius: `${MATERIAL_RADIUS.sm}px`,
+      borderCss: "none",
+      arrowBorder: bg,
+      pad: `${sv(3)} ${sv(3)}`,
+    },
+    apple: {
+      radius: `${APPLE_RADIUS.sm}px`,
+      borderCss: "none",
+      arrowBorder: bg,
+      pad: `${sv(2)} ${sv(3)}`,
+    },
+    carbon: {
+      radius: 0,
+      borderCss: `${r("container.borderWidth") ?? "1px"} solid ${border}`,
+      arrowBorder: border,
+      pad: `${sv(2)} ${sv(3)}`,
+      ruleAboveAction: true,
+    },
+  };
+  const s = skin[activeTemplate] ?? skin.arkitype;
+  const isDefault = activeTemplate === "arkitype";
 
   return (
     <div style={{ position: "relative", maxWidth: 280 }}>
@@ -238,10 +284,10 @@ export function TokenPopover({
         style={{
           position: "relative",
           background: bg,
-          border: `${r("container.borderWidth") ?? "1px"} solid ${border}`,
-          borderRadius: r("container.radius") ?? rv(radiusStep),
+          border: s.borderCss,
+          borderRadius: r("container.radius") ?? s.radius,
           boxShadow: `var(--ark-shadow-${elevation})`,
-          padding: `${sv(2)} ${sv(3)}`,
+          padding: s.pad,
           fontFamily: "var(--ark-font-sans)",
         }}
         role="dialog"
@@ -260,19 +306,38 @@ export function TokenPopover({
           ) : null}
         </div>
         {showAction ? (
-          <div style={{ marginTop: sv(2), display: "flex", justifyContent: "flex-end" }}>
-            <TokenButton
-              variant={(actionOpts.variant as any) ?? "filled"}
-              size={(actionOpts.size as any) ?? "sm"}
-              prefixIcon={(actionOpts.prefixIcon as string) ?? ""}
-              suffixIcon={(actionOpts.suffixIcon as string) ?? ""}
-              resolve={childButtonResolve}
+          <>
+            {s.ruleAboveAction ? (
+              <div style={{ height: 1, background: border, margin: `${sv(2)} -${sv(3)} 0` }} />
+            ) : null}
+            <div
+              style={{
+                marginTop: sv(2),
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
             >
-              {(actionOpts.label as string) ?? "Apply"}
-            </TokenButton>
-          </div>
+              {isDefault ? (
+                <TokenButton
+                  variant={(actionOpts.variant as any) ?? "filled"}
+                  size={(actionOpts.size as any) ?? "sm"}
+                  prefixIcon={(actionOpts.prefixIcon as string) ?? ""}
+                  suffixIcon={(actionOpts.suffixIcon as string) ?? ""}
+                  resolve={childButtonResolve}
+                >
+                  {actionLabel}
+                </TokenButton>
+              ) : (
+                <TemplateTextAction
+                  label={actionLabel}
+                  color={activeTemplate === "carbon" ? tv("text-link") : tv("action-primary-default")}
+                  variant={activeTemplate === "carbon" ? "carbon" : "material"}
+                />
+              )}
+            </div>
+          </>
         ) : null}
-        {showArrow ? <span style={arrowStyle(placement, bg, border)} /> : null}
+        {showArrow ? <span style={arrowStyle(placement, bg, s.arrowBorder)} /> : null}
       </div>
     </div>
   );

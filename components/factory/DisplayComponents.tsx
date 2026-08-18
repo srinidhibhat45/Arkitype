@@ -13,6 +13,18 @@ import { rv, sv, tv } from "@/lib/tokens";
 import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver, resolveOptions } from "@/lib/componentSchema";
 import { pxNum, TokenButton } from "./CoreComponents";
 import { TokenIconButton } from "./FormControls";
+import {
+  materialSurface,
+  appleSurface,
+  appleIconBadge,
+  carbonSurface,
+  TemplateTextAction,
+  AppleTrailingAction,
+  AppleDismiss,
+  CarbonCloseButton,
+  MATERIAL_RADIUS,
+  APPLE_RADIUS,
+} from "./templateKit";
 
 export type ToneVariant = "neutral" | "brand" | "info" | "success" | "warning" | "error";
 
@@ -575,6 +587,7 @@ export function TokenToast({
   action = false,
   elevation = "high",
   resolve = NO_BINDINGS,
+  template,
 }: {
   variant?: ToneVariant;
   mode: PreviewMode;
@@ -586,6 +599,8 @@ export function TokenToast({
   action?: boolean;
   elevation?: string;
   resolve?: Resolver;
+  /** Template id — see lib/componentTemplates.ts. */
+  template?: string;
 }) {
   const tone = useTone(variant, mode);
   const r = resolve;
@@ -617,6 +632,203 @@ export function TokenToast({
   // only surfaces declared keys, so read it straight off the properties bag.
   const titleSize = (cfg?.properties?.["title.size"] ?? "sm") as string;
   const bodySize = (cfg?.properties?.["body.size"] ?? "xs") as string;
+
+  // ── Templates (lib/componentTemplates.ts) — structure only; the tone,
+  // copy and option flags above are reused verbatim by every branch.
+  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+  const heading = toastTitle || "Transaction saved";
+  const message = toastBody || "TXN-0459 posted to the operating ledger.";
+
+  if (activeTemplate === "material3") {
+    return (
+      <div
+        role="status"
+        style={{
+          ...materialSurface(tone),
+          borderRadius: r("container.radius") ?? `${MATERIAL_RADIUS.md}px`,
+          padding: `${sv(2)} ${sv(3)}`,
+          boxShadow: `var(--ark-shadow-${elevation})`,
+          fontFamily: "var(--ark-font-sans)",
+          display: "flex",
+          alignItems: "center",
+          gap: sv(2),
+          maxWidth: 360,
+          width: "100%",
+        }}
+      >
+        {icon ? <Glyph size={17} style={{ color: tone.accent, flexShrink: 0 }} /> : null}
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span
+            style={{
+              display: "block",
+              color: r("text.title") ?? tone.text,
+              fontSize: `var(--ark-text-${titleSize})`,
+              lineHeight: `var(--ark-leading-${titleSize})`,
+              fontWeight: `var(--ark-weight-${titleSize})`,
+              fontFamily: `var(--ark-font-role-${titleSize})`,
+            }}
+          >
+            {heading}
+          </span>
+          <span
+            style={{
+              display: "block",
+              color: r("text.body") ?? tone.text,
+              opacity: 0.8,
+              fontSize: `var(--ark-text-${bodySize})`,
+              lineHeight: `var(--ark-leading-${bodySize})`,
+              fontWeight: `var(--ark-weight-${bodySize})`,
+              fontFamily: `var(--ark-font-role-${bodySize})`,
+            }}
+          >
+            {message}
+          </span>
+        </span>
+        {action ? (
+          <span style={{ flexShrink: 0, marginLeft: 4 }}>
+            <TemplateTextAction label={actionLabel} color={tone.accent} variant="material" />
+          </span>
+        ) : null}
+        {dismissible ? (
+          <button
+            type="button"
+            aria-label="Dismiss notification"
+            onClick={() => {}}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 2,
+              marginLeft: 4,
+              cursor: "pointer",
+              color: tone.text,
+              opacity: 0.6,
+              flexShrink: 0,
+              display: "inline-flex",
+            }}
+          >
+            <X size={15} />
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (activeTemplate === "apple") {
+    return (
+      <div
+        role="status"
+        style={{
+          ...appleSurface(),
+          borderRadius: r("container.radius") ?? `${APPLE_RADIUS.md}px`,
+          padding: `${sv(2)} ${sv(2)}`,
+          boxShadow: `var(--ark-shadow-${elevation})`,
+          fontFamily: "var(--ark-font-sans)",
+          display: "flex",
+          alignItems: "center",
+          gap: sv(2),
+          maxWidth: 360,
+          width: "100%",
+        }}
+      >
+        {icon ? (
+          <span style={appleIconBadge(tone, 34)}>
+            <Glyph size={17} />
+          </span>
+        ) : null}
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span
+            style={{
+              display: "block",
+              color: r("text.title") ?? tv("text-primary"),
+              fontSize: `var(--ark-text-${titleSize})`,
+              lineHeight: `var(--ark-leading-${titleSize})`,
+              fontWeight: "var(--ark-font-weight-bold)",
+              fontFamily: `var(--ark-font-role-${titleSize})`,
+            }}
+          >
+            {heading}
+          </span>
+          <span
+            style={{
+              display: "block",
+              color: r("text.body") ?? tv("text-secondary"),
+              fontSize: `var(--ark-text-${bodySize})`,
+              lineHeight: `var(--ark-leading-${bodySize})`,
+              fontWeight: `var(--ark-weight-${bodySize})`,
+              fontFamily: `var(--ark-font-role-${bodySize})`,
+            }}
+          >
+            {message}
+          </span>
+        </span>
+        {action ? <AppleTrailingAction label={actionLabel} color={tone.accent} /> : null}
+        {dismissible ? <AppleDismiss onClick={() => {}} label="Dismiss notification" /> : null}
+      </div>
+    );
+  }
+
+  if (activeTemplate === "carbon") {
+    return (
+      <div
+        role="status"
+        style={{
+          position: "relative",
+          ...carbonSurface(tone),
+          borderRadius: r("container.radius") ?? 0,
+          // Longhand, never the `padding` shorthand alongside a paddingRight
+          // override — mixing the two makes React warn on rerender.
+          paddingTop: sv(2),
+          paddingBottom: sv(2),
+          paddingLeft: sv(3),
+          paddingRight: dismissible ? 28 : sv(3),
+          boxShadow: `var(--ark-shadow-${elevation})`,
+          fontFamily: "var(--ark-font-sans)",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: sv(2),
+          maxWidth: 360,
+          width: "100%",
+        }}
+      >
+        {icon ? <Glyph size={15} style={{ color: tone.accent, flexShrink: 0, marginTop: 2 }} /> : null}
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span
+            style={{
+              display: "block",
+              color: r("text.title") ?? tone.text,
+              fontSize: `var(--ark-text-${titleSize})`,
+              lineHeight: `var(--ark-leading-${titleSize})`,
+              fontWeight: "var(--ark-font-weight-bold)",
+              fontFamily: `var(--ark-font-role-${titleSize})`,
+            }}
+          >
+            {heading}
+          </span>
+          <span
+            style={{
+              display: "block",
+              color: r("text.body") ?? tone.text,
+              opacity: 0.9,
+              fontSize: `var(--ark-text-${bodySize})`,
+              lineHeight: `var(--ark-leading-${bodySize})`,
+              fontWeight: `var(--ark-weight-${bodySize})`,
+              fontFamily: `var(--ark-font-role-${bodySize})`,
+            }}
+          >
+            {message}
+          </span>
+          {action ? (
+            <span style={{ display: "block", marginTop: 6 }}>
+              <TemplateTextAction label={actionLabel} color={tone.accent} variant="carbon" />
+            </span>
+          ) : null}
+        </span>
+        {dismissible ? (
+          <CarbonCloseButton color={tone.text} onClick={() => {}} label="Dismiss notification" />
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div

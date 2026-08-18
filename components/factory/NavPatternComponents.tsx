@@ -21,6 +21,12 @@ import { NO_BINDINGS, Resolver, resolveOptions, useComponentBindings } from "@/l
 import { TokenBadge } from "./DisplayComponents";
 import { PreviewMode, useDesignSystem } from "@/store/useDesignSystem";
 import { TokenButton } from "./CoreComponents";
+import {
+  appleSurface,
+  TemplateTextAction,
+  MATERIAL_RADIUS,
+  APPLE_RADIUS,
+} from "./templateKit";
 
 /* ── Breadcrumbs ── */
 
@@ -226,6 +232,7 @@ export function TokenDropdownMenu({
   showDanger = true,
   menuWidth = 180,
   resolve = NO_BINDINGS,
+  template,
 }: {
   radiusStep?: number;
   showTrigger?: boolean;
@@ -235,22 +242,88 @@ export function TokenDropdownMenu({
   showDanger?: boolean;
   menuWidth?: number;
   resolve?: Resolver;
+  /** Template id — see lib/componentTemplates.ts. */
+  template?: string;
 }) {
   const r = resolve;
+  const dropdownCfg = useDesignSystem((s) => s.components.dropdown);
+
+  // ── Templates (lib/componentTemplates.ts). A menu's *structure* is the same
+  // in all four systems — one surface, four rows, an optional rule before the
+  // destructive one. What actually differs is the surface treatment and how
+  // the highlighted row is drawn, so this is a style table rather than four
+  // near-identical copies of the same JSX.
+  const activeTemplate = template ?? (dropdownCfg?.properties?.template as string) ?? "arkitype";
+
+  const menuSkin: Record<
+    string,
+    {
+      radius: string | number;
+      border: string;
+      shadow: string;
+      pad: string;
+      rowRadius: string | number;
+      rowPad: string;
+      /** Extra style for the highlighted row, on top of the shared bg/color. */
+      activeExtra?: React.CSSProperties;
+    }
+  > = {
+    arkitype: {
+      radius: rv(radiusStep),
+      border: `1px solid ${r("container.border") ?? tv("border-default")}`,
+      shadow: "var(--ark-shadow-high)",
+      pad: sv(1),
+      rowRadius: rv(Math.max(radiusStep - 1, 0)),
+      rowPad: `${sv(1)} ${sv(2)}`,
+    },
+    material3: {
+      radius: `${MATERIAL_RADIUS.sm}px`,
+      border: "none",
+      shadow: "var(--ark-shadow-high)",
+      pad: sv(1),
+      rowRadius: 999,
+      rowPad: `${sv(2)} ${sv(3)}`,
+    },
+    apple: {
+      radius: `${APPLE_RADIUS.sm}px`,
+      border: "none",
+      shadow: "var(--ark-shadow-high)",
+      pad: sv(1),
+      rowRadius: 6,
+      rowPad: `${sv(1)} ${sv(2)}`,
+    },
+    carbon: {
+      radius: 0,
+      border: `1px solid ${r("container.border") ?? tv("border-default")}`,
+      shadow: "var(--ark-shadow-medium)",
+      pad: "0px",
+      rowRadius: 0,
+      rowPad: `${sv(1)} ${sv(2)}`,
+      activeExtra: { borderLeft: `3px solid ${tv("action-primary-default")}` },
+    },
+  };
+  const skin = menuSkin[activeTemplate] ?? menuSkin.arkitype;
+  const isCarbon = activeTemplate === "carbon";
+
   const item = (danger = false): React.CSSProperties => ({
     display: "flex",
     alignItems: "center",
     gap: sv(2),
-    padding: `${sv(1)} ${sv(2)}`,
-    borderRadius: rv(Math.max(radiusStep - 1, 0)),
+    padding: skin.rowPad,
+    borderRadius: skin.rowRadius,
     fontSize: "var(--ark-text-sm)",
     fontFamily: "var(--ark-font-sans)",
     color: danger ? undefined : r("item.text") ?? tv("text-secondary"),
     cursor: "pointer",
+    // Carbon's active row grows a 3px left bar; every row reserves the space
+    // so the labels don't jump sideways between highlighted and plain rows.
+    ...(isCarbon ? { borderLeft: "3px solid transparent" } : null),
   });
+
   const trailingCheck = (
     <Check size={13} style={{ marginLeft: "auto", color: r("item.activeText") ?? tv("text-primary") }} />
   );
+
   return (
     <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end" }}>
       {showTrigger ? (
@@ -258,7 +331,7 @@ export function TokenDropdownMenu({
           style={{
             display: "inline-flex",
             padding: sv(1),
-            borderRadius: rv(2),
+            borderRadius: isCarbon ? 0 : rv(2),
             border: `1px solid ${tv("border-default")}`,
             color: tv("text-secondary"),
             background: tv("surface-elevated"),
@@ -274,14 +347,23 @@ export function TokenDropdownMenu({
         role="menu"
         style={{
           minWidth: menuWidth,
-          padding: sv(1),
-          borderRadius: r("container.radius") ?? rv(radiusStep),
+          padding: skin.pad,
+          borderRadius: r("container.radius") ?? skin.radius,
           background: r("container.bg") ?? tv("surface-elevated"),
-          border: `1px solid ${r("container.border") ?? tv("border-default")}`,
-          boxShadow: "var(--ark-shadow-high)",
+          border: skin.border,
+          boxShadow: skin.shadow,
+          overflow: "hidden",
         }}
       >
-        <div role="menuitem" style={{ ...item(), background: r("item.activeBg") ?? tv("surface-subtle"), color: r("item.activeText") ?? tv("text-primary") }}>
+        <div
+          role="menuitem"
+          style={{
+            ...item(),
+            background: r("item.activeBg") ?? tv("surface-subtle"),
+            color: r("item.activeText") ?? tv("text-primary"),
+            ...skin.activeExtra,
+          }}
+        >
           {showIcons ? <Copy size={13} style={{ color: tv("text-muted") }} /> : null} Duplicate
           {checkmarks ? trailingCheck : null}
         </div>
@@ -316,10 +398,13 @@ export function TokenCard({
   mode,
   radiusStep = 4,
   resolve = NO_BINDINGS,
+  template,
 }: {
   mode: PreviewMode;
   radiusStep?: number;
   resolve?: Resolver;
+  /** Template id — see lib/componentTemplates.ts. */
+  template?: string;
 }) {
   const r = resolve;
   const cfg = useDesignSystem((s) => s.components.card);
@@ -350,6 +435,218 @@ export function TokenCard({
     lg: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
     xl: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
   };
+
+  // ── Templates (lib/componentTemplates.ts) — structure only; the title,
+  // subtitle, body and button label are shared by all branches.
+  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+
+  // A template supplies the *default* corner radius and elevation for its
+  // system — but a value the user actually set still wins, or those two
+  // inspector controls would silently do nothing once a template is picked.
+  // Reading the raw properties bag (not `opts`) is what distinguishes "the
+  // user chose 12" from "12 is the schema default".
+  const storedRadius = cfg?.properties?.radius;
+  const storedShadow = cfg?.properties?.shadow;
+
+  // Card's `bg`/`borderColor` options are legacy raw-hex escape hatches whose
+  // schema defaults are literal #ffffff / #e4e4e7 — they don't follow the
+  // preview mode, so the default layout paints a white card in dark mode. The
+  // default branch keeps that behaviour (changing it would restyle every
+  // existing project's card); the templates below are token-first instead, and
+  // only take the literal when the user actually picked one.
+  const storedBg = cfg?.properties?.bg;
+  const storedBorderColor = cfg?.properties?.borderColor;
+  const tplBg = r("container.bg") ?? (storedBg !== undefined ? String(storedBg) : tv("surface-elevated"));
+  const tplBorderColor =
+    r("container.border") ?? (storedBorderColor !== undefined ? String(storedBorderColor) : tv("border-muted"));
+  const templateRadius = (fallbackPx: number) =>
+    r("container.radius") ?? `${storedRadius !== undefined ? Number(storedRadius) : fallbackPx}px`;
+  const templateShadow = (fallback: string) =>
+    storedShadow !== undefined ? shadows[String(storedShadow)] ?? fallback : fallback;
+
+  const titleEl = (
+    <span
+      style={{
+        color: r("text.title") ?? tv("text-primary"),
+        fontSize: `var(--ark-text-${titleSize})`,
+        lineHeight: `var(--ark-leading-${titleSize})`,
+        fontWeight: `var(--ark-weight-${titleSize})`,
+        fontFamily: `var(--ark-font-role-${titleSize})`,
+      }}
+    >
+      {title}
+    </span>
+  );
+  const subtitleEl = subtitle ? (
+    <span
+      style={{
+        color: tv("text-muted"),
+        fontSize: `var(--ark-text-${subtitleSize})`,
+        lineHeight: `var(--ark-leading-${subtitleSize})`,
+        fontWeight: `var(--ark-weight-${subtitleSize})`,
+        fontFamily: `var(--ark-font-role-${subtitleSize})`,
+        marginTop: "1px",
+      }}
+    >
+      {subtitle}
+    </span>
+  ) : null;
+  const bodyEl = (
+    <span
+      style={{
+        color: r("text.body") ?? tv("text-secondary"),
+        fontSize: `var(--ark-text-${bodyTextSize})`,
+        lineHeight: `var(--ark-leading-${bodyTextSize})`,
+        fontWeight: `var(--ark-weight-${bodyTextSize})`,
+        fontFamily: `var(--ark-font-role-${bodyTextSize})`,
+      }}
+    >
+      {bodyText}
+    </span>
+  );
+
+  if (activeTemplate === "material3") {
+    return (
+      <div
+        style={{
+          border: "none",
+          borderRadius: templateRadius(MATERIAL_RADIUS.md),
+          backgroundColor: tplBg,
+          boxShadow: templateShadow(shadows.md),
+          overflow: "hidden",
+          maxWidth: 380,
+          width: "100%",
+          fontFamily: "var(--ark-font-sans)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+          padding: `${padding}px`,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+            {titleEl}
+            {subtitleEl}
+          </div>
+          <TokenBadge variant="warning" mode={mode}>
+            active
+          </TokenBadge>
+        </div>
+        {bodyEl}
+        {showButton && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "2px" }}>
+            <TemplateTextAction label={btnLabel} color={tv("action-primary-default")} variant="material" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTemplate === "apple") {
+    return (
+      <div
+        style={{
+          ...appleSurface(),
+          borderRadius: templateRadius(APPLE_RADIUS.md),
+          backgroundColor: tplBg,
+          boxShadow: templateShadow("var(--ark-shadow-low)"),
+          overflow: "hidden",
+          maxWidth: 380,
+          width: "100%",
+          fontFamily: "var(--ark-font-sans)",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: `${padding}px` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
+              {titleEl}
+              {subtitleEl}
+            </div>
+            <TokenBadge variant="warning" mode={mode}>
+              active
+            </TokenBadge>
+          </div>
+          {bodyEl}
+        </div>
+        {showButton && (
+          <>
+            <div style={{ height: 1, background: tplBorderColor, marginLeft: `${padding}px` }} />
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: `${padding / 1.6}px ${padding}px`,
+                cursor: "pointer",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "var(--ark-text-sm)",
+                  fontWeight: 600,
+                  color: tv("action-primary-default"),
+                }}
+              >
+                {btnLabel}
+              </span>
+              <ChevronRight size={16} style={{ color: tv("text-muted") }} />
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTemplate === "carbon") {
+    return (
+      <div
+        style={{
+          border: `${borderWidth}px solid ${tplBorderColor}`,
+          borderRadius: templateRadius(0),
+          backgroundColor: tplBg,
+          boxShadow: templateShadow("none"),
+          overflow: "hidden",
+          maxWidth: 380,
+          width: "100%",
+          fontFamily: "var(--ark-font-sans)",
+        }}
+      >
+        <div
+          style={{
+            padding: `${padding / 1.5}px ${padding}px`,
+            borderBottom: `${borderWidth}px solid ${tplBorderColor}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+            {titleEl}
+            {subtitleEl}
+          </div>
+          <TokenBadge variant="warning" mode={mode}>
+            active
+          </TokenBadge>
+        </div>
+        <div style={{ padding: `${padding}px`, display: "flex", flexDirection: "column", gap: "10px" }}>
+          {bodyEl}
+        </div>
+        {showButton && (
+          <div
+            style={{
+              padding: `${padding / 1.5}px ${padding}px`,
+              borderTop: `${borderWidth}px solid ${tplBorderColor}`,
+              display: "flex",
+              justifyContent: "flex-start",
+            }}
+          >
+            <TemplateTextAction label={btnLabel} color={tv("text-link")} variant="carbon" />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -462,6 +759,7 @@ export function TokenAccordion({
   defaultOpen = 1,
   allowMultiple = false,
   resolve = NO_BINDINGS,
+  template,
 }: {
   radiusStep?: number;
   variant?: "contained" | "separated" | "flush";
@@ -471,6 +769,8 @@ export function TokenAccordion({
   itemCount?: number;
   allowMultiple?: boolean;
   resolve?: Resolver;
+  /** Template id — see lib/componentTemplates.ts. */
+  template?: string;
 }) {
   // Open state as a set so "allow multiple" is a superset of the single mode.
   const [openSet, setOpenSet] = useState<ReadonlySet<number>>(
@@ -510,6 +810,229 @@ export function TokenAccordion({
       }}
     />
   );
+
+  // ── Templates (lib/componentTemplates.ts) — structure only. The live open
+  // state, item list and chevron-side option are shared by every branch, so
+  // switching template never resets which panel is open. The container
+  // treatment (the `variant` option: contained / separated / flush) is the one
+  // thing a template deliberately replaces — that IS the choice being made.
+  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+
+  // As with Card: the template supplies the default radius, but a radius the
+  // user actually set still wins, so the control never goes dead.
+  const storedAccRadius = cfg?.properties?.radius;
+  const accRadius = (fallbackPx: number) =>
+    r("container.radius") ?? `${storedAccRadius !== undefined ? Number(storedAccRadius) : fallbackPx}px`;
+
+  if (activeTemplate === "material3") {
+    return (
+      <div
+        style={{
+          borderRadius: accRadius(MATERIAL_RADIUS.md),
+          border: "none",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          fontFamily: "var(--ark-font-sans)",
+          maxWidth: 480,
+        }}
+      >
+        {items.map((item, i) => {
+          const on = openSet.has(i);
+          return (
+            <div
+              key={item.q}
+              style={{
+                borderRadius: MATERIAL_RADIUS.sm,
+                background: on ? openBg : "transparent",
+                overflow: "hidden",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => toggle(i)}
+                aria-expanded={on}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: iconLeft ? "flex-start" : "space-between",
+                  gap: sv(2),
+                  width: "100%",
+                  padding: `${sv(2)} ${sv(3)}`,
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: r("text.header") ?? tv("text-primary"),
+                  fontSize: "var(--ark-text-sm)",
+                  fontWeight: 600,
+                  fontFamily: "var(--ark-font-sans)",
+                  textAlign: "left",
+                }}
+              >
+                {iconLeft ? chevron(on) : null}
+                <span style={{ flex: iconLeft ? "0 1 auto" : 1 }}>{item.q}</span>
+                {iconLeft ? null : chevron(on)}
+              </button>
+              {on ? (
+                <div
+                  style={{
+                    padding: iconLeft ? `0 ${sv(3)} ${sv(2)} ${sv(6)}` : `0 ${sv(3)} ${sv(2)}`,
+                    color: r("text.body") ?? tv("text-secondary"),
+                    fontSize: "var(--ark-text-xs)",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {item.a}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (activeTemplate === "apple") {
+    // iOS inset-grouped: one rounded container, hairline rules between rows.
+    return (
+      <div
+        style={{
+          ...appleSurface(),
+          borderRadius: accRadius(APPLE_RADIUS.md),
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          fontFamily: "var(--ark-font-sans)",
+          maxWidth: 480,
+        }}
+      >
+        {items.map((item, i) => {
+          const on = openSet.has(i);
+          return (
+            <div key={item.q}>
+              {i > 0 ? <div style={{ height: 1, background: border, marginLeft: sv(3) }} /> : null}
+              <button
+                type="button"
+                onClick={() => toggle(i)}
+                aria-expanded={on}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: iconLeft ? "flex-start" : "space-between",
+                  gap: sv(2),
+                  width: "100%",
+                  padding: `${sv(2)} ${sv(3)}`,
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: r("text.header") ?? tv("text-primary"),
+                  fontSize: "var(--ark-text-sm)",
+                  fontWeight: 600,
+                  fontFamily: "var(--ark-font-sans)",
+                  textAlign: "left",
+                }}
+              >
+                {iconLeft ? chevron(on) : null}
+                <span style={{ flex: iconLeft ? "0 1 auto" : 1 }}>{item.q}</span>
+                {iconLeft ? null : chevron(on)}
+              </button>
+              {on ? (
+                <div
+                  style={{
+                    padding: iconLeft ? `0 ${sv(3)} ${sv(2)} ${sv(6)}` : `0 ${sv(3)} ${sv(2)}`,
+                    color: r("text.body") ?? tv("text-secondary"),
+                    fontSize: "var(--ark-text-xs)",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {item.a}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (activeTemplate === "carbon") {
+    // Carbon uses a +/− affordance rather than a rotating chevron, and rules
+    // above and below every row.
+    return (
+      <div
+        style={{
+          borderRadius: accRadius(0),
+          borderTop: `1px solid ${border}`,
+          display: "flex",
+          flexDirection: "column",
+          fontFamily: "var(--ark-font-sans)",
+          maxWidth: 480,
+        }}
+      >
+        {items.map((item, i) => {
+          const on = openSet.has(i);
+          const glyph = (
+            <span
+              aria-hidden="true"
+              style={{
+                color: r("chevron.color") ?? tv("text-muted"),
+                flexShrink: 0,
+                fontSize: 15,
+                lineHeight: 1,
+                fontWeight: 400,
+                width: 14,
+                textAlign: "center",
+              }}
+            >
+              {on ? "−" : "+"}
+            </span>
+          );
+          return (
+            <div key={item.q} style={{ borderBottom: `1px solid ${border}` }}>
+              <button
+                type="button"
+                onClick={() => toggle(i)}
+                aria-expanded={on}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: iconLeft ? "flex-start" : "space-between",
+                  gap: sv(2),
+                  width: "100%",
+                  padding: `${sv(2)} ${sv(2)}`,
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: r("text.header") ?? tv("text-primary"),
+                  fontSize: "var(--ark-text-sm)",
+                  fontWeight: 600,
+                  fontFamily: "var(--ark-font-sans)",
+                  textAlign: "left",
+                }}
+              >
+                {iconLeft ? glyph : null}
+                <span style={{ flex: iconLeft ? "0 1 auto" : 1 }}>{item.q}</span>
+                {iconLeft ? null : glyph}
+              </button>
+              {on ? (
+                <div
+                  style={{
+                    padding: iconLeft ? `0 ${sv(2)} ${sv(2)} ${sv(5)}` : `0 ${sv(2)} ${sv(2)}`,
+                    color: r("text.body") ?? tv("text-secondary"),
+                    fontSize: "var(--ark-text-xs)",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {item.a}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div

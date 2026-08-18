@@ -35,7 +35,9 @@ decision with its own live canvas:
 7. **Components** — a Figma-style **Component Studio**: each live component
    sits on a dotted canvas with a docked inspector; every parameter binds to
    a design-system token (role/scale) rather than a raw value. Variant and
-   state bars make every state selectable-and-viewable.
+   state bars make every state selectable-and-viewable. Ten compound
+   components can also start from a **Template** — a structure modelled on
+   Material 3, Apple's HIG or IBM Carbon — drawn in your own tokens.
 8. **Preview** — a real product rendered entirely from the live tokens, checked
    two independent ways: **form factor** (SaaS console / Mobile / Marketing —
    changes the layout) and **industry** (Fintech / Healthcare / E-commerce —
@@ -92,6 +94,23 @@ flow from a single `ComponentSpec`.
 
 The inventory lives in [`lib/componentLanes.ts`](./lib/componentLanes.ts) — the
 in-app copy derives its count from there rather than restating it.
+
+### Templates
+
+Ten compound components (Alert, Toast, Banner, Card, Empty state, Accordion,
+Dropdown menu, List item, Feed item, Popover) ship alternate *structures*
+modelled on Material 3, Apple's HIG and IBM Carbon, picked from a small
+**Templates** button in the studio toolbar. A template changes layout only —
+it resolves through the same token chain as the default, so it renders in the
+file's own colours and keeps any part bindings and options already set.
+
+The registry is [`lib/componentTemplates.ts`](./lib/componentTemplates.ts) and
+the shared per-system style recipes are in
+[`components/factory/templateKit.tsx`](./components/factory/templateKit.tsx).
+The choice is stored as an undeclared `properties.template` key on
+`ComponentConfig` (the same convention as `radiusStep`), so it needs no store
+or schema change and rides along with the file when it saves, exports and
+publishes. Absent means `arkitype` — the original layout, unchanged.
 
 ## Tech stack
 

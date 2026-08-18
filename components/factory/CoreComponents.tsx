@@ -24,6 +24,19 @@ import { resolveRef, resolveToken, rv, sv, tv } from "@/lib/tokens";
 import { bestTextOn, contrastRatio } from "@/lib/color";
 import { CState, NO_BINDINGS, Resolver, createChildResolver, resolveOptions, useComponentBindings, useVariantComponentBindings } from "@/lib/componentSchema";
 import { TokenIconButton } from "./FormControls";
+import {
+  ToneColors,
+  materialSurface,
+  appleSurface,
+  appleIconBadge,
+  carbonSurface,
+  TemplateTextAction,
+  AppleTrailingAction,
+  AppleDismiss,
+  CarbonCloseButton,
+  MATERIAL_RADIUS,
+  APPLE_RADIUS,
+} from "./templateKit";
 
 export type InteractionState =
   | "default"
@@ -453,6 +466,7 @@ export function TokenAlert({
   dismissible = false,
   action = false,
   resolve = NO_BINDINGS,
+  template,
 }: {
   variant?: AlertVariant;
   mode: PreviewMode;
@@ -465,6 +479,10 @@ export function TokenAlert({
   dismissible?: boolean;
   action?: boolean;
   resolve?: Resolver;
+  /** Template id (see lib/componentTemplates.ts). Falls back to the stored
+   *  choice when omitted, so callers that don't know about templates (or a
+   *  hypothetical preview overriding it) both work unchanged. */
+  template?: string;
 }) {
   const r = resolve;
   const colors = useDesignSystem((s) => s.primitives.colors);
@@ -524,6 +542,212 @@ export function TokenAlert({
   // Longhand border sides (not the `border` shorthand) so the accent bar never
   // mixes shorthand + non-shorthand — which React warns about on rerender.
   const Icon = ALERT_ICON[variant];
+
+  // ── Templates (lib/componentTemplates.ts) — structure only. Every branch
+  // below reuses the exact tone/title/body/icon/action/dismiss values already
+  // resolved above, through the same `resolve()` chain, so a user's own part
+  // overrides and their brand colours both carry over automatically. The
+  // default branch at the bottom of this function is untouched — anyone who
+  // never opens the picker gets pixel-identical output to before.
+  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+  // The tone handed to the template kit is the *style-aware* triple computed
+  // above, not the raw wash — so the Style option (subtle / solid / outline)
+  // keeps working in every template rather than silently doing nothing once a
+  // template is picked. `accent` (bar placement) is the one option a template
+  // legitimately overrides: each system has its own fixed emphasis treatment.
+  const tone: ToneColors = { bg: surface, border: borderC, text, accent: accentC };
+  const outlined = style === "outline";
+
+  if (activeTemplate === "material3") {
+    return (
+      <div
+        role="alert"
+        style={{
+          ...materialSurface(tone),
+          border: outlined ? `1px solid ${borderC}` : "none",
+          borderRadius: r("container.radius") ?? `${MATERIAL_RADIUS.md}px`,
+          padding: `${r("container.padY") ?? sv(3)} ${r("container.padX") ?? sv(4)}`,
+          fontFamily: r("text.font") ?? "var(--ark-font-sans)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          width: "100%",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: sv(2) }}>
+          {icon ? <Icon size={18} style={{ color: glyph, flexShrink: 0, marginTop: 1 }} /> : null}
+          <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+            <span
+              style={{
+                fontSize: `var(--ark-text-${titleSize})`,
+                lineHeight: `var(--ark-leading-${titleSize})`,
+                fontWeight: `var(--ark-weight-${titleSize})`,
+                fontFamily: `var(--ark-font-role-${titleSize})`,
+              }}
+            >
+              {alertTitle || `${variant.charAt(0).toUpperCase()}${variant.slice(1)} signal`}
+            </span>
+            <span
+              style={{
+                fontSize: `var(--ark-text-${bodySize})`,
+                lineHeight: `var(--ark-leading-${bodySize})`,
+                fontWeight: `var(--ark-weight-${bodySize})`,
+                fontFamily: `var(--ark-font-role-${bodySize})`,
+                opacity: 0.85,
+              }}
+            >
+              {alertBody || "Token-mapped alert surface. Wash, border and accent resolve from the primitive ramp per mode."}
+            </span>
+          </span>
+          {dismissible ? (
+            <button
+              type="button"
+              aria-label="Dismiss alert"
+              onClick={() => {}}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 2,
+                margin: 0,
+                cursor: "pointer",
+                color: tone.text,
+                opacity: 0.6,
+                flexShrink: 0,
+                display: "inline-flex",
+              }}
+            >
+              <X size={16} />
+            </button>
+          ) : null}
+        </div>
+        {action ? (
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            {/* `glyph`, not the raw accent: on a solid fill the accent is a
+                mid-ramp tone sitting on its own darker sibling, which fails
+                contrast. `glyph` already tracks the Style option. */}
+            <TemplateTextAction label={actionLabel} color={glyph} variant="material" />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (activeTemplate === "apple") {
+    return (
+      <div
+        role="alert"
+        style={{
+          ...appleSurface(),
+          borderRadius: r("container.radius") ?? `${APPLE_RADIUS.md}px`,
+          padding: `${r("container.padY") ?? sv(2)} ${r("container.padX") ?? sv(3)}`,
+          fontFamily: r("text.font") ?? "var(--ark-font-sans)",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: sv(2),
+          width: "100%",
+        }}
+      >
+        {/* The Apple card is neutral by design — the tone lives in the badge,
+            so Style drives the badge fill here rather than the surface. */}
+        {icon ? (
+          <span
+            style={{
+              ...appleIconBadge({ bg: wash, border: washBorder, text: washText, accent: accentC }, 32),
+              ...(style === "solid"
+                ? { background: accentC, border: `1px solid ${accentC}`, color: ramp[0] }
+                : outlined
+                  ? { background: "transparent", border: `1px solid ${accentC}`, color: accentC }
+                  : null),
+            }}
+          >
+            <Icon size={16} />
+          </span>
+        ) : null}
+        <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+          <span
+            style={{
+              fontSize: `var(--ark-text-${titleSize})`,
+              lineHeight: `var(--ark-leading-${titleSize})`,
+              fontWeight: "var(--ark-font-weight-bold)",
+              fontFamily: `var(--ark-font-role-${titleSize})`,
+              color: tv("text-primary"),
+            }}
+          >
+            {alertTitle || `${variant.charAt(0).toUpperCase()}${variant.slice(1)} signal`}
+          </span>
+          <span
+            style={{
+              fontSize: `var(--ark-text-${bodySize})`,
+              lineHeight: `var(--ark-leading-${bodySize})`,
+              fontWeight: `var(--ark-weight-${bodySize})`,
+              fontFamily: `var(--ark-font-role-${bodySize})`,
+              color: tv("text-secondary"),
+            }}
+          >
+            {alertBody || "Token-mapped alert surface. Wash, border and accent resolve from the primitive ramp per mode."}
+          </span>
+        </span>
+        {action ? <AppleTrailingAction label={actionLabel} color={accentC} /> : null}
+        {dismissible ? <AppleDismiss onClick={() => {}} label="Dismiss alert" /> : null}
+      </div>
+    );
+  }
+
+  if (activeTemplate === "carbon") {
+    return (
+      <div
+        role="alert"
+        style={{
+          position: "relative",
+          ...carbonSurface(tone),
+          borderRadius: r("container.radius") ?? 0,
+          // Longhand, never the `padding` shorthand alongside a paddingRight
+          // override — mixing the two makes React warn on rerender (same
+          // reason the border sides above are written out longhand).
+          paddingTop: r("container.padY") ?? sv(3),
+          paddingBottom: r("container.padY") ?? sv(3),
+          paddingLeft: r("container.padX") ?? sv(3),
+          paddingRight: dismissible ? 28 : r("container.padX") ?? sv(3),
+          fontFamily: r("text.font") ?? "var(--ark-font-sans)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          width: "100%",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {icon ? <Icon size={15} style={{ color: glyph, flexShrink: 0 }} /> : null}
+          <span
+            style={{
+              fontSize: `var(--ark-text-${titleSize})`,
+              lineHeight: `var(--ark-leading-${titleSize})`,
+              fontWeight: "var(--ark-font-weight-bold)",
+              fontFamily: `var(--ark-font-role-${titleSize})`,
+            }}
+          >
+            {alertTitle || `${variant.charAt(0).toUpperCase()}${variant.slice(1)} signal`}
+          </span>
+        </div>
+        <span
+          style={{
+            fontSize: `var(--ark-text-${bodySize})`,
+            lineHeight: `var(--ark-leading-${bodySize})`,
+            fontWeight: `var(--ark-weight-${bodySize})`,
+            fontFamily: `var(--ark-font-role-${bodySize})`,
+            opacity: 0.9,
+          }}
+        >
+          {alertBody || "Token-mapped alert surface. Wash, border and accent resolve from the primitive ramp per mode."}
+        </span>
+        {action ? (
+          <div style={{ marginTop: 2 }}>
+            <TemplateTextAction label={actionLabel} color={glyph} variant="carbon" />
+          </div>
+        ) : null}
+        {dismissible ? <CarbonCloseButton color={tone.text} onClick={() => {}} label="Dismiss alert" /> : null}
+      </div>
+    );
+  }
 
   return (
     <div

@@ -72,6 +72,7 @@ import {
 import { SIZABLE_COMPONENTS, SIZE_ORDER } from "@/lib/sizing";
 import { useInspectorData } from "@/components/factory/studioShared";
 import { IconField } from "@/components/factory/IconPicker";
+import { TemplateButton } from "@/components/factory/TemplatePicker";
 import { PartHighlight, usePartBox } from "@/components/factory/useHighlight";
 import { ZoomBox } from "@/components/factory/ZoomBox";
 import { HexInput, InfoTip } from "@/components/ui/controls";
@@ -464,6 +465,7 @@ export function renderHero(id: string, ctx: HeroCtx): ReactNode {
             mode={mode}
             radiusStep={radiusStep}
             resolve={resolve}
+            template={os("template")}
           />
         </div>
       );
@@ -478,6 +480,7 @@ export function renderHero(id: string, ctx: HeroCtx): ReactNode {
           mode={mode}
           radiusStep={radiusStep}
           resolve={resolve}
+          template={os("template")}
         />
       );
     case "stat":
@@ -538,7 +541,7 @@ export function renderHero(id: string, ctx: HeroCtx): ReactNode {
       );
     }
     case "emptyState":
-      return <TokenEmptyState radiusStep={radiusStep} resolve={resolve} />;
+      return <TokenEmptyState radiusStep={radiusStep} resolve={resolve} template={os("template")} />;
     case "codeBlock":
       return (
         <div className="w-80">
@@ -629,6 +632,7 @@ export function renderHero(id: string, ctx: HeroCtx): ReactNode {
           menuWidth={on("menuWidth") ?? 180}
           radiusStep={radiusStep}
           resolve={resolve}
+          template={os("template")}
         />
       );
     case "jumplist":
@@ -660,7 +664,7 @@ export function renderHero(id: string, ctx: HeroCtx): ReactNode {
     case "card":
       return (
         <div className="w-80">
-          <TokenCard mode={mode} radiusStep={radiusStep} resolve={resolve} />
+          <TokenCard mode={mode} radiusStep={radiusStep} resolve={resolve} template={os("template")} />
         </div>
       );
     case "listItem":
@@ -675,6 +679,7 @@ export function renderHero(id: string, ctx: HeroCtx): ReactNode {
             trailing={(os("trailing") as "chevron" | "none") || "chevron"}
             radiusStep={radiusStep}
             resolve={resolve}
+            template={os("template")}
           />
         </div>
       );
@@ -690,6 +695,7 @@ export function renderHero(id: string, ctx: HeroCtx): ReactNode {
             showReply={ob("showReply")}
             radiusStep={radiusStep}
             resolve={resolve}
+            template={os("template")}
           />
         </div>
       );
@@ -706,6 +712,7 @@ export function renderHero(id: string, ctx: HeroCtx): ReactNode {
             defaultOpen={on("defaultOpen") ?? 1}
             allowMultiple={ob("allowMultiple")}
             resolve={resolve}
+            template={os("template")}
           />
         </div>
       );
@@ -720,6 +727,7 @@ export function renderHero(id: string, ctx: HeroCtx): ReactNode {
             mode={mode}
             radiusStep={radiusStep}
             resolve={resolve}
+            template={os("template")}
           />
         </div>
       );
@@ -795,6 +803,7 @@ export function renderHero(id: string, ctx: HeroCtx): ReactNode {
           showAction={ob("showAction")}
           elevation={os("elevation")}
           resolve={resolve}
+          template={os("template")}
         />
       );
     case "fileUpload":
@@ -1163,6 +1172,11 @@ export function ComponentStudioPreview({
           ) : null}
         </div>
         <div className="flex items-center gap-2">
+          <TemplateButton
+            componentId={id}
+            renderPreview={(tid) => hero(activeState, { ...opts, template: tid })}
+          />
+
           {overrideCount > 0 ? (
             <button
               type="button"

@@ -13,6 +13,7 @@ import { rv, sv, tv } from "@/lib/tokens";
 import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver } from "@/lib/componentSchema";
 import { useTone } from "./DisplayComponents";
 import { TokenButton } from "./CoreComponents";
+import { TemplateTextAction, MATERIAL_RADIUS } from "./templateKit";
 
 /* ── Spinner ── */
 
@@ -306,9 +307,12 @@ export function TokenStat({
 export function TokenEmptyState({
   radiusStep = 4,
   resolve = NO_BINDINGS,
+  template,
 }: {
   radiusStep?: number;
   resolve?: Resolver;
+  /** Template id — see lib/componentTemplates.ts. */
+  template?: string;
 }) {
   const r = resolve;
   const cfg = useDesignSystem((s) => s.components.emptyState);
@@ -323,6 +327,145 @@ export function TokenEmptyState({
 
   const buttonResolve = useComponentBindings("button");
   const childButtonResolve = createChildResolver("button", resolve, buttonResolve);
+
+  // ── Templates (lib/componentTemplates.ts) — structure only; the same copy,
+  // icon and action-button instance settings feed every branch.
+  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+  const emptyTitle = "No transactions yet";
+  const emptyBody = "Once activity posts to this ledger it will show up here, newest first.";
+
+  if (activeTemplate === "material3") {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
+          gap: sv(2),
+          padding: sv(5),
+          fontFamily: "var(--ark-font-sans)",
+        }}
+      >
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 64,
+            height: 64,
+            borderRadius: r("icon.radius") ?? 999,
+            background: r("icon.bg") ?? tv("surface-subtle"),
+            border: "none",
+            color: r("icon.color") ?? tv("action-primary-default"),
+          }}
+        >
+          <Inbox size={28} />
+        </span>
+        <span style={{ fontSize: "var(--ark-text-lg)", fontWeight: 600, color: r("text.title") ?? tv("text-primary") }}>
+          {emptyTitle}
+        </span>
+        <span style={{ fontSize: "var(--ark-text-sm)", color: r("text.body") ?? tv("text-muted"), maxWidth: 280 }}>
+          {emptyBody}
+        </span>
+        <div style={{ marginTop: sv(1) }}>
+          <TokenButton
+            variant={actionVariant}
+            size={actionSize}
+            radiusStep={radiusStep}
+            prefixIcon={actionPrefix}
+            suffixIcon={actionSuffix}
+            resolve={childButtonResolve}
+          >
+            {actionLabel}
+          </TokenButton>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTemplate === "apple") {
+    // HIG empty states lead with a large, unboxed glyph and a bold headline —
+    // no icon container at all, and a plain text action.
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
+          gap: sv(1),
+          padding: sv(5),
+          fontFamily: "var(--ark-font-sans)",
+        }}
+      >
+        <Inbox size={46} style={{ color: r("icon.color") ?? tv("text-muted"), marginBottom: sv(1) }} />
+        <span
+          style={{
+            fontSize: "var(--ark-text-lg)",
+            fontWeight: "var(--ark-font-weight-bold)",
+            color: r("text.title") ?? tv("text-primary"),
+          }}
+        >
+          {emptyTitle}
+        </span>
+        <span style={{ fontSize: "var(--ark-text-sm)", color: r("text.body") ?? tv("text-secondary"), maxWidth: 260 }}>
+          {emptyBody}
+        </span>
+        <div style={{ marginTop: sv(2) }}>
+          <TemplateTextAction label={actionLabel} color={tv("action-primary-default")} variant="material" />
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTemplate === "carbon") {
+    // Carbon empty states are left-aligned within the region they fill.
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          textAlign: "left",
+          gap: sv(2),
+          padding: sv(4),
+          fontFamily: "var(--ark-font-sans)",
+        }}
+      >
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 48,
+            height: 48,
+            borderRadius: r("icon.radius") ?? 0,
+            background: r("icon.bg") ?? tv("surface-subtle"),
+            border: `1px solid ${r("icon.border") ?? tv("border-muted")}`,
+            color: r("icon.color") ?? tv("text-muted"),
+          }}
+        >
+          <Inbox size={22} />
+        </span>
+        <span
+          style={{
+            fontSize: "var(--ark-text-base)",
+            fontWeight: "var(--ark-font-weight-bold)",
+            color: r("text.title") ?? tv("text-primary"),
+          }}
+        >
+          {emptyTitle}
+        </span>
+        <span style={{ fontSize: "var(--ark-text-sm)", color: r("text.body") ?? tv("text-muted"), maxWidth: 320 }}>
+          {emptyBody}
+        </span>
+        <div style={{ marginTop: sv(1) }}>
+          <TemplateTextAction label={actionLabel} color={tv("text-link")} variant="carbon" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

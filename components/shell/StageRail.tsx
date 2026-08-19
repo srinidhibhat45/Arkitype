@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   Check,
+  ChevronDown,
+  ChevronRight,
   Plus,
   Trash2,
   Copy,
@@ -747,6 +749,30 @@ export function StageRail() {
   // otherwise the very thing you searched for would be the thing that hides.
   const hasComponentMatches = q !== "" && filteredLanes.some((l) => l.items.length > 0);
 
+  /**
+   * Component categories collapse. Fifty-three parts under four headings, all
+   * expanded at once, buried the headings themselves and pushed the rest of the
+   * step list off-screen — so a lane is a disclosure now, and only the lane
+   * holding the current component is open by default. `laneOpen` records an
+   * explicit toggle; anything not in it falls back to that default, and an
+   * active filter overrides both (a match you can't see is a match you'd swear
+   * wasn't found).
+   */
+  const activeLaneId = COMPONENT_LANES.find((l) =>
+    l.items.some((i) => i.id === activeComponentId)
+  )?.id;
+  const [laneOpen, setLaneOpen] = useState<Record<string, boolean>>({});
+  const isLaneOpen = (laneId: string) =>
+    q !== "" ? true : (laneOpen[laneId] ?? laneId === activeLaneId);
+
+  // Selecting a part from anywhere else (Ship's picker, a ?component= link, the
+  // canvas) reveals the category it lives in, even if that category was
+  // collapsed by hand earlier.
+  useEffect(() => {
+    if (!activeLaneId) return;
+    setLaneOpen((cur) => (cur[activeLaneId] ? cur : { ...cur, [activeLaneId]: true }));
+  }, [activeComponentId, activeLaneId]);
+
   const filteredSteps = useMemo(
     () =>
       q
@@ -945,47 +971,86 @@ export function StageRail() {
                     {isComponentsStep &&
                       (activeStep === "components" || activeStep === "ship" || activeStep === "preview" || hasComponentMatches) && (
                       <div className="mt-1.5 border-l border-line ml-[21px] pl-3.5 space-y-3 py-1">
-                        {filteredLanes.map((lane) => (
-                          <div key={lane.label} className="space-y-1">
-                            <span className="block px-2 text-[9px] font-bold uppercase tracking-[0.08em] text-fg-mute">
-                              {lane.label}
-                            </span>
-                            <div className="space-y-0.5 border-l border-line/30 ml-2 pl-2">
-                              {lane.items.map((item) => {
-                                const compActive = activeComponentId === item.id && activeStep === "components";
-                                const status = componentStatus(components[item.id]);
-                                return (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => {
-                                      goToStep("components");
-                                      setActiveComponentId(item.id);
-                                    }}
-                                    className={`flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] transition-colors ${
-                                      compActive ? "bg-ink-raised text-fg font-semibold" : "text-fg-mute hover:text-fg hover:bg-ink-panel"
-                                    }`}
-                                  >
-                                    <span className="opacity-40 font-mono text-[9px]">◇</span>
-                                    <span className="truncate">{item.label}</span>
-                                    {status !== "ready" ? (
-                                      <span
-                                        title={status === "beta" ? "Beta" : "Deprecated"}
-                                        className={`ml-auto shrink-0 rounded px-1 py-px font-mono text-[8px] uppercase tracking-wider ${
-                                          status === "beta"
-                                            ? "bg-ink-raised text-fg-dim"
-                                            : "bg-ink-raised text-fg-mute line-through"
+                        {filteredLanes.map((lane) => {
+                          const laneIsOpen = isLaneOpen(lane.id);
+                          const laneHasActive = lane.items.some(
+                            (i) => i.id === activeComponentId && activeStep === "components"
+                          );
+                          return (
+                            <div key={lane.label} className="space-y-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setLaneOpen((cur) => ({ ...cur, [lane.id]: !laneIsOpen }))
+                                }
+                                aria-expanded={laneIsOpen}
+                                title={lane.note}
+                                className="flex w-full items-center gap-1 rounded px-2 py-0.5 text-left transition-colors hover:bg-ink-panel"
+                              >
+                                {laneIsOpen ? (
+                                  <ChevronDown size={9} className="shrink-0 text-fg-mute" />
+                                ) : (
+                                  <ChevronRight size={9} className="shrink-0 text-fg-mute" />
+                                )}
+                                <span
+                                  className={`text-[9px] font-bold uppercase tracking-[0.08em] ${
+                                    laneHasActive ? "text-fg-dim" : "text-fg-mute"
+                                  }`}
+                                >
+                                  {lane.label}
+                                </span>
+                                {/* The count is what a collapsed category still has
+                                    to say for itself — otherwise a closed lane
+                                    reads as an empty one. */}
+                                <span className="ml-auto font-mono text-[9px] text-fg-mute">
+                                  {lane.items.length}
+                                </span>
+                                {/* A dot marks the lane holding the current part
+                                    while it's shut, so collapsing never hides
+                                    where you are. */}
+                                {!laneIsOpen && laneHasActive ? (
+                                  <span className="size-1 shrink-0 rounded-full bg-fg-dim" />
+                                ) : null}
+                              </button>
+                              {laneIsOpen ? (
+                                <div className="space-y-0.5 border-l border-line/30 ml-2 pl-2">
+                                  {lane.items.map((item) => {
+                                    const compActive = activeComponentId === item.id && activeStep === "components";
+                                    const status = componentStatus(components[item.id]);
+                                    return (
+                                      <button
+                                        key={item.id}
+                                        type="button"
+                                        onClick={() => {
+                                          goToStep("components");
+                                          setActiveComponentId(item.id);
+                                        }}
+                                        className={`flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] transition-colors ${
+                                          compActive ? "bg-ink-raised text-fg font-semibold" : "text-fg-mute hover:text-fg hover:bg-ink-panel"
                                         }`}
                                       >
-                                        {status === "beta" ? "β" : "dep"}
-                                      </span>
-                                    ) : null}
-                                  </button>
-                                );
-                              })}
+                                        <span className="opacity-40 font-mono text-[9px]">◇</span>
+                                        <span className="truncate">{item.label}</span>
+                                        {status !== "ready" ? (
+                                          <span
+                                            title={status === "beta" ? "Beta" : "Deprecated"}
+                                            className={`ml-auto shrink-0 rounded px-1 py-px font-mono text-[8px] uppercase tracking-wider ${
+                                              status === "beta"
+                                                ? "bg-ink-raised text-fg-dim"
+                                                : "bg-ink-raised text-fg-mute line-through"
+                                            }`}
+                                          >
+                                            {status === "beta" ? "β" : "dep"}
+                                          </span>
+                                        ) : null}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

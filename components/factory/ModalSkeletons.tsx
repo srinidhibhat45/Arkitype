@@ -12,6 +12,7 @@ import { resolveOptions, useComponentBindings, createChildResolver, useSlotInsta
 import { sv, tv, rv } from "@/lib/tokens";
 import { TokenButton, TokenInput, TokenSelect, TokenAlert } from "./CoreComponents";
 import { TokenIconButton } from "./FormControls";
+import { useTemplate, tplScalar } from "./templateKit";
 
 // Shadows mapping
 const SHADOWS: Record<string, string> = {
@@ -53,12 +54,21 @@ interface ModalResolvedOpts {
   borderColor: string;
 }
 
+/**
+ * Modal keeps its four structural skeletons *and* takes a template: the
+ * skeleton decides the arrangement, the template the shape grammar. Scalars go
+ * through `tplScalar` so a radius, edge or padding the user actually set still
+ * wins over the system's default.
+ */
 function useResolvedModalOptions(): ModalResolvedOpts {
   const cfg = useDesignSystem((s) => s.components.modal);
   const opts = resolveOptions("modal", cfg?.properties);
   // Scale Step is a raw property, not a declared OptionSpec — resolveOptions()
   // only surfaces declared keys, so read it straight off the properties bag.
   const props = cfg?.properties;
+  const tpl = useTemplate("modal");
+  const paddingH = Number(opts.paddingH ?? 24);
+  const paddingV = Number(opts.paddingV ?? 20);
 
   return {
     title: (opts.title ?? "Confirm deletion") as string,
@@ -70,16 +80,16 @@ function useResolvedModalOptions(): ModalResolvedOpts {
     forcedAction: !!opts.forcedAction,
     position: (opts.position ?? "center") as "center" | "top" | "bottom",
     showDivider: opts.showDivider !== false,
-    radius: Number(opts.radius ?? 12),
+    radius: tplScalar(props, "radius", Number(opts.radius ?? 12), tpl.radius?.overlay),
     shadow: (opts.shadow ?? "lg") as string,
-    borderWidth: Number(opts.borderWidth ?? 1),
+    borderWidth: tplScalar(props, "borderWidth", Number(opts.borderWidth ?? 1), tpl.border),
     bodyText: (opts.bodyText ?? "This will permanently delete the selected items from your workspace.") as string,
     bodyTextSize: (props?.["bodyText.size"] ?? "sm") as string,
     showSecondary: opts.showSecondary !== false,
     width: (opts.width ?? "sm") as "xs" | "sm" | "md" | "lg",
     overlayOpacity: Number(opts.overlayOpacity ?? 48),
-    paddingH: Number(opts.paddingH ?? 24),
-    paddingV: Number(opts.paddingV ?? 20),
+    paddingH: tplScalar(props, "paddingH", paddingH, Math.round(paddingH * tpl.density)),
+    paddingV: tplScalar(props, "paddingV", paddingV, Math.round(paddingV * tpl.density)),
     skeletonId: (cfg?.skeletonId ?? "1") as string,
     borderColor: (opts.borderColor ?? "#e4e4e7") as string,
   };

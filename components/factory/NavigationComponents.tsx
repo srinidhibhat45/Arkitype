@@ -12,6 +12,15 @@ import { BarChart3, Check, CreditCard, ExternalLink, Home, Search, Settings } fr
 import { rv, sv, tv } from "@/lib/tokens";
 import { CState, NO_BINDINGS, Resolver, useComponentBindings } from "@/lib/componentSchema";
 import { TokenAvatar } from "./DisplayComponents";
+import {
+  useTemplate,
+  tplRadius,
+  tplPad,
+  tplWeight,
+  tplActiveChip,
+  tplActiveBar,
+  tplIsSquare,
+} from "./templateKit";
 
 /* ── Navbar (top app bar) ── */
 
@@ -36,6 +45,12 @@ export function TokenNavbar({
 }) {
   const active = Math.min(Math.max(activeIndex, 0), links.length - 1);
   const r = resolve;
+  // How the active link is marked is the single most recognisable thing about a
+  // nav: Material fills a pill behind it, Apple tints a rounded segment, Carbon
+  // and Atlassian rule a bar under it, Fluent uses a short rounded one.
+  const tpl = useTemplate("navbar");
+  const chip = tplActiveChip(tpl, tv("action-primary-default"));
+  const bar = tplActiveBar(tpl, tv("action-primary-default"));
   const avatarResolve = useComponentBindings("avatar");
   return (
     <header
@@ -67,13 +82,23 @@ export function TokenNavbar({
             key={l}
             aria-current={i === active ? "page" : undefined}
             style={{
-              padding: `${sv(1)} ${sv(2)}`,
-              borderRadius: rv(2),
+              position: "relative",
+              padding: `${tplPad(tpl, sv(1))} ${tplPad(tpl, sv(2))}`,
+              borderRadius: chip?.borderRadius ?? tplRadius(tpl, "toggle") ?? rv(2),
               fontSize: "var(--ark-text-sm)",
-              fontWeight: i === active ? 600 : 500,
+              fontWeight: i === active ? tplWeight(tpl) ?? 600 : 500,
               cursor: "pointer",
               color: i === active ? r("link.active") ?? tv("text-primary") : r("link.inactive") ?? tv("text-muted"),
-              background: i === active ? r("link.activeBg") ?? tv("surface-subtle") : "transparent",
+              // A bar-marking system paints nothing behind the label — the rule
+              // below it carries the state instead.
+              background:
+                i === active
+                  ? r("link.activeBg") ?? (bar ? "transparent" : chip?.background) ?? tv("surface-subtle")
+                  : "transparent",
+              boxShadow:
+                bar && i === active
+                  ? `inset 0 -${bar.thickness}px 0 ${bar.color}`
+                  : undefined,
             }}
           >
             {l}
@@ -136,6 +161,11 @@ export function TokenSidebar({
 }) {
   const active = Math.min(Math.max(activeIndex, 0), SIDEBAR_ITEMS.length - 1);
   const r = resolve;
+  // `showAccent` stays the user's call — the template decides what the accent
+  // *is* (a square Carbon bar, a rounded Fluent one) and how round the row is.
+  const tpl = useTemplate("sidebar");
+  const chip = tplActiveChip(tpl, tv("action-primary-default"));
+  const bar = tplActiveBar(tpl, tv("action-primary-default"));
   return (
     <nav
       aria-label="Primary"
@@ -179,13 +209,13 @@ export function TokenSidebar({
               alignItems: "center",
               justifyContent: collapsed ? "center" : "flex-start",
               gap: sv(2),
-              padding: collapsed ? sv(1) : `${sv(1)} ${sv(2)}`,
-              borderRadius: r("item.radius") ?? rv(radiusStep),
+              padding: collapsed ? tplPad(tpl, sv(1)) : `${tplPad(tpl, sv(1))} ${tplPad(tpl, sv(2))}`,
+              borderRadius: r("item.radius") ?? chip?.borderRadius ?? tplRadius(tpl, "toggle") ?? rv(radiusStep),
               fontSize: "var(--ark-text-sm)",
-              fontWeight: on ? 600 : 500,
+              fontWeight: on ? tplWeight(tpl) ?? 600 : 500,
               cursor: "pointer",
               color: on ? r("item.active") ?? tv("text-primary") : r("item.inactive") ?? tv("text-secondary"),
-              background: on ? r("item.activeBg") ?? tv("surface-subtle") : "transparent",
+              background: on ? r("item.activeBg") ?? chip?.background ?? tv("surface-subtle") : "transparent",
             }}
           >
             {on && showAccent ? (
@@ -195,10 +225,10 @@ export function TokenSidebar({
                   left: 0,
                   top: "50%",
                   transform: "translateY(-50%)",
-                  width: 3,
+                  width: bar?.thickness ?? 3,
                   height: 18,
-                  borderRadius: rv(7),
-                  background: r("item.accent") ?? tv("action-primary-default"),
+                  borderRadius: bar ? bar.radius : tplIsSquare(tpl) ? 0 : rv(7),
+                  background: r("item.accent") ?? bar?.color ?? tv("action-primary-default"),
                 }}
               />
             ) : null}
@@ -229,7 +259,12 @@ export function TokenSteps({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // Carbon is the system that refuses a circle: its step markers and connectors
+  // are square, which is the difference worth carrying here.
+  const tpl = useTemplate("steps");
   const vertical = orientation === "vertical";
+  const markerRadius = tplIsSquare(tpl) ? 0 : "50%";
+  const railRadius = tplIsSquare(tpl) ? 0 : rv(7);
   return (
     <ol
       style={{
@@ -254,9 +289,9 @@ export function TokenSteps({
           width: 26,
           height: 26,
           flexShrink: 0,
-          borderRadius: "50%",
+          borderRadius: markerRadius,
           fontSize: "var(--ark-text-xs)",
-          fontWeight: 700,
+          fontWeight: tplWeight(tpl) ?? 700,
           background: done || active ? r("circle.on") ?? tv("action-primary-default") : r("circle.todo") ?? tv("surface-subtle"),
           color: done || active ? r("circle.onText") ?? tv("text-on-action") : r("circle.todoText") ?? tv("text-muted"),
           border: `1px solid ${done || active ? "transparent" : tv("border-default")}`,
@@ -273,14 +308,14 @@ export function TokenSteps({
                       width: 2,
                       minHeight: 20,
                       margin: `${sv(1)} 0 ${sv(1)} 12px`,
-                      borderRadius: rv(7),
+                      borderRadius: railRadius,
                       background: done ? r("connector.done") ?? tv("action-primary-default") : r("connector.todo") ?? tv("border-muted"),
                     }
                   : {
                       flex: 1,
                       height: 2,
                       margin: `0 ${sv(2)}`,
-                      borderRadius: rv(7),
+                      borderRadius: railRadius,
                       background: done ? r("connector.done") ?? tv("action-primary-default") : r("connector.todo") ?? tv("border-muted"),
                     }
               }
@@ -342,9 +377,13 @@ export function TokenLink({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // `weight` is a declared option and stays the user's; what the template adds
+  // is the system's tracking, which is the rest of a link's voice.
+  const tpl = useTemplate("link");
   const base: CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
+    letterSpacing: tpl.type?.tracking,
     gap: 4,
     fontSize:
       size === "sm" ? "var(--ark-text-xs)" : size === "lg" ? "var(--ark-text-base)" : "var(--ark-text-sm)",
@@ -436,6 +475,9 @@ export function TokenJumplist({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // `markerStyle` is the user's choice of bar-or-dot; the template only decides
+  // how that marker is cornered and how the rows are spaced.
+  const tpl = useTemplate("jumplist");
   const items = showNested ? JUMPLIST_SECTIONS : JUMPLIST_SECTIONS.filter((s) => s.depth === 0);
   const active = Math.min(Math.max(activeIndex, 0), items.length - 1);
 
@@ -444,7 +486,8 @@ export function TokenJumplist({
   const activeColor = r("item.active") ?? tv("text-primary");
   const track = r("marker.track") ?? tv("border-muted");
   const activeMark = r("marker.active") ?? tv("action-primary-default");
-  const itemRadius = r("item.radius") ?? rv(radiusStep);
+  const itemRadius = r("item.radius") ?? tplRadius(tpl, "toggle") ?? rv(radiusStep);
+  const trackRadius = tplIsSquare(tpl) ? 0 : rv(7);
 
   return (
     <nav
@@ -479,7 +522,7 @@ export function TokenJumplist({
               top: 4,
               bottom: 4,
               width: 2,
-              borderRadius: rv(7),
+              borderRadius: trackRadius,
               background: track,
             }}
           />
@@ -499,7 +542,7 @@ export function TokenJumplist({
                   padding: `${sv(1)} 0`,
                   paddingLeft: nested ? sv(3) : 0,
                   fontSize: "var(--ark-text-sm)",
-                  fontWeight: on ? 600 : 500,
+                  fontWeight: on ? tplWeight(tpl) ?? 600 : 500,
                   color: on ? activeColor : inactive,
                   cursor: "pointer",
                 }}
@@ -508,7 +551,7 @@ export function TokenJumplist({
                   style={{
                     width: 6,
                     height: 6,
-                    borderRadius: 999,
+                    borderRadius: tplIsSquare(tpl) ? 0 : 999,
                     flexShrink: 0,
                     background: on ? activeMark : track,
                   }}
@@ -529,7 +572,7 @@ export function TokenJumplist({
                 paddingLeft: nested ? sv(4) : sv(2),
                 borderRadius: itemRadius,
                 fontSize: "var(--ark-text-sm)",
-                fontWeight: on ? 600 : 500,
+                fontWeight: on ? tplWeight(tpl) ?? 600 : 500,
                 color: on ? activeColor : inactive,
                 cursor: "pointer",
               }}
@@ -542,7 +585,7 @@ export function TokenJumplist({
                     top: 3,
                     bottom: 3,
                     width: 2,
-                    borderRadius: rv(7),
+                    borderRadius: trackRadius,
                     background: activeMark,
                   }}
                 />

@@ -36,6 +36,15 @@ import {
   CarbonCloseButton,
   MATERIAL_RADIUS,
   APPLE_RADIUS,
+  useTemplate,
+  tplRadius,
+  tplPad,
+  tplType,
+  tplWeight,
+  tplEdge,
+  tplFieldBg,
+  tplFieldBorderWidth,
+  tplShadow,
 } from "./templateKit";
 
 export type InteractionState =
@@ -108,6 +117,11 @@ export function TokenButton({
   const s = SIZE_MAP[size];
   const disabled = state === "disabled";
   const cst = bindState(state);
+  // Shape grammar for the active template (lib/componentTemplates.ts). A button
+  // takes corner, density and label weight from it — but never its border
+  // width: the `outlined` variant is a declared option, and a borderless
+  // system zeroing it would leave that option doing nothing.
+  const tpl = useTemplate("button");
   // Use variant-scoped resolver for color keys so each variant (text, outlined,
   // tonal…) has independent color overrides that don't bleed into other variants.
   const variantResolve = useVariantComponentBindings("button", variant);
@@ -201,13 +215,14 @@ export function TokenButton({
   const suffixIconSize = r("suffixIcon.size") ?? "16px";
 
   const style: CSSProperties = {
+    ...tplType(tpl),
     background: isFeedbackVariant ? defBg : (r("container.bg", cst) ?? defBg),
     color: isFeedbackVariant ? defColor : (r("label.color", cst) ?? defColor),
-    padding: `${r("container.padY") ?? sv(s.py)} ${r("container.padX") ?? sv(s.px)}`,
-    borderRadius: r("container.radius") ?? rv(radiusStep),
+    padding: `${r("container.padY") ?? tplPad(tpl, sv(s.py))} ${r("container.padX") ?? tplPad(tpl, sv(s.px))}`,
+    borderRadius: r("container.radius") ?? tplRadius(tpl, "control") ?? rv(radiusStep),
     fontSize: r("label.size") ?? `var(--ark-text-${s.text})`,
     fontFamily: r("label.font") ?? "var(--ark-font-sans)",
-    fontWeight: r("label.weight") ?? 600,
+    fontWeight: r("label.weight") ?? tplWeight(tpl) ?? 600,
     border: `${r("container.borderWidth") ?? "1px"} solid ${
       isFeedbackVariant ? defBorder : (r("container.border", cst) ?? defBorder)
     }`,
@@ -274,6 +289,7 @@ export function TokenInput({
   const disabled = state === "disabled";
   const cst = bindState(state);
   const r = resolve;
+  const tpl = useTemplate("input");
   const defBorder =
     state === "focus"
       ? tv("border-focus")
@@ -281,15 +297,26 @@ export function TokenInput({
         ? tv("text-muted")
         : tv("border-default");
 
+  // Field edge grammar: each system draws a text field's edge differently —
+  // Material's single underline, Apple's borderless fill, Carbon's bottom rule,
+  // Atlassian's heavy box, Fluent's accent stroke. `tplEdge` returns longhand
+  // sides so a bound border colour still paints whichever edge survives.
   const style: CSSProperties = {
     background:
-      r("container.bg", cst) ?? (disabled ? tv("surface-subtle") : tv("surface-elevated")),
+      r("container.bg", cst) ??
+      (disabled ? tv("surface-subtle") : tplFieldBg(tpl) ?? tv("surface-elevated")),
     color: r("text.color", cst) ?? (disabled ? tv("text-muted") : tv("text-primary")),
-    padding: `${r("container.padY") ?? sv(s.py)} ${r("container.padX") ?? sv(s.px)}`,
-    borderRadius: r("container.radius") ?? rv(radiusStep),
+    padding: `${r("container.padY") ?? tplPad(tpl, sv(s.py))} ${r("container.padX") ?? tplPad(tpl, sv(s.px))}`,
+    borderRadius: r("container.radius") ?? tplRadius(tpl, "field") ?? rv(radiusStep),
     fontSize: r("text.size") ?? `var(--ark-text-${s.text})`,
     fontFamily: r("text.font") ?? "var(--ark-font-sans)",
-    border: `${r("container.borderWidth") ?? "1px"} solid ${r("container.border", cst) ?? defBorder}`,
+    ...tplEdge(tpl, {
+      color: r("container.border", cst) ?? defBorder,
+      width: r("container.borderWidth") ?? tplFieldBorderWidth(tpl) ?? "1px",
+      kind: "field",
+      accent: tv("border-focus"),
+      focused: state === "focus",
+    }),
     width: "100%",
     cursor: disabled ? "not-allowed" : "text",
     boxShadow:
@@ -331,6 +358,7 @@ export function TokenTextarea({
   const disabled = state === "disabled";
   const cst = bindState(state);
   const r = resolve;
+  const tpl = useTemplate("textarea");
   const defBorder =
     state === "focus"
       ? tv("border-focus")
@@ -353,13 +381,20 @@ export function TokenTextarea({
       aria-busy={state === "loading"}
       style={{
         background:
-          r("container.bg", cst) ?? (disabled ? tv("surface-subtle") : tv("surface-elevated")),
+          r("container.bg", cst) ??
+          (disabled ? tv("surface-subtle") : tplFieldBg(tpl) ?? tv("surface-elevated")),
         color: r("text.color", cst) ?? (disabled ? tv("text-muted") : tv("text-primary")),
-        padding: `${r("container.padY") ?? sv(s.py)} ${r("container.padX") ?? sv(s.px)}`,
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        padding: `${r("container.padY") ?? tplPad(tpl, sv(s.py))} ${r("container.padX") ?? tplPad(tpl, sv(s.px))}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "field") ?? rv(radiusStep),
         fontSize: r("text.size") ?? `var(--ark-text-${s.text})`,
         fontFamily: r("text.font") ?? "var(--ark-font-sans)",
-        border: `${r("container.borderWidth") ?? "1px"} solid ${r("container.border", cst) ?? defBorder}`,
+        ...tplEdge(tpl, {
+          color: r("container.border", cst) ?? defBorder,
+          width: r("container.borderWidth") ?? tplFieldBorderWidth(tpl) ?? "1px",
+          kind: "field",
+          accent: tv("border-focus"),
+          focused: state === "focus",
+        }),
         width: "100%",
         resize: "none",
         cursor: disabled ? "not-allowed" : "text",
@@ -393,6 +428,7 @@ export function TokenSelect({
   const disabled = state === "disabled";
   const cst = bindState(state);
   const r = resolve;
+  const tpl = useTemplate("select");
   const defBorder =
     state === "focus" || state === "active"
       ? tv("border-focus")
@@ -403,13 +439,20 @@ export function TokenSelect({
 
   const style: CSSProperties = {
     background:
-      r("container.bg", cst) ?? (disabled ? tv("surface-subtle") : tv("surface-elevated")),
+      r("container.bg", cst) ??
+      (disabled ? tv("surface-subtle") : tplFieldBg(tpl) ?? tv("surface-elevated")),
     color: r("text.color", cst) ?? (disabled ? tv("text-muted") : tv("text-primary")),
-    padding: `${r("container.padY") ?? sv(s.py)} ${r("container.padX") ?? sv(s.px)}`,
-    borderRadius: r("container.radius") ?? rv(radiusStep),
+    padding: `${r("container.padY") ?? tplPad(tpl, sv(s.py))} ${r("container.padX") ?? tplPad(tpl, sv(s.px))}`,
+    borderRadius: r("container.radius") ?? tplRadius(tpl, "field") ?? rv(radiusStep),
     fontSize: r("text.size") ?? `var(--ark-text-${s.text})`,
     fontFamily: r("text.font") ?? "var(--ark-font-sans)",
-    border: `${r("container.borderWidth") ?? "1px"} solid ${r("container.border", cst) ?? defBorder}`,
+    ...tplEdge(tpl, {
+      color: r("container.border", cst) ?? defBorder,
+      width: r("container.borderWidth") ?? tplFieldBorderWidth(tpl) ?? "1px",
+      kind: "field",
+      accent: tv("border-focus"),
+      focused: state === "focus" || state === "active",
+    }),
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -549,7 +592,15 @@ export function TokenAlert({
   // overrides and their brand colours both carry over automatically. The
   // default branch at the bottom of this function is untouched — anyone who
   // never opens the picker gets pixel-identical output to before.
-  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+  // One source of truth for "which template is active": the hook resolves an
+  // explicit prop, then a preview scope, then the stored choice, so the
+  // structural branch and the shape grammar can never disagree. The three
+  // structural branches below (Material/Apple/Carbon) carry their own tuned
+  // geometry; the profile is what dresses the *default* layout for the systems
+  // that restyle rather than rebuild it — Atlassian's 8px borderless card,
+  // Fluent's stroked one.
+  const tpl = useTemplate("alert", template);
+  const activeTemplate = tpl.id;
   // The tone handed to the template kit is the *style-aware* triple computed
   // above, not the raw wash — so the Style option (subtle / solid / outline)
   // keeps working in every template rather than silently doing nothing once a
@@ -749,22 +800,27 @@ export function TokenAlert({
     );
   }
 
+  // The hairline weight the surrounding sides are drawn at — a borderless
+  // system (Atlassian, Material) sets 0 here, while the accent bar keeps its
+  // own weight so the `accent` option never stops doing anything.
+  const hair = tpl.border ?? 1;
   return (
     <div
       role="alert"
       style={{
         background: surface,
         borderStyle: "solid",
-        borderTopWidth: accent === "top" ? 3 : 1,
-        borderRightWidth: 1,
-        borderBottomWidth: 1,
-        borderLeftWidth: accent === "left" ? 3 : 1,
+        borderTopWidth: accent === "top" ? 3 : hair,
+        borderRightWidth: hair,
+        borderBottomWidth: hair,
+        borderLeftWidth: accent === "left" ? 3 : hair,
         borderTopColor: accent === "top" ? accentC : borderC,
         borderRightColor: borderC,
         borderBottomColor: borderC,
         borderLeftColor: accent === "left" ? accentC : borderC,
-        borderRadius: r("container.radius") ?? rv(radiusStep),
-        padding: `${r("container.padY") ?? sv(2)} ${r("container.padX") ?? sv(3)}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "surface") ?? rv(radiusStep),
+        padding: `${r("container.padY") ?? tplPad(tpl, sv(2))} ${r("container.padX") ?? tplPad(tpl, sv(3))}`,
+        boxShadow: tplShadow(tpl, "raised") ?? undefined,
         color: text,
         fontFamily: r("text.font") ?? "var(--ark-font-sans)",
         display: "flex",

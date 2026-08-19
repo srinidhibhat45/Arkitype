@@ -2,20 +2,23 @@
 
 /**
  * TemplateButton — the "small button, used once and forgotten" entry point
- * for Templates. Renders nothing for components with no registered
- * alternates (see `lib/componentTemplates.ts`), so it never adds chrome to
- * the ~30 components that don't have one.
+ * for Templates. Every component in the library carries the six systems now
+ * (see `lib/componentTemplates.ts`); the length check below stays as the gate
+ * so a component that ever opts out renders no chrome rather than a picker
+ * with one card in it.
  *
  * The popover's card previews are never static mocks: `renderPreview(id)` is
- * supplied by the caller (the Studio's own `hero(...)` closure with
- * `template` injected), so every card is the real component rendering live,
- * in the file's actual current tokens and mode — exactly what picking it
- * would produce.
+ * supplied by the caller (the Studio's own `hero(...)` closure), and each card
+ * renders inside a `TemplatePreviewScope` so components that read the active
+ * template from the store see the hypothetical one instead. Every card is the
+ * real component rendering live, in the file's actual current tokens and mode
+ * — exactly what picking it would produce.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, LayoutTemplate } from "lucide-react";
 import { useDesignSystem } from "@/store/useDesignSystem";
 import { activeTemplateId, getTemplates } from "@/lib/componentTemplates";
+import { TemplatePreviewScope } from "@/components/factory/templateKit";
 import { AnchoredPopover } from "@/components/factory/studioShared";
 
 export function TemplateButton({
@@ -86,17 +89,18 @@ export function TemplateButton({
         anchorRef={containerRef}
         open={open}
         align="right"
-        className="w-[640px] max-w-[calc(100vw-32px)] rounded-lg border border-line-strong bg-ink-panel p-3 shadow-2xl"
+        className="w-[720px] max-w-[calc(100vw-32px)] rounded-lg border border-line-strong bg-ink-panel p-3 shadow-2xl"
       >
         <div ref={popoverRef}>
           <div className="mb-2.5">
             <div className="text-[12px] font-semibold text-fg">Start from a template</div>
             <div className="mt-0.5 text-[11px] leading-relaxed text-fg-mute">
-              Swaps the structure only — every card already renders in your own tokens, and any
-              part binding you've set keeps working after you pick one.
+              Six shape grammars — corners, density, edges, elevation and label weight — modelled
+              on systems that have been through years of real use. Every card below renders in your
+              own tokens, and any part binding you've set keeps working after you pick one.
             </div>
           </div>
-          <div className="grid max-h-[70vh] grid-cols-2 gap-2 overflow-y-auto pr-0.5">
+          <div className="grid max-h-[70vh] grid-cols-3 gap-2 overflow-y-auto pr-0.5">
             {templates.map((t) => {
               const isActive = t.id === activeId;
               return (
@@ -133,7 +137,9 @@ export function TemplateButton({
                         justifyContent: "center",
                       }}
                     >
-                      {renderPreview(t.id)}
+                      <TemplatePreviewScope template={t.id}>
+                        {renderPreview(t.id)}
+                      </TemplatePreviewScope>
                     </div>
                   </div>
                   <div className="px-0.5">
@@ -141,6 +147,17 @@ export function TemplateButton({
                       <span className="truncate text-[11.5px] font-semibold text-fg">{t.name}</span>
                       {isActive ? (
                         <Check size={11} className="shrink-0 text-fg-dim" strokeWidth={3} />
+                      ) : null}
+                      {/* Most templates restyle; these ten also rebuild the
+                          layout. Saying which is which keeps the card's promise
+                          the same size as what it delivers. */}
+                      {t.structural ? (
+                        <span
+                          title="This template also rebuilds the component's layout, not just its shape grammar"
+                          className="ml-auto shrink-0 rounded bg-ink-raised px-1 py-px text-[8px] font-semibold uppercase tracking-wider text-fg-mute"
+                        >
+                          Layout
+                        </span>
                       ) : null}
                     </div>
                     <div className="truncate text-[9.5px] font-medium uppercase tracking-wide text-fg-mute">

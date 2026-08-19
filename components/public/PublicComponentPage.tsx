@@ -37,6 +37,7 @@ import { ThemeFrame } from "@/components/ui/ThemeFrame";
 import { componentStatus } from "@/store/useDesignSystem";
 import type { PublishedSnapshot } from "@/lib/publish";
 import { StatusBadge } from "@/components/public/StatusBadge";
+import { activeTemplateId, getTemplate } from "@/lib/componentTemplates";
 import { useSnapshotHydrated } from "@/components/public/SnapshotProvider";
 import { ModeSwitch, PublicPage, usePublicTheme } from "@/components/public/PublicChrome";
 
@@ -160,6 +161,11 @@ export function PublicComponentPage({
   const doc = COMPONENT_DOCS[componentId];
   const cfg = snapshot.components[componentId];
   const status = componentStatus(cfg);
+  // The preview below already renders in whichever template the file chose; say
+  // which one, so a reader can tell "this is shaped like Carbon" from "someone
+  // set a small radius". Silent for the default — there'd be nothing to learn.
+  const templateId = activeTemplateId(componentId, cfg?.properties);
+  const template = templateId === "arkitype" ? null : getTemplate(componentId, templateId);
 
   const opts = resolveOptions(componentId, cfg?.properties);
   const radiusStep = Number(cfg?.properties?.radiusStep ?? 2);
@@ -199,9 +205,17 @@ export function PublicComponentPage({
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-12">
-        <div className="mb-2 flex items-center gap-2.5">
+        <div className="mb-2 flex flex-wrap items-center gap-2.5">
           <h1 className="text-[24px] font-semibold tracking-tight">{label}</h1>
           <StatusBadge status={status} />
+          {template ? (
+            <span
+              title={`${template.description} (${template.source})`}
+              className="rounded-md border border-line px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-fg-mute"
+            >
+              {template.name}
+            </span>
+          ) : null}
         </div>
         {doc ? (
           <p className="mb-8 max-w-2xl text-[14px] leading-relaxed text-fg-dim">{doc.description}</p>

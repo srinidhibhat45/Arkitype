@@ -11,6 +11,8 @@ import { useDesignSystem } from "@/store/useDesignSystem";
 import { resolveOptions, useComponentBindings } from "@/lib/componentSchema";
 import { sv, tv } from "@/lib/tokens";
 import { TokenBadge, TokenAvatar } from "./DisplayComponents";
+import { useTemplate, tplScalar } from "./templateKit";
+import type { TemplateProfile } from "@/lib/componentTemplates";
 
 export const TABLE_SKELETONS = [
   { id: "1", name: "Dense Financial Ledger", desc: "Numeric right-align · frozen header · badges" },
@@ -52,18 +54,31 @@ interface TableResolvedOpts {
   padding: number;
   striped: boolean;
   rowHeight: number;
+  /** The active template's shape grammar — see lib/componentTemplates.ts. */
+  tpl: TemplateProfile;
 }
 
+/**
+ * A data table is where density is the whole argument between systems: Carbon's
+ * productive rows against Material's airy ones. The skeleton still owns the
+ * arrangement; the template supplies corner, edge, padding and row height —
+ * and only where the user hasn't set them (`tplScalar`).
+ */
 function useResolvedTableOptions(): TableResolvedOpts {
   const cfg = useDesignSystem((s) => s.components.table);
   const opts = resolveOptions("table", cfg?.properties);
+  const raw = cfg?.properties;
+  const tpl = useTemplate("table");
+  const padding = Number(opts.padding ?? 12);
+  const rowHeight = Number(opts.rowHeight ?? 44);
   return {
     showHeader: opts.showHeader !== false,
-    borderWidth: Number(opts.borderWidth ?? 1),
-    radius: Number(opts.radius ?? 8),
-    padding: Number(opts.padding ?? 12),
+    borderWidth: tplScalar(raw, "borderWidth", Number(opts.borderWidth ?? 1), tpl.border),
+    radius: tplScalar(raw, "radius", Number(opts.radius ?? 8), tpl.radius?.surface),
+    padding: tplScalar(raw, "padding", padding, Math.round(padding * tpl.density)),
     striped: opts.striped !== false,
-    rowHeight: Number(opts.rowHeight ?? 44),
+    rowHeight: tplScalar(raw, "rowHeight", rowHeight, Math.round(rowHeight * tpl.density)),
+    tpl,
   };
 }
 
@@ -316,7 +331,11 @@ export function TableSkeleton({
                   fontSize: "10px",
                   fontFamily: "var(--ark-font-mono)",
                   textTransform: "uppercase",
-                  letterSpacing: "0.08em",
+                  // The column head is the table's one piece of voice — the rest
+                  // is grid and rule, both already carrying the template through
+                  // `padding`, `borderWidth`, `radius` and `rowHeight` above.
+                  fontWeight: opts.tpl.type?.weight,
+                  letterSpacing: opts.tpl.type?.tracking ?? "0.08em",
                   textAlign: i === 4 ? "right" : "left",
                 }}
               >

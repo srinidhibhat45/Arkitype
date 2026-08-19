@@ -37,7 +37,19 @@ import {
   useComponentBindings,
 } from "@/lib/componentSchema";
 import { pxNum, TokenButton } from "./CoreComponents";
-import { TemplateTextAction, MATERIAL_RADIUS, APPLE_RADIUS } from "./templateKit";
+import {
+  TemplateTextAction,
+  MATERIAL_RADIUS,
+  APPLE_RADIUS,
+  useTemplate,
+  tplRadius,
+  tplPad,
+  tplWeight,
+  tplShadow,
+  tplIsSquare,
+  tplActiveChip,
+  tplActiveBar,
+} from "./templateKit";
 
 /* ────────────────────────────── Chip ────────────────────────────── */
 
@@ -70,6 +82,9 @@ export function TokenChip({
   const s = CHIP_SIZE[size] ?? CHIP_SIZE.md;
   const disabled = state === "disabled";
   const r = resolve;
+  // Chips are the clearest read on a template: Material's 8px corner against
+  // Apple's capsule, Atlassian's 3px lozenge and Carbon's square tag.
+  const tpl = useTemplate("chip");
 
   // Selected chips (filter/input) flip to the accent recipe; unselected chips
   // are outlined (assist/filter) or tonal (input/suggestion) by default.
@@ -99,14 +114,17 @@ export function TokenChip({
         display: "inline-flex",
         alignItems: "center",
         gap: sv(1),
-        padding: `${r("container.padY") ?? sv(s.py)} ${r("container.padX") ?? sv(s.px)}`,
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        padding: `${r("container.padY") ?? tplPad(tpl, sv(s.py))} ${r("container.padX") ?? tplPad(tpl, sv(s.px))}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "chip") ?? rv(radiusStep),
         background: bg,
+        // An unselected assist/filter chip *is* its outline — dropping it under
+        // a borderless system would erase the chip, so the width stays 1px
+        // wherever the fill is transparent.
         border: `${r("container.borderWidth") ?? "1px"} solid ${border}`,
         color: text,
         fontSize: `var(--ark-text-${s.text})`,
         fontFamily: r("label.font") ?? "var(--ark-font-sans)",
-        fontWeight: 500,
+        fontWeight: tplWeight(tpl) ?? 500,
         lineHeight: 1.2,
         opacity: disabled ? 0.75 : 1,
         cursor: disabled ? "not-allowed" : "pointer",
@@ -149,6 +167,9 @@ export function TokenRating({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // Stars are glyphs — no corner, no edge, no fill of their own. What a system
+  // does own is the rhythm between them, so density is the whole template here.
+  const tpl = useTemplate("rating");
   const on = r("star.on") ?? tv("action-primary-default");
   const off = r("star.off") ?? tv("border-strong");
   const stars: ReactNode[] = [];
@@ -176,7 +197,11 @@ export function TokenRating({
     );
   }
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 3 }} role="img" aria-label={`${value} of ${max}`}>
+    <div
+      style={{ display: "inline-flex", alignItems: "center", gap: tplPad(tpl, "3px") }}
+      role="img"
+      aria-label={`${value} of ${max}`}
+    >
       {stars}
     </div>
   );
@@ -243,7 +268,11 @@ export function TokenPopover({
   // the same JSX. `arrowBorder` matters: the borderless templates would
   // otherwise draw a hairline outline on the arrow that the card itself
   // doesn't have.
-  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+  // One source of truth for "which template is active": the hook resolves an
+  // explicit prop, then a preview scope, then the stored choice — so the
+  // structural branch below and the shape grammar can never disagree.
+  const tpl = useTemplate("popover", template);
+  const activeTemplate = tpl.id;
 
   const skin: Record<
     string,
@@ -274,9 +303,26 @@ export function TokenPopover({
       pad: `${sv(2)} ${sv(3)}`,
       ruleAboveAction: true,
     },
+    // Atlassian and Fluent restyle rather than rebuild: the same arrangement as
+    // the default, dressed in the profile's corner, edge and density. Both use
+    // a real button for the action, which is why they stay on the boxed branch.
+    atlassian: {
+      radius: tplRadius(tpl, "overlay") ?? rv(radiusStep),
+      borderCss: "none",
+      arrowBorder: bg,
+      pad: `${tplPad(tpl, sv(2))} ${tplPad(tpl, sv(3))}`,
+    },
+    fluent: {
+      radius: tplRadius(tpl, "overlay") ?? rv(radiusStep),
+      borderCss: `${r("container.borderWidth") ?? "1px"} solid ${border}`,
+      arrowBorder: border,
+      pad: `${tplPad(tpl, sv(2))} ${tplPad(tpl, sv(3))}`,
+    },
   };
   const s = skin[activeTemplate] ?? skin.arkitype;
-  const isDefault = activeTemplate === "arkitype";
+  // Which systems put a boxed button in a popover, and which reach for a plain
+  // text action — the three that rebuild the layout are the ones that don't.
+  const boxedAction = !["material3", "apple", "carbon"].includes(activeTemplate);
 
   return (
     <div style={{ position: "relative", maxWidth: 280 }}>
@@ -317,7 +363,7 @@ export function TokenPopover({
                 justifyContent: "flex-end",
               }}
             >
-              {isDefault ? (
+              {boxedAction ? (
                 <TokenButton
                   variant={(actionOpts.variant as any) ?? "filled"}
                   size={(actionOpts.size as any) ?? "sm"}
@@ -361,6 +407,9 @@ export function TokenFileUpload({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // A drop zone keeps its dashed edge in every system — what the template owns
+  // is the corner and the padding around it.
+  const tpl = useTemplate("fileUpload");
   const active = variant === "dragActive";
   const error = variant === "error";
 
@@ -387,8 +436,8 @@ export function TokenFileUpload({
         alignItems: "center",
         gap: sv(2),
         textAlign: "center",
-        padding: `${r("container.padY") ?? sv(5)} ${r("container.padX") ?? sv(4)}`,
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        padding: `${r("container.padY") ?? tplPad(tpl, sv(5))} ${r("container.padX") ?? tplPad(tpl, sv(4))}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "field") ?? rv(radiusStep),
         background: bg,
         border: `${r("container.borderWidth") ?? "2px"} dashed ${border}`,
         fontFamily: "var(--ark-font-sans)",
@@ -403,7 +452,7 @@ export function TokenFileUpload({
           justifyContent: "center",
           width: 44,
           height: 44,
-          borderRadius: rv(7),
+          borderRadius: tplRadius(tpl, "toggle") ?? rv(7),
           background: r("icon.bg") ?? tv("surface-elevated"),
           border: `1px solid ${r("icon.border") ?? tv("border-muted")}`,
           color: iconColor,
@@ -456,6 +505,11 @@ export function TokenTimeline({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // `markerShape` is a declared option, so the template never swaps a dot for a
+  // ring — it squares the markers and the rail under Carbon, and sets the
+  // title's weight. Everything else is the option's business.
+  const tpl = useTemplate("timeline");
+  const markerRadius = tplIsSquare(tpl) ? 0 : "50%";
   const n = Math.min(Math.max(entries, 1), TIMELINE_ENTRIES.length);
   const lineColor = r("line.color") ?? tv("border-default");
   const markerBg = r("marker.bg") ?? tv("action-primary-default");
@@ -470,13 +524,13 @@ export function TokenTimeline({
             {/* rail */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 18 }}>
               {markerShape === "ring" ? (
-                <span style={{ width: 12, height: 12, borderRadius: "50%", background: markerRing, border: `2px solid ${markerBg}`, flexShrink: 0, marginTop: 3 }} />
+                <span style={{ width: 12, height: 12, borderRadius: markerRadius, background: markerRing, border: `2px solid ${markerBg}`, flexShrink: 0, marginTop: 3 }} />
               ) : markerShape === "icon" ? (
-                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: "50%", background: markerBg, color: tv("text-on-action"), flexShrink: 0, marginTop: 1 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: markerRadius, background: markerBg, color: tv("text-on-action"), flexShrink: 0, marginTop: 1 }}>
                   <Check size={10} strokeWidth={3} />
                 </span>
               ) : (
-                <span style={{ width: 9, height: 9, borderRadius: "50%", background: markerBg, boxShadow: `0 0 0 3px ${markerRing}`, flexShrink: 0, marginTop: 4 }} />
+                <span style={{ width: 9, height: 9, borderRadius: markerRadius, background: markerBg, boxShadow: `0 0 0 3px ${markerRing}`, flexShrink: 0, marginTop: 4 }} />
               )}
               {!last ? (
                 <span
@@ -493,7 +547,7 @@ export function TokenTimeline({
             </div>
             {/* content */}
             <div style={{ paddingBottom: last ? 0 : sv(3), minWidth: 0 }}>
-              <div style={{ fontSize: "var(--ark-text-sm)", fontWeight: 600, color: r("text.title") ?? tv("text-primary") }}>
+              <div style={{ fontSize: "var(--ark-text-sm)", fontWeight: tplWeight(tpl) ?? 600, color: r("text.title") ?? tv("text-primary") }}>
                 {e.title}
               </div>
               <div style={{ fontSize: "var(--ark-text-xs)", color: r("text.meta") ?? tv("text-muted"), marginTop: 1 }}>
@@ -548,9 +602,15 @@ export function TokenTree({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // Selection is the whole tell in a tree: Material rounds the selected row
+  // into a pill, Apple tints it, Carbon marks it with a square bar down the
+  // leading edge and rounds nothing.
+  const tpl = useTemplate("tree");
+  const chip = tplActiveChip(tpl, tv("action-primary-default"));
+  const bar = tplActiveBar(tpl, tv("action-primary-default"));
   const text = r("row.text") ?? tv("text-secondary");
   const selText = r("row.selectedText") ?? tv("text-primary");
-  const selBg = r("row.selectedBg") ?? tv("surface-subtle");
+  const selBg = r("row.selectedBg") ?? (chip?.background as string) ?? tv("surface-subtle");
   const chevron = r("chevron.color") ?? tv("text-muted");
   const iconColor = r("icon.color") ?? tv("text-link");
   const guide = r("guide.color") ?? tv("border-muted");
@@ -569,11 +629,15 @@ export function TokenTree({
             paddingLeft: depth * 16 + 6,
             paddingRight: 8,
             height: 28,
-            borderRadius: r("row.radius") ?? rv(radiusStep),
+            borderRadius: r("row.radius") ?? chip?.borderRadius ?? tplRadius(tpl, "toggle") ?? rv(radiusStep),
             background: selected ? selBg : "transparent",
             color: selected ? selText : text,
             fontSize: "var(--ark-text-sm)",
-            fontWeight: selected ? 600 : 500,
+            fontWeight: selected ? tplWeight(tpl) ?? 600 : 500,
+            // A bar-marking system draws the accent itself rather than tinting
+            // the row, so the leading edge carries the selection.
+            borderLeft:
+              bar && selected ? `${bar.thickness}px solid ${bar.color}` : undefined,
             cursor: "pointer",
             position: "relative",
           }}

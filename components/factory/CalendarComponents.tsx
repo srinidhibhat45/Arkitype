@@ -13,6 +13,15 @@ import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { rv, sv, tv } from "@/lib/tokens";
 import { NO_BINDINGS, Resolver } from "@/lib/componentSchema";
+import {
+  useTemplate,
+  tplRadius,
+  tplPad,
+  tplWeight,
+  tplShadow,
+  tplBorderWidth,
+  tplIsSquare,
+} from "./templateKit";
 
 const WEEKDAYS_SUN = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const WEEKDAYS_MON = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
@@ -53,6 +62,9 @@ export function TokenDatePicker({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // A calendar is a grid of day cells, and the day cell is the tell: Material
+  // and Apple round it to a circle, Carbon leaves it a hard square.
+  const tpl = useTemplate("datePicker");
   const offset = firstDay === "mon" ? 5 : 6; // representative month start
   const weekdays = firstDay === "mon" ? WEEKDAYS_MON : WEEKDAYS_SUN;
   const grid = buildGrid(offset);
@@ -63,7 +75,7 @@ export function TokenDatePicker({
   const selText = r("day.selectedText") ?? tv("text-on-action");
   const rangeBg = r("day.rangeBg") ?? tv("surface-subtle");
   const todayRing = r("day.todayRing") ?? tv("border-focus");
-  const cellRadius = r("day.radius") ?? rv(7);
+  const cellRadius = r("day.radius") ?? (tplIsSquare(tpl) ? 0 : undefined) ?? rv(7);
 
   const cellState = (c: Cell) => {
     if (c.adjacent) return "adjacent" as const;
@@ -78,11 +90,11 @@ export function TokenDatePicker({
     <div
       style={{
         width: 264,
-        padding: sv(3),
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        padding: tplPad(tpl, sv(3)),
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "overlay") ?? rv(radiusStep),
         background: r("container.bg") ?? tv("surface-elevated"),
-        border: `${r("container.borderWidth") ?? "1px"} solid ${r("container.border") ?? tv("border-default")}`,
-        boxShadow: "var(--ark-shadow-medium)",
+        border: `${r("container.borderWidth") ?? tplBorderWidth(tpl) ?? "1px"} solid ${r("container.border") ?? tv("border-default")}`,
+        boxShadow: tplShadow(tpl, "overlay") ?? "var(--ark-shadow-medium)",
         fontFamily: "var(--ark-font-sans)",
       }}
     >
@@ -91,7 +103,7 @@ export function TokenDatePicker({
         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: rv(2), color: r("header.navColor") ?? tv("text-secondary"), cursor: "pointer" }}>
           <ChevronLeft size={16} />
         </span>
-        <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: 700, color: r("header.monthColor") ?? tv("text-primary") }}>
+        <span style={{ fontSize: "var(--ark-text-sm)", fontWeight: tplWeight(tpl) ?? 700, color: r("header.monthColor") ?? tv("text-primary") }}>
           March 2026
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: rv(2), color: r("header.navColor") ?? tv("text-secondary"), cursor: "pointer" }}>

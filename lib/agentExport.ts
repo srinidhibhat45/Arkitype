@@ -31,6 +31,7 @@ import { generateTypeScale, scaleFactorLabel, STEP_DEFS } from "@/lib/typography
 import { componentOptions, COMPONENT_SPECS, WIRED_COMPONENTS } from "@/lib/componentSchema";
 import { COMPONENT_DOCS } from "@/lib/componentDocs";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
+import { activeTemplateId, getTemplate, templateProfile } from "@/lib/componentTemplates";
 import {
   buildGoogleFontUrl,
   customFontRoles,
@@ -279,6 +280,34 @@ export function compileAgentGuide(state: ArkitypeState): string {
       if (spec?.states?.length) {
         push(`_States:_ ${spec.states.join(", ")}`);
         push();
+      }
+      // A component built from a template is shaped by that system's grammar,
+      // not by this file's radius scale alone — an agent writing the code needs
+      // the actual numbers, so spell them out rather than naming the system and
+      // leaving it to guess. Silent for "arkitype", which supplies nothing.
+      const templateId = activeTemplateId(item.id, state.components[item.id]?.properties);
+      if (templateId !== "arkitype") {
+        const template = getTemplate(item.id, templateId);
+        const profile = templateProfile(templateId);
+        push(`_Template:_ **${template.name}** (${template.source}) — ${template.description}`);
+        push();
+        const shape: string[] = [];
+        if (profile.radius) {
+          shape.push(
+            `corners: control ${profile.radius.control}px, field ${profile.radius.field}px, ` +
+              `surface ${profile.radius.surface}px, chip ${profile.radius.chip}px`
+          );
+        }
+        if (profile.density !== 1) shape.push(`padding ×${profile.density}`);
+        if (profile.border != null) shape.push(`container border ${profile.border}px`);
+        if (profile.fieldBorder != null) shape.push(`field border ${profile.fieldBorder}px`);
+        if (profile.field) shape.push(`field edge: ${profile.field}`);
+        if (profile.indicator) shape.push(`active item: ${profile.indicator}`);
+        if (profile.type) shape.push(`labels ${profile.type.weight}/${profile.type.tracking}`);
+        if (shape.length) {
+          push(`_Shape grammar:_ ${shape.join(" · ")}.`);
+          push();
+        }
       }
       const options = componentOptions(item.id);
       if (options.length) {

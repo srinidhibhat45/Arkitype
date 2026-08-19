@@ -97,20 +97,34 @@ in-app copy derives its count from there rather than restating it.
 
 ### Templates
 
-Ten compound components (Alert, Toast, Banner, Card, Empty state, Accordion,
-Dropdown menu, List item, Feed item, Popover) ship alternate *structures*
-modelled on Material 3, Apple's HIG and IBM Carbon, picked from a small
-**Templates** button in the studio toolbar. A template changes layout only —
-it resolves through the same token chain as the default, so it renders in the
-file's own colours and keeps any part bindings and options already set.
+Every component in the library carries five alternate *shape grammars*,
+modelled on systems that have been through years of real use — **Material 3**
+(Google/MUI), **Apple HIG**, **IBM Carbon**, **Atlassian** and **Fluent 2**
+(Microsoft) — picked from a small **Templates** button in the studio toolbar.
 
-The registry is [`lib/componentTemplates.ts`](./lib/componentTemplates.ts) and
-the shared per-system style recipes are in
+A template only ever supplies shape: corner radius per role, stroke weight,
+density, elevation, label weight/tracking, and the treatments that make a
+system recognisable (how a field draws its edge, how a nav marks the active
+item, whether a toggle is round or square). It never introduces a colour, and
+every value lands *underneath* the user's own binding — and underneath any
+value they set themselves, so no inspector control goes dead when a template is
+picked. Ten compound components (Alert, Toast, Banner, Card, Empty state,
+Accordion, Dropdown menu, List item, Feed item, Popover) additionally swap their
+whole *layout* for Material 3, Apple and Carbon; the picker marks those cards
+`Layout`.
+
+The registry and the per-system profiles are in
+[`lib/componentTemplates.ts`](./lib/componentTemplates.ts); the helpers that
+apply a profile (and the hand-built layout recipes) are in
 [`components/factory/templateKit.tsx`](./components/factory/templateKit.tsx).
-The choice is stored as an undeclared `properties.template` key on
-`ComponentConfig` (the same convention as `radiusStep`), so it needs no store
-or schema change and rides along with the file when it saves, exports and
-publishes. Absent means `arkitype` — the original layout, unchanged.
+Components read the active template with `useTemplate(id)`, which resolves an
+explicit prop, then a `TemplatePreviewScope` (how the picker shows six live
+previews of one saved choice), then the stored value. The choice is stored as
+an undeclared `properties.template` key on `ComponentConfig` (the same
+convention as `radiusStep`), so it needs no store or schema change and rides
+along with the file when it saves, exports and publishes. Absent means
+`arkitype` — whose profile supplies nothing at all, so the original rendering is
+unchanged.
 
 ## Tech stack
 

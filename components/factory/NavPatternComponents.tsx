@@ -26,6 +26,14 @@ import {
   TemplateTextAction,
   MATERIAL_RADIUS,
   APPLE_RADIUS,
+  useTemplate,
+  tplRadius,
+  tplPad,
+  tplWeight,
+  tplShadow,
+  tplIsSquare,
+  tplActiveChip,
+  tplActiveBar,
 } from "./templateKit";
 
 /* ── Breadcrumbs ── */
@@ -44,6 +52,10 @@ export function TokenBreadcrumbs({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // A breadcrumb is type and a separator glyph — `separator` is the user's
+  // choice, so the template speaks through the current crumb's weight and the
+  // tracking the whole trail is set in.
+  const tpl = useTemplate("breadcrumbs");
   const sepColor = r("text.sep") ?? tv("text-muted");
   const sep =
     separator === "slash" ? (
@@ -64,9 +76,10 @@ export function TokenBreadcrumbs({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: sv(1),
+        gap: tplPad(tpl, sv(1)),
         fontSize: "var(--ark-text-sm)",
         fontFamily: "var(--ark-font-sans)",
+        letterSpacing: tpl.type?.tracking,
       }}
     >
       {showHome ? (
@@ -90,7 +103,7 @@ export function TokenBreadcrumbs({
             <span
               style={{
                 color: last ? r("text.current") ?? tv("text-primary") : r("text.item") ?? tv("text-muted"),
-                fontWeight: last ? 600 : 400,
+                fontWeight: last ? tplWeight(tpl) ?? 600 : 400,
                 cursor: last ? "default" : "pointer",
               }}
               aria-current={last ? "page" : undefined}
@@ -123,18 +136,22 @@ export function TokenPagination({
   const [active, setActive] = useState(3);
   const shown = [1, 2, 3, 4, 5].filter((p) => p <= pages);
   const r = resolve;
+  // The current page cell is the active-item problem again: a pill in Material,
+  // a tint in Apple, a square fill in Carbon.
+  const tpl = useTemplate("pagination");
+  const chip = tplActiveChip(tpl, tv("action-primary-default"));
   const cellBorder = r("cell.border") ?? tv("border-muted");
   const cell = (on: boolean): React.CSSProperties => ({
     minWidth: 28,
     height: 28,
     padding: `0 ${sv(1)}`,
-    borderRadius: r("cell.radius") ?? rv(radiusStep),
+    borderRadius: r("cell.radius") ?? (on ? chip?.borderRadius : undefined) ?? tplRadius(tpl, "toggle") ?? rv(radiusStep),
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     fontSize: "var(--ark-text-xs)",
     fontFamily: "var(--ark-font-sans)",
-    fontWeight: 600,
+    fontWeight: tplWeight(tpl) ?? 600,
     cursor: "pointer",
     border: "1px solid transparent",
     background: on ? r("cell.activeBg") ?? tv("action-primary-default") : "transparent",
@@ -253,7 +270,11 @@ export function TokenDropdownMenu({
   // destructive one. What actually differs is the surface treatment and how
   // the highlighted row is drawn, so this is a style table rather than four
   // near-identical copies of the same JSX.
-  const activeTemplate = template ?? (dropdownCfg?.properties?.template as string) ?? "arkitype";
+  // One source of truth for "which template is active": the hook resolves an
+  // explicit prop, then a preview scope, then the stored choice — so the
+  // structural branch below and the shape grammar can never disagree.
+  const tpl = useTemplate("dropdown", template);
+  const activeTemplate = tpl.id;
 
   const menuSkin: Record<
     string,
@@ -301,6 +322,24 @@ export function TokenDropdownMenu({
       rowPad: `${sv(1)} ${sv(2)}`,
       activeExtra: { borderLeft: `3px solid ${tv("action-primary-default")}` },
     },
+    // Atlassian and Fluent keep the default arrangement and take their corner,
+    // edge and density from the profile instead.
+    atlassian: {
+      radius: tplRadius(tpl, "overlay") ?? rv(radiusStep),
+      border: "none",
+      shadow: tplShadow(tpl, "overlay") ?? "var(--ark-shadow-high)",
+      pad: sv(1),
+      rowRadius: tplRadius(tpl, "toggle") ?? rv(Math.max(radiusStep - 1, 0)),
+      rowPad: `${tplPad(tpl, sv(1))} ${tplPad(tpl, sv(2))}`,
+    },
+    fluent: {
+      radius: tplRadius(tpl, "overlay") ?? rv(radiusStep),
+      border: `1px solid ${r("container.border") ?? tv("border-default")}`,
+      shadow: tplShadow(tpl, "overlay") ?? "var(--ark-shadow-high)",
+      pad: sv(1),
+      rowRadius: tplRadius(tpl, "toggle") ?? rv(Math.max(radiusStep - 1, 0)),
+      rowPad: `${tplPad(tpl, sv(1))} ${tplPad(tpl, sv(2))}`,
+    },
   };
   const skin = menuSkin[activeTemplate] ?? menuSkin.arkitype;
   const isCarbon = activeTemplate === "carbon";
@@ -331,7 +370,7 @@ export function TokenDropdownMenu({
           style={{
             display: "inline-flex",
             padding: sv(1),
-            borderRadius: isCarbon ? 0 : rv(2),
+            borderRadius: isCarbon ? 0 : tplRadius(tpl, "control") ?? rv(2),
             border: `1px solid ${tv("border-default")}`,
             color: tv("text-secondary"),
             background: tv("surface-elevated"),
@@ -438,7 +477,11 @@ export function TokenCard({
 
   // ── Templates (lib/componentTemplates.ts) — structure only; the title,
   // subtitle, body and button label are shared by all branches.
-  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+  // One source of truth for "which template is active": the hook resolves an
+  // explicit prop, then a preview scope, then the stored choice — so the
+  // structural branch below and the shape grammar can never disagree.
+  const tpl = useTemplate("card", template);
+  const activeTemplate = tpl.id;
 
   // A template supplies the *default* corner radius and elevation for its
   // system — but a value the user actually set still wins, or those two
@@ -456,6 +499,14 @@ export function TokenCard({
   // only take the literal when the user actually picked one.
   const storedBg = cfg?.properties?.bg;
   const storedBorderColor = cfg?.properties?.borderColor;
+  const storedBorderWidth = cfg?.properties?.borderWidth;
+  const storedPadding = cfg?.properties?.padding;
+  // Same rule for the default layout's own scalars: the profile supplies the
+  // system's corner/edge/padding/elevation, and anything the user actually set
+  // still wins. Reading the raw bag is what tells the two apart.
+  const defBorderWidth = storedBorderWidth !== undefined ? borderWidth : tpl.border ?? borderWidth;
+  const defPadding =
+    storedPadding !== undefined ? padding : Math.round(padding * tpl.density);
   const tplBg = r("container.bg") ?? (storedBg !== undefined ? String(storedBg) : tv("surface-elevated"));
   const tplBorderColor =
     r("container.border") ?? (storedBorderColor !== undefined ? String(storedBorderColor) : tv("border-muted"));
@@ -629,7 +680,7 @@ export function TokenCard({
             active
           </TokenBadge>
         </div>
-        <div style={{ padding: `${padding}px`, display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ padding: `${defPadding}px`, display: "flex", flexDirection: "column", gap: "10px" }}>
           {bodyEl}
         </div>
         {showButton && (
@@ -651,10 +702,10 @@ export function TokenCard({
   return (
     <div
       style={{
-        border: `${borderWidth}px solid ${r("container.border") ?? borderColor}`,
-        borderRadius: r("container.radius") ?? `${radius}px`,
+        border: `${defBorderWidth}px solid ${r("container.border") ?? borderColor}`,
+        borderRadius: templateRadius(tpl.radius?.surface ?? radius),
         backgroundColor: r("container.bg") ?? bg,
-        boxShadow: shadows[shadow] ?? shadows.md,
+        boxShadow: templateShadow(tplShadow(tpl, "raised") ?? shadows[shadow] ?? shadows.md),
         overflow: "hidden",
         maxWidth: 380,
         width: "100%",
@@ -664,8 +715,8 @@ export function TokenCard({
     >
       <div
         style={{
-          padding: `${padding / 1.5}px ${padding}px`,
-          borderBottom: `${borderWidth}px solid ${borderColor}`,
+          padding: `${defPadding / 1.5}px ${defPadding}px`,
+          borderBottom: `${defBorderWidth}px solid ${borderColor}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -719,8 +770,8 @@ export function TokenCard({
       {showButton && (
         <div
           style={{
-            padding: `${padding / 1.5}px ${padding}px`,
-            borderTop: `${borderWidth}px solid ${borderColor}`,
+            padding: `${defPadding / 1.5}px ${defPadding}px`,
+            borderTop: `${defBorderWidth}px solid ${borderColor}`,
             display: "flex",
             justifyContent: "flex-end",
           }}
@@ -790,10 +841,18 @@ export function TokenAccordion({
   const cfg = useDesignSystem((s) => s.components.accordion);
   const opts = resolveOptions("accordion", cfg?.properties);
   const radius = Number(opts.radius ?? 12);
+  const tpl = useTemplate("accordion", template);
+
+  // As with Card: the template supplies the default radius, but a radius the
+  // user actually set still wins, so the control never goes dead. Reading the
+  // raw properties bag (not `opts`) is what distinguishes the two.
+  const storedAccRadius = cfg?.properties?.radius;
+  const accRadius = (fallbackPx: number) =>
+    r("container.radius") ?? `${storedAccRadius !== undefined ? Number(storedAccRadius) : fallbackPx}px`;
 
   const border = r("container.border") ?? tv("border-muted");
   const openBg = r("container.openBg") ?? tv("surface-elevated");
-  const rad = r("container.radius") ?? `${radius}px`;
+  const rad = accRadius(tpl.radius?.surface ?? radius);
   const separated = variant === "separated";
   const flush = variant === "flush";
   const iconLeft = iconSide === "left";
@@ -816,13 +875,10 @@ export function TokenAccordion({
   // switching template never resets which panel is open. The container
   // treatment (the `variant` option: contained / separated / flush) is the one
   // thing a template deliberately replaces — that IS the choice being made.
-  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
-
-  // As with Card: the template supplies the default radius, but a radius the
-  // user actually set still wins, so the control never goes dead.
-  const storedAccRadius = cfg?.properties?.radius;
-  const accRadius = (fallbackPx: number) =>
-    r("container.radius") ?? `${storedAccRadius !== undefined ? Number(storedAccRadius) : fallbackPx}px`;
+  // One source of truth for "which template is active": `tpl` above resolved an
+  // explicit prop, then a preview scope, then the stored choice — so the
+  // structural branch below and the shape grammar can never disagree.
+  const activeTemplate = tpl.id;
 
   if (activeTemplate === "material3") {
     return (
@@ -1066,13 +1122,13 @@ export function TokenAccordion({
                 justifyContent: iconLeft ? "flex-start" : "space-between",
                 gap: sv(2),
                 width: "100%",
-                padding: `${sv(2)} ${sv(3)}`,
+                padding: `${tplPad(tpl, sv(2))} ${tplPad(tpl, sv(3))}`,
                 background: on ? openBg : "transparent",
                 border: "none",
                 cursor: "pointer",
                 color: r("text.header") ?? tv("text-primary"),
                 fontSize: "var(--ark-text-sm)",
-                fontWeight: 600,
+                fontWeight: tplWeight(tpl) ?? 600,
                 fontFamily: "var(--ark-font-sans)",
                 textAlign: "left",
                 transition: "background var(--ark-duration-fast) var(--ark-ease-out)",

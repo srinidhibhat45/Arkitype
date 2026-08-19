@@ -24,6 +24,13 @@ import {
   CarbonCloseButton,
   MATERIAL_RADIUS,
   APPLE_RADIUS,
+  useTemplate,
+  tplRadius,
+  tplPad,
+  tplType,
+  tplWeight,
+  tplShadow,
+  tplIsSquare,
 } from "./templateKit";
 
 export type ToneVariant = "neutral" | "brand" | "info" | "success" | "warning" | "error";
@@ -81,6 +88,10 @@ export function TokenBadge({
 }) {
   const tone = useTone(variant, mode);
   const r = resolve;
+  // Corner and border weight are the whole of a badge: Fluent's capsule,
+  // Atlassian's 3px lozenge, Carbon's square. The `style` option still owns the
+  // fill, so subtle/solid/outline keep working under every template.
+  const tpl = useTemplate("badge");
   const bg =
     style === "solid" ? tone.accent : style === "outline" ? "transparent" : tone.bg;
   const text = style === "solid" ? "#fff" : tone.text;
@@ -92,13 +103,15 @@ export function TokenBadge({
         display: "inline-flex",
         alignItems: "center",
         gap: 4,
-        padding: `${size === "md" ? 3 : 2}px ${r("container.padX") ?? sv(2)}`,
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        padding: `${size === "md" ? 3 : 2}px ${r("container.padX") ?? tplPad(tpl, sv(2))}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "chip") ?? rv(radiusStep),
         background: bg,
-        border: `1px solid ${tone.border}`,
+        // An outline badge must keep its outline whatever the template says —
+        // borderless systems only drop the border where the fill carries it.
+        border: `${style === "outline" ? 1 : tpl.border ?? 1}px solid ${tone.border}`,
         color: text,
         fontSize: `var(--ark-text-${fs})`,
-        fontWeight: 600,
+        fontWeight: tplWeight(tpl) ?? 600,
         fontFamily: r("text.font") ?? "var(--ark-font-sans)",
         lineHeight: 1.4,
       }}
@@ -143,6 +156,7 @@ export function TokenTag({
 }) {
   const r = resolve;
   const t = useTone(tone, mode);
+  const tpl = useTemplate("tag");
   const toned = tone !== "neutral";
   const outline = style === "outline";
   const bg = outline ? "transparent" : r("container.bg") ?? (toned ? t.bg : tv("surface-subtle"));
@@ -161,13 +175,13 @@ export function TokenTag({
         display: "inline-flex",
         alignItems: "center",
         gap: sv(1),
-        padding: size === "sm" ? `2px ${sv(1)}` : `${sv(1)} ${sv(2)}`,
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        padding: size === "sm" ? `2px ${sv(1)}` : `${tplPad(tpl, sv(1))} ${tplPad(tpl, sv(2))}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "chip") ?? rv(radiusStep),
         background: outline ? "transparent" : bg,
-        border: `1px solid ${borderColor}`,
+        border: `${outline ? 1 : tpl.border ?? 1}px solid ${borderColor}`,
         color: text,
         fontSize: "var(--ark-text-xs)",
-        fontWeight: 500,
+        fontWeight: tplWeight(tpl) ?? 500,
         fontFamily: r("text.font") ?? "var(--ark-font-sans)",
       }}
     >
@@ -213,7 +227,12 @@ export function TokenAvatar({
 }) {
   const px = size === "sm" ? 26 : size === "md" ? 36 : 48;
   const r = resolve;
-  const shapeRadius = shape === "circle" ? rv(7) : shape === "square" ? rv(1) : rv(3);
+  // `shape` is a declared option, so a template never overrides it — circle
+  // stays a circle and square stays square. What the template does own is how
+  // round "rounded" is, which is where the systems actually differ.
+  const tpl = useTemplate("avatar");
+  const shapeRadius =
+    shape === "circle" ? rv(7) : shape === "square" ? rv(1) : tplRadius(tpl, "toggle") ?? rv(3);
   const [imageFailed, setImageFailed] = useState(false);
   const showImage = display === "image" && !!imageUrl && !imageFailed;
 
@@ -300,6 +319,7 @@ export function TokenTooltip({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const tpl = useTemplate("tooltip");
   const bg = r("container.bg") ?? tv("text-primary");
 
   const bubble = (
@@ -307,12 +327,15 @@ export function TokenTooltip({
       style={{
         background: bg,
         color: r("text.color") ?? tv("surface-base"),
-        padding: size === "md" ? `${sv(2)} ${sv(3)}` : `${sv(1)} ${sv(2)}`,
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        padding:
+          size === "md"
+            ? `${tplPad(tpl, sv(2))} ${tplPad(tpl, sv(3))}`
+            : `${tplPad(tpl, sv(1))} ${tplPad(tpl, sv(2))}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "overlay") ?? rv(radiusStep),
         fontSize: size === "md" ? "var(--ark-text-sm)" : "var(--ark-text-xs)",
         fontFamily: r("text.font") ?? "var(--ark-font-sans)",
-        fontWeight: 500,
-        boxShadow: "var(--ark-shadow-medium)",
+        fontWeight: tplWeight(tpl) ?? 500,
+        boxShadow: tplShadow(tpl, "overlay") ?? "var(--ark-shadow-medium)",
         whiteSpace: multiline ? "normal" : "nowrap",
         maxWidth: multiline ? 200 : undefined,
         lineHeight: multiline ? 1.5 : undefined,
@@ -377,7 +400,10 @@ export function TokenProgress({
   resolve?: Resolver;
 }) {
   const r = resolve;
-  const trackRadius = r("track.radius") ?? rv(radiusStep);
+  // Carbon is the one system that squares a progress track; the rest keep the
+  // capsule, so this is the only thing the template has to say here.
+  const tpl = useTemplate("progress");
+  const trackRadius = r("track.radius") ?? (tplIsSquare(tpl) ? 0 : undefined) ?? rv(radiusStep);
   const clamped = Math.min(Math.max(value, 0), 100);
   const barHeight = thickness === "thin" ? 4 : thickness === "thick" ? 12 : 8;
 
@@ -420,7 +446,7 @@ export function TokenProgress({
               fill="none"
               stroke={r("fill.bg") ?? tv("action-primary-default")}
               strokeWidth={stroke}
-              strokeLinecap="round"
+              strokeLinecap={tplIsSquare(tpl) ? "butt" : "round"}
               strokeDasharray={circumference}
               strokeDashoffset={
                 indeterminate ? circumference * 0.72 : circumference * (1 - clamped / 100)
@@ -525,10 +551,11 @@ export function TokenSkeletonLoader({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const tpl = useTemplate("skeleton");
   const bar = (w: string, h = 10): CSSProperties => ({
     width: w,
     height: h,
-    borderRadius: r("container.radius") ?? rv(radiusStep),
+    borderRadius: r("container.radius") ?? tplRadius(tpl, "toggle") ?? rv(radiusStep),
     background: r("container.bg") ?? tv("surface-subtle"),
   });
   const lineCount = Math.min(Math.max(Math.round(lines), 1), 5);
@@ -635,7 +662,12 @@ export function TokenToast({
 
   // ── Templates (lib/componentTemplates.ts) — structure only; the tone,
   // copy and option flags above are reused verbatim by every branch.
-  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+  // One source of truth for "which template is active" (see TokenAlert): the
+  // hook resolves an explicit prop, then a preview scope, then the stored
+  // choice, and its profile is what dresses the default layout for the systems
+  // that restyle rather than rebuild it.
+  const tpl = useTemplate("toast", template);
+  const activeTemplate = tpl.id;
   const heading = toastTitle || "Transaction saved";
   const message = toastBody || "TXN-0459 posted to the operating ledger.";
 
@@ -837,10 +869,12 @@ export function TokenToast({
         display: "flex",
         alignItems: "center",
         gap: sv(2),
-        padding: `${sv(2)} ${sv(3)}`,
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        padding: `${tplPad(tpl, sv(2))} ${tplPad(tpl, sv(3))}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "overlay") ?? rv(radiusStep),
         background: r("container.bg") ?? tv("surface-elevated"),
-        border: `1px solid ${r("container.border") ?? tv("border-default")}`,
+        border: `${tpl.border ?? 1}px solid ${r("container.border") ?? tv("border-default")}`,
+        // `elevation` is a declared option, so it still wins — the template only
+        // supplies the shadow for a toast that never had one set.
         boxShadow: `var(--ark-shadow-${elevation})`,
         fontFamily: "var(--ark-font-sans)",
         maxWidth: 360,
@@ -956,7 +990,9 @@ export function TokenAvatarGroup({
   const shown = AVATAR_GROUP_INITIALS.slice(0, cap);
   const remainder = total - cap;
 
-  const radius = shape === "circle" ? "50%" : (r("avatar.radius") ?? rv(radiusStep));
+  const tpl = useTemplate("avatarGroup");
+  const radius =
+    shape === "circle" ? "50%" : (r("avatar.radius") ?? tplRadius(tpl, "toggle") ?? rv(radiusStep));
   const ringWidth = r("avatar.ringWidth") ?? "2px";
   const ring = r("avatar.ring") ?? tv("surface-base");
 
@@ -978,7 +1014,7 @@ export function TokenAvatarGroup({
         boxSizing: "border-box",
         fontFamily: "var(--ark-font-sans)",
         fontSize: Math.max(9, Math.round(size * 0.36)),
-        fontWeight: 600,
+        fontWeight: tplWeight(tpl) ?? 600,
         letterSpacing: "0.01em",
         position: "relative",
         zIndex: z,

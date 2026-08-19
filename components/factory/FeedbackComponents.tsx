@@ -13,7 +13,16 @@ import { rv, sv, tv } from "@/lib/tokens";
 import { NO_BINDINGS, Resolver, useComponentBindings, createChildResolver } from "@/lib/componentSchema";
 import { useTone } from "./DisplayComponents";
 import { TokenButton } from "./CoreComponents";
-import { TemplateTextAction, MATERIAL_RADIUS } from "./templateKit";
+import {
+  TemplateTextAction,
+  MATERIAL_RADIUS,
+  useTemplate,
+  tplRadius,
+  tplPad,
+  tplWeight,
+  tplShadow,
+  tplIsSquare,
+} from "./templateKit";
 
 /* ── Spinner ── */
 
@@ -31,6 +40,10 @@ export function TokenSpinner({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // Bars and dots are the only shapes a template can speak to here (the ring is
+  // a glyph): Carbon squares them, everyone else keeps them round.
+  const tpl = useTemplate("spinner");
+  const squared = tplIsSquare(tpl);
   const color =
     tone === "action"
       ? r("spinner.color") ?? tv("action-primary-default")
@@ -52,7 +65,7 @@ export function TokenSpinner({
             style={{
               width: dot,
               height: dot,
-              borderRadius: "50%",
+              borderRadius: squared ? 0 : "50%",
               background: color,
               animationDelay: `${i * 0.18}s`,
             }}
@@ -75,7 +88,7 @@ export function TokenSpinner({
             style={{
               width: barW,
               height: size * (i === 1 ? 0.9 : 0.6),
-              borderRadius: barW / 2,
+              borderRadius: squared ? 0 : barW / 2,
               background: color,
               animationDelay: `${i * 0.18}s`,
             }}
@@ -120,6 +133,9 @@ export function TokenDivider({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  // A rule has no corner to round, so the template lands on the one piece of
+  // it that carries a system's voice: the label's weight and tracking.
+  const tpl = useTemplate("divider");
   const color = r("divider.line") ?? tv("border-muted");
   const insetPad = inset ? sv(6) : undefined;
 
@@ -173,8 +189,8 @@ export function TokenDivider({
         style={{
           fontSize: "var(--ark-text-xs)",
           fontFamily: "var(--ark-font-sans)",
-          fontWeight: 600,
-          letterSpacing: "0.04em",
+          fontWeight: tplWeight(tpl) ?? 600,
+          letterSpacing: tpl.type?.tracking ?? "0.04em",
           textTransform: "uppercase",
           color: r("divider.label") ?? tv("text-muted"),
           whiteSpace: "nowrap",
@@ -199,6 +215,7 @@ export function TokenKbd({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const tpl = useTemplate("kbd");
   const cap = size === "md" ? 28 : 22;
   return (
     <kbd
@@ -209,7 +226,7 @@ export function TokenKbd({
         minWidth: cap,
         height: cap,
         padding: `0 ${sv(1)}`,
-        borderRadius: r("container.radius") ?? rv(2),
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "toggle") ?? rv(2),
         background: r("container.bg") ?? tv("surface-elevated"),
         border: `1px solid ${r("container.border") ?? tv("border-default")}`,
         borderBottomWidth: 2,
@@ -254,6 +271,9 @@ export function TokenStat({
   const tone = useTone(trend === "up" ? "success" : "error", mode);
   const Arrow = trend === "up" ? ArrowUpRight : ArrowDownRight;
   const r = resolve;
+  // A stat is type, not chrome — the delta chip is the one piece with a shape,
+  // so that's where the template lands.
+  const tpl = useTemplate("stat");
   const valueSize =
     size === "sm" ? "var(--ark-text-2xl)" : size === "lg" ? "var(--ark-text-4xl)" : "var(--ark-text-3xl)";
   return (
@@ -280,12 +300,12 @@ export function TokenStat({
               alignItems: "center",
               gap: 2,
               padding: `2px ${sv(1)}`,
-              borderRadius: rv(7),
+              borderRadius: tplRadius(tpl, "chip") ?? rv(7),
               background: tone.bg,
-              border: `1px solid ${tone.border}`,
+              border: `${tpl.border ?? 1}px solid ${tone.border}`,
               color: tone.text,
               fontSize: "var(--ark-text-xs)",
-              fontWeight: 700,
+              fontWeight: tplWeight(tpl) ?? 700,
             }}
           >
             <Arrow size={12} style={{ color: tone.accent }} />
@@ -330,7 +350,11 @@ export function TokenEmptyState({
 
   // ── Templates (lib/componentTemplates.ts) — structure only; the same copy,
   // icon and action-button instance settings feed every branch.
-  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+  // One source of truth for "which template is active": the hook resolves an
+  // explicit prop, then a preview scope, then the stored choice — so the
+  // structural branch below and the shape grammar can never disagree.
+  const tpl = useTemplate("emptyState", template);
+  const activeTemplate = tpl.id;
   const emptyTitle = "No transactions yet";
   const emptyBody = "Once activity posts to this ledger it will show up here, newest first.";
 
@@ -549,6 +573,7 @@ export function TokenCodeBlock({
   resolve?: Resolver;
 }) {
   const r = resolve;
+  const tpl = useTemplate("codeBlock");
   const colorFor = (c?: "kw" | "str" | "com" | "fn"): string =>
     c === "kw"
       ? r("syntax.keyword") ?? tv("text-link")
@@ -563,9 +588,10 @@ export function TokenCodeBlock({
   return (
     <div
       style={{
-        borderRadius: r("container.radius") ?? rv(radiusStep),
-        border: `1px solid ${r("container.border") ?? tv("border-default")}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "surface") ?? rv(radiusStep),
+        border: `${tpl.border ?? 1}px solid ${r("container.border") ?? tv("border-default")}`,
         background: r("container.bg") ?? tv("surface-sunken"),
+        boxShadow: tplShadow(tpl, "raised") ?? undefined,
         overflow: "hidden",
         fontFamily: "var(--ark-font-mono)",
       }}
@@ -607,7 +633,7 @@ export function TokenCodeBlock({
       <pre
         style={{
           margin: 0,
-          padding: sv(3),
+          padding: tplPad(tpl, sv(3)),
           fontSize: "var(--ark-text-xs)",
           lineHeight: 1.7,
           overflowX: "auto",

@@ -13,6 +13,12 @@ import { rv, sv, tv } from "@/lib/tokens";
 import { NO_BINDINGS, Resolver } from "@/lib/componentSchema";
 import type { InteractionState } from "./CoreComponents";
 import { pxNum } from "./CoreComponents";
+import {
+  useTemplate,
+  tplToggleRadius,
+  tplToggleStroke,
+  tplSwitchMetrics,
+} from "./templateKit";
 
 const t = (props: string[]): string =>
   props
@@ -53,11 +59,16 @@ export function TokenCheckbox({
   const disabled = state === "disabled";
   const on = checked || indeterminate;
   const r = resolve;
+  // Template shape grammar: a checkbox is a circle in Apple's systems, a hard
+  // square in Carbon, and a softly-rounded box everywhere else — the corner is
+  // the whole tell. Stroke weight follows the same profile.
+  const tpl = useTemplate("checkbox");
+  const stroke = tplToggleStroke(tpl) ?? "1.5px";
   const box: CSSProperties = {
     width: 18,
     height: 18,
     flexShrink: 0,
-    borderRadius: r("box.radius") ?? rv(radiusStep),
+    borderRadius: r("box.radius") ?? tplToggleRadius(tpl) ?? rv(radiusStep),
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -68,7 +79,7 @@ export function TokenCheckbox({
           ? tv("action-primary-hover")
           : r("box.bgOn") ?? tv("action-primary-default")
         : r("box.bgOff") ?? tv("surface-elevated"),
-    border: `1.5px solid ${
+    border: `${stroke} solid ${
       disabled
         ? tv("action-primary-disabled")
         : on
@@ -119,6 +130,10 @@ export function TokenRadio({
 }) {
   const disabled = state === "disabled";
   const r = resolve;
+  const tpl = useTemplate("radio");
+  // Every one of the five systems draws a radio as a circle — what differs is
+  // the ring weight, so that's the only thing the template touches here.
+  const stroke = tplToggleStroke(tpl) ?? "1.5px";
   const fill = r("dot.fill") ?? tv("action-primary-default");
   const outer: CSSProperties = {
     width: 18,
@@ -129,7 +144,7 @@ export function TokenRadio({
     alignItems: "center",
     justifyContent: "center",
     background: r("dot.bg") ?? tv("surface-elevated"),
-    border: `1.5px solid ${
+    border: `${stroke} solid ${
       disabled
         ? tv("action-primary-disabled")
         : checked
@@ -182,12 +197,25 @@ export function TokenSwitch({
 }) {
   const disabled = state === "disabled";
   const r = resolve;
+  // Each system's switch has a signature size: Apple's tall capsule with a knob
+  // that nearly fills it, Material's wide track, Carbon's square-cornered
+  // rectangle, and the compact pills Atlassian and Fluent use. `m` is
+  // undefined for Arkitype, which keeps its own 34×20.
+  const tpl = useTemplate("switch");
+  const m = tplSwitchMetrics(tpl);
+  const trackW = m?.w ?? 34;
+  const trackH = m?.h ?? 20;
+  const knob = m?.knob ?? 14;
+  const pad = m?.pad ?? 2;
+  // 1px of border on each side, which the track always draws (transparent when
+  // on) — so the thumb's travel is the track minus its border, padding and knob.
+  const travel = trackW - 2 - pad * 2 - knob;
   const track: CSSProperties = {
-    width: 34,
-    height: 20,
+    width: trackW,
+    height: trackH,
     flexShrink: 0,
-    borderRadius: 9999,
-    padding: 2,
+    borderRadius: m?.trackRadius ?? 9999,
+    padding: pad,
     boxSizing: "border-box",
     background: disabled
       ? tv("action-primary-disabled")
@@ -203,12 +231,12 @@ export function TokenSwitch({
     ...ringStyle(state === "focus"),
   };
   const thumb: CSSProperties = {
-    width: 14,
-    height: 14,
-    borderRadius: "50%",
+    width: knob,
+    height: knob,
+    borderRadius: m ? m.knobRadius : "50%",
     background: r("switchThumb.bg") ?? tv("surface-base"),
     boxShadow: "var(--ark-shadow-low)",
-    transform: checked ? "translateX(14px)" : "translateX(0)",
+    transform: checked ? `translateX(${travel}px)` : "translateX(0)",
     transition: t(["transform"]),
   };
 

@@ -13,6 +13,8 @@ import { sv, tv } from "@/lib/tokens";
 import { TokenBadge } from "./DisplayComponents";
 import { TokenButton, TokenInput, TokenAlert } from "./CoreComponents";
 import { TokenSearchField, TokenStepper } from "./FormControls";
+import { useTemplate, tplScalar, tplWeight, tplActiveBar } from "./templateKit";
+import type { TemplateProfile } from "@/lib/componentTemplates";
 
 export const TABS_SKELETONS = [
   { id: "1", name: "Standard Underline", desc: "Border-base indicator beneath labels" },
@@ -29,17 +31,29 @@ interface TabsResolvedOpts {
   padding: number;
   showIcons: boolean;
   skeletonId: string;
+  /** The active template's shape grammar — see lib/componentTemplates.ts. */
+  tpl: TemplateProfile;
 }
 
+/**
+ * Tabs keeps its four structural skeletons *and* takes a template: the
+ * skeleton decides the arrangement (underline, pills, segmented, vertical) and
+ * the template decides the shape grammar it's drawn in. Scalars go through
+ * `tplScalar`, so a radius or padding the user actually set still wins.
+ */
 function useResolvedTabsOptions(): TabsResolvedOpts {
   const cfg = useDesignSystem((s) => s.components.tabs);
   const opts = resolveOptions("tabs", cfg?.properties);
+  const raw = cfg?.properties;
+  const tpl = useTemplate("tabs");
+  const padding = Number(opts.padding ?? 8);
   return {
-    radius: Number(opts.radius ?? 6),
-    borderWidth: Number(opts.borderWidth ?? 1),
-    padding: Number(opts.padding ?? 8),
+    radius: tplScalar(raw, "radius", Number(opts.radius ?? 6), tpl.radius?.control),
+    borderWidth: tplScalar(raw, "borderWidth", Number(opts.borderWidth ?? 1), tpl.border),
+    padding: tplScalar(raw, "padding", padding, Math.round(padding * tpl.density)),
     showIcons: opts.showIcons !== false,
     skeletonId: (cfg?.skeletonId ?? "1") as string,
+    tpl,
   };
 }
 
@@ -270,13 +284,14 @@ export function TabsSkeleton({
     }
   };
 
+  const bar = tplActiveBar(opts.tpl, indicatorColor);
   const baseBtn = {
     background: "transparent",
     border: "none",
     cursor: "pointer",
     fontFamily: "var(--ark-font-sans)",
     fontSize: "var(--ark-text-xs)",
-    fontWeight: 600,
+    fontWeight: tplWeight(opts.tpl) ?? 600,
     transition: "all 0.15s ease",
   } as const;
 
@@ -467,12 +482,30 @@ export function TabsSkeleton({
               style={{
                 ...baseBtn,
                 padding: "10px 0",
+                position: "relative",
                 color: on ? activeTextColor : tv("text-muted"),
-                borderBottom: `2px solid ${on ? indicatorColor : "transparent"}`,
                 marginBottom: -1,
               }}
             >
               {renderTabLabel(t)}
+              {/* The active marker is its own element rather than a border, so
+                  a template can shape it: Carbon's full-width square bar,
+                  Atlassian's hairline, Fluent's shorter rounded one. Arkitype's
+                  profile supplies nothing and lands on the original 2px rule. */}
+              {on ? (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    left: bar?.inset ?? 0,
+                    right: bar?.inset ?? 0,
+                    bottom: 0,
+                    height: bar?.thickness ?? 2,
+                    borderRadius: bar?.radius ?? 0,
+                    background: indicatorColor,
+                  }}
+                />
+              ) : null}
             </button>
           );
         })}

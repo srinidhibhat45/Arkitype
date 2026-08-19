@@ -26,6 +26,12 @@ import {
   CarbonCloseButton,
   MATERIAL_RADIUS,
   APPLE_RADIUS,
+  useTemplate,
+  tplRadius,
+  tplPad,
+  tplWeight,
+  tplShadow,
+  tplBorderWidth,
 } from "./templateKit";
 
 /* ── List item (media object) ── */
@@ -71,7 +77,11 @@ export function TokenListItem({
 
   // ── Templates (lib/componentTemplates.ts) — structure only; the same rows,
   // avatars, badges and option flags feed every branch.
-  const activeTemplate = template ?? (listCfg?.properties?.template as string) ?? "arkitype";
+  // One source of truth for "which template is active": the hook resolves an
+  // explicit prop, then a preview scope, then the stored choice — so the
+  // structural branch below and the shape grammar can never disagree.
+  const tpl = useTemplate("listItem", template);
+  const activeTemplate = tpl.id;
 
   if (activeTemplate === "material3") {
     return (
@@ -314,8 +324,9 @@ export function TokenListItem({
   return (
     <div
       style={{
-        borderRadius: r("container.radius") ?? rv(radiusStep),
-        border: `1px solid ${border}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "surface") ?? rv(radiusStep),
+        border: `${tpl.border ?? 1}px solid ${border}`,
+        boxShadow: tplShadow(tpl, "raised") ?? undefined,
         overflow: "hidden",
         background: r("container.bg") ?? tv("surface-elevated"),
         maxWidth: 440,
@@ -329,7 +340,7 @@ export function TokenListItem({
             display: "flex",
             alignItems: "center",
             gap: sv(2),
-            padding: `${sv(2)} ${sv(3)}`,
+            padding: `${tplPad(tpl, sv(2))} ${tplPad(tpl, sv(3))}`,
             borderTop: i > 0 ? `1px solid ${border}` : "none",
           }}
         >
@@ -409,7 +420,11 @@ export function TokenBanner({
 
   // ── Templates (lib/componentTemplates.ts) — structure only. The banner's
   // copy is fixed demo content in every branch, exactly as in the default.
-  const activeTemplate = template ?? (cfg?.properties?.template as string) ?? "arkitype";
+  // One source of truth for "which template is active": the hook resolves an
+  // explicit prop, then a preview scope, then the stored choice — so the
+  // structural branch below and the shape grammar can never disagree.
+  const tpl = useTemplate("banner", template);
+  const activeTemplate = tpl.id;
   const bannerTitle = "Q3 close is in 5 days";
   const bannerBody = "Reconcile pending transactions before the ledger locks.";
 
@@ -558,10 +573,11 @@ export function TokenBanner({
         display: "flex",
         alignItems: "center",
         gap: sv(2),
-        padding: `${r("container.padY") ?? sv(2)} ${r("container.padX") ?? sv(3)}`,
-        borderRadius: r("container.radius") ?? rv(radiusStep),
+        padding: `${r("container.padY") ?? tplPad(tpl, sv(2))} ${r("container.padX") ?? tplPad(tpl, sv(3))}`,
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "surface") ?? rv(radiusStep),
         background: tone.bg,
-        border: `1px solid ${tone.border}`,
+        border: `${tpl.border ?? 1}px solid ${tone.border}`,
+        boxShadow: tplShadow(tpl, "raised") ?? undefined,
         color: tone.text,
         fontFamily: "var(--ark-font-sans)",
         width: "100%",
@@ -633,7 +649,10 @@ export function TokenField({
 }) {
   const tone = useTone("error", mode);
   const r = resolve;
-
+  // A field wraps an Input, which takes the edge grammar itself — what's left
+  // here is the label's voice and the corner of the invalid ring, which has to
+  // agree with the control it's drawn around.
+  const tpl = useTemplate("field");
   const cfg = useDesignSystem((s) => s.components.field);
   const instances = cfg?.instances;
 
@@ -645,7 +664,16 @@ export function TokenField({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: sv(1), width: "100%", maxWidth: 340, fontFamily: "var(--ark-font-sans)" }}>
-      <label style={{ fontSize: "var(--ark-text-sm)", fontWeight: 600, color: r("text.label") ?? tv("text-primary"), display: "inline-flex", gap: 3 }}>
+      <label
+        style={{
+          fontSize: "var(--ark-text-sm)",
+          fontWeight: tplWeight(tpl) ?? 600,
+          letterSpacing: tpl.type?.tracking,
+          color: r("text.label") ?? tv("text-primary"),
+          display: "inline-flex",
+          gap: 3,
+        }}
+      >
         {label}
         {required ? <span style={{ color: r("text.required") ?? tone.accent }}>*</span> : null}
       </label>
@@ -653,7 +681,7 @@ export function TokenField({
         style={
           invalid
             ? {
-                borderRadius: rv(radiusStep),
+                borderRadius: tplRadius(tpl, "field") ?? rv(radiusStep),
                 boxShadow: `0 0 0 1px ${tone.accent}`,
               }
             : undefined
@@ -707,12 +735,15 @@ export function TokenStatGrid({
 }) {
   const r = resolve;
   const statResolve = useComponentBindings("stat");
+  // A grid of cards: corner, edge, elevation and the gutter between them are
+  // exactly the four things the systems disagree about.
+  const tpl = useTemplate("statGrid");
   const cell: CSSProperties = {
-    padding: sv(3),
-    borderRadius: r("cell.radius") ?? rv(radiusStep),
+    padding: tplPad(tpl, sv(3)),
+    borderRadius: r("cell.radius") ?? tplRadius(tpl, "surface") ?? rv(radiusStep),
     background: r("cell.bg") ?? tv("surface-elevated"),
-    border: `1px solid ${r("cell.border") ?? tv("border-muted")}`,
-    boxShadow: "var(--ark-shadow-low)",
+    border: `${tpl.border ?? 1}px solid ${r("cell.border") ?? tv("border-muted")}`,
+    boxShadow: tplShadow(tpl, "raised") ?? "var(--ark-shadow-low)",
   };
   const count = Math.min(Math.max(Math.round(cells), 2), 6);
   const shown = Array.from({ length: count }, (_, i) => GRID_STATS[i % GRID_STATS.length]);
@@ -720,7 +751,7 @@ export function TokenStatGrid({
     <div
       style={{
         display: "grid",
-        gap: sv(3),
+        gap: tplPad(tpl, sv(3)),
         // Every card keeps a readable floor width (a currency value + delta chip
         // never fit below ~220px). A fixed column count that needs more room than
         // the container simply overflows, and the studio wrapper scrolls it —
@@ -779,7 +810,11 @@ export function TokenFeedItem({
 
   // ── Templates (lib/componentTemplates.ts) — structure only; author, body,
   // timestamp and the reaction/reply flags are shared by every branch.
-  const activeTemplate = template ?? (feedCfg?.properties?.template as string) ?? "arkitype";
+  // One source of truth for "which template is active": the hook resolves an
+  // explicit prop, then a preview scope, then the stored choice — so the
+  // structural branch below and the shape grammar can never disagree.
+  const tpl = useTemplate("feedItem", template);
+  const activeTemplate = tpl.id;
 
   const reactions = showActions ? (
     <>
@@ -934,10 +969,11 @@ export function TokenFeedItem({
       style={{
         display: "flex",
         gap: sv(2),
-        padding: sv(3),
-        borderRadius: r("container.radius") ?? rv(radiusStep),
-        border: `1px solid ${r("container.border") ?? tv("border-muted")}`,
+        padding: tplPad(tpl, sv(3)),
+        borderRadius: r("container.radius") ?? tplRadius(tpl, "surface") ?? rv(radiusStep),
+        border: `${tpl.border ?? 1}px solid ${r("container.border") ?? tv("border-muted")}`,
         background: r("container.bg") ?? tv("surface-elevated"),
+        boxShadow: tplShadow(tpl, "raised") ?? undefined,
         maxWidth: 460,
         fontFamily: "var(--ark-font-sans)",
       }}
@@ -1011,6 +1047,7 @@ export function TokenDrawer({
   const r = resolve;
   const buttonResolve = useComponentBindings("button");
   const iconButtonResolve = useComponentBindings("iconButton");
+  const tpl = useTemplate("drawer");
   const horizontal = side !== "bottom";
   const rule = r("divider.color") ?? tv("border-muted");
 
@@ -1018,8 +1055,8 @@ export function TokenDrawer({
     display: "flex",
     flexDirection: "column",
     background: r("container.bg") ?? tv("surface-elevated"),
-    border: `${r("container.borderWidth") ?? "1px"} solid ${r("container.border") ?? tv("border-default")}`,
-    borderRadius: r("container.radius") ?? rv(radiusStep),
+    border: `${r("container.borderWidth") ?? tplBorderWidth(tpl) ?? "1px"} solid ${r("container.border") ?? tv("border-default")}`,
+    borderRadius: r("container.radius") ?? tplRadius(tpl, "overlay") ?? rv(radiusStep),
     boxShadow: `var(--ark-shadow-${elevation})`,
     fontFamily: "var(--ark-font-sans)",
     width: horizontal ? width : "100%",
@@ -1048,7 +1085,7 @@ export function TokenDrawer({
             display: "flex",
             alignItems: "flex-start",
             gap: sv(2),
-            padding: `${r("container.padY") ?? sv(4)} ${r("container.padX") ?? sv(4)}`,
+            padding: `${r("container.padY") ?? tplPad(tpl, sv(4))} ${r("container.padX") ?? tplPad(tpl, sv(4))}`,
             borderBottom: `1px solid ${rule}`,
           }}
         >

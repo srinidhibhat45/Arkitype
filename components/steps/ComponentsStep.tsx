@@ -21,6 +21,7 @@ import { MODAL_SKELETONS, ModalScene } from "@/components/factory/ModalSkeletons
 import { TABS_SKELETONS, TabsSkeleton } from "@/components/factory/TabsSkeletons";
 import { TABLE_SKELETONS, TableSkeleton } from "@/components/factory/TableSkeletons";
 import { ComponentStudioPreview, ComponentStudioControls } from "@/components/factory/ComponentStudio";
+import { TemplateButton } from "@/components/factory/TemplatePicker";
 import { WIRED_COMPONENTS } from "@/lib/componentSchema";
 import { COMPONENT_LANES } from "@/lib/componentLanes";
 
@@ -154,10 +155,32 @@ function SkeletonPreview({ pattern }: { pattern: string }) {
   // bottom sheet actually needs, and reads as the mobile surface it is.
   const isBottomSheet = pattern === "modal" && skeletonId === "4";
 
+  // Modal / Tabs / Table don't go through the Studio's preview (they keep the
+  // four-skeleton rule instead), so the picker has to be mounted here or these
+  // three would be the only components in the library without one. Skeleton and
+  // template are different questions: the skeleton chooses the arrangement, the
+  // template the shape grammar it's drawn in.
+  const templatePreview = (
+    <div style={{ width: 320, height: 190, overflow: "hidden", display: "flex", alignItems: "center" }}>
+      {pattern === "modal" ? (
+        <div style={{ position: "relative", width: 320, height: 190 }}>
+          <ModalScene skeletonId={skeletonId} radiusStep={radiusStep} />
+        </div>
+      ) : pattern === "tabs" ? (
+        <TabsSkeleton skeletonId={skeletonId} radiusStep={radiusStep} />
+      ) : (
+        <TableSkeleton skeletonId={skeletonId} radiusStep={radiusStep} maxRows={3} />
+      )}
+    </div>
+  );
+
   return (
     <div>
-      <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
-        {skeletonName}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-mute">
+          {skeletonName}
+        </div>
+        <TemplateButton componentId={pattern} renderPreview={() => templatePreview} />
       </div>
       <ThemeFrame mode={mode}>
         {pattern === "modal" ? (

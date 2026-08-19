@@ -638,41 +638,57 @@ export function DocsSections() {
             </p>
             <h3 className="!mt-8 text-base font-medium text-fg">Templates: a different starting point</h3>
             <p>
-              The default layout for a compound component is one opinion about how it
-              should be built. Ten of them —{" "}
-              <strong className="font-medium text-fg">
-                Alert, Toast, Banner, Card, Empty state, Accordion, Dropdown menu, List item,
-                Feed item and Popover
-              </strong>{" "}
-              — let you swap that opinion for one modeled on a design system that has
-              been through years of real use. Open{" "}
+              The way a component is shaped — how round its corners are, whether a field
+              draws a box or a single underline, how tight its padding runs — is one
+              opinion, and it&apos;s the one people recognise a design system by. Every
+              component in the library carries five alternates to that opinion, each
+              modeled on a system that has been through years of real use. Open{" "}
               <strong className="font-medium text-fg">Templates</strong> in the studio
               toolbar and pick from:
             </p>
             <FieldList
               items={[
                 {
-                  label: "Material 3 — Google",
-                  body: "Tonal filled surfaces, no borders, generous corner radii, and actions as plain text rather than boxed buttons.",
+                  label: "Material 3 — Google / MUI",
+                  body: "Fully-rounded controls, tonal filled surfaces with no borders, generous corners, filled fields with a single underline, and a pill behind the active nav item.",
                 },
                 {
                   label: "Apple (HIG) — Human Interface Guidelines",
-                  body: "A neutral elevated card carrying the tone in a small tinted icon badge instead of a wash; inset grouped rows with hairline dividers, and a trailing chevron where the whole row is the affordance.",
+                  body: "Continuous 10px controls and 18px surfaces, borderless filled fields, elevated neutral cards with soft shadows, circular checkboxes and the tall capsule switch, and a tinted segment behind the active item.",
                 },
                 {
                   label: "IBM Carbon — IBM",
-                  body: "Square corners, a bold left accent bar, flat fills, ruled dividers, and underlined text links in place of buttons.",
+                  body: "Square corners everywhere, hairline rules, flat fills without shadow, productive (tighter) density, a single bottom rule on fields, and a square bar marking the active item.",
+                },
+                {
+                  label: "Atlassian — Atlassian Design System",
+                  body: "The tightest corner of the five at 3px, 8px on surfaces, borderless cards on resting elevation, and sunken fields inside a heavier border that lights up on focus.",
+                },
+                {
+                  label: "Fluent 2 — Microsoft",
+                  body: "4px controls and 8px surfaces, a 1px stroke on everything with a heavier accent stroke along a field's bottom edge, semibold labels, and a short rounded bar under the active item.",
                 },
               ]}
             />
             <p className="!mt-6">
-              A template changes <em>structure only</em>. It never brings the source
-              system&apos;s colours with it: every template resolves through the same
-              token chain as the default, so a Carbon alert is drawn in{" "}
-              <em>your</em> ramp, in whichever mode you&apos;re previewing. Any part
-              you&apos;ve already rebound keeps that binding, and every option — tone,
-              icon, dismissible, action, counts, labels — keeps working, so nothing in
-              the inspector goes dead when you switch.
+              A template changes <em>shape</em>, never colour. Every value it supplies is
+              a corner, a stroke weight, a density multiplier or a label weight, and each
+              one lands <em>underneath</em> your own bindings: a Carbon alert is drawn in{" "}
+              <em>your</em> ramp, in whichever mode you&apos;re previewing, and any part
+              you&apos;ve already rebound keeps that binding. Every option keeps working
+              too — tone, icon, dismissible, action, counts, labels — so nothing in the
+              inspector goes dead when you switch. Where you set a value yourself (a
+              radius, a padding, an elevation), your value wins over the template&apos;s.
+            </p>
+            <p>
+              Ten compound components go further and swap their whole{" "}
+              <em>layout</em> for Material 3, Apple and Carbon —{" "}
+              <strong className="font-medium text-fg">
+                Alert, Toast, Banner, Card, Empty state, Accordion, Dropdown menu, List item,
+                Feed item and Popover
+              </strong>
+              . Their cards in the picker are marked <em>Layout</em> so you can tell a
+              rebuild from a restyle before you pick one.
             </p>
             <Callout title="Once, then forget">
               Templates sit behind one small toolbar button rather than a step of their
@@ -680,7 +696,7 @@ export function DocsSections() {
               choice is saved with the file, exports with it, and shows on the published
               styleguide. Leave it alone and every component renders exactly as it always
               has — <strong className="font-medium text-fg">Arkitype (Original)</strong>{" "}
-              is simply the first card in the picker.
+              is simply the first card in the picker, and it supplies nothing at all.
             </Callout>
             <Callout title="The 4-skeleton rule">
               Three components — <strong className="font-medium text-fg">Modal, Tabs,</strong> and{" "}
@@ -688,6 +704,8 @@ export function DocsSections() {
               structural layouts each, picked from a gallery rather than freely
               composed. This keeps their most structurally-varied parts consistent
               and switchable everywhere they&apos;re used, including live in Preview.
+              They take a template as well: the skeleton chooses the arrangement, the
+              template the shape grammar it&apos;s drawn in.
             </Callout>
           </Section>
 

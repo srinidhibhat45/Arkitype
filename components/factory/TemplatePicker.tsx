@@ -13,6 +13,15 @@
  * template from the store see the hypothetical one instead. Every card is the
  * real component rendering live, in the file's actual current tokens and mode
  * — exactly what picking it would produce.
+ *
+ * Each preview needs its own `ThemeFrame`, and that is not decoration.
+ * `AnchoredPopover` portals to `document.body`, which puts these cards
+ * *outside* the Studio canvas's frame — the only place the `--ark-*` custom
+ * properties are declared. Without a frame of their own every token-driven
+ * declaration in the preview resolved to nothing: no fill, no padding, no
+ * radius, no type scale, so a button card rendered as its bare label on a
+ * blank box and the picker looked broken on exactly the components people
+ * open it for.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, LayoutTemplate } from "lucide-react";
@@ -20,6 +29,7 @@ import { useDesignSystem } from "@/store/useDesignSystem";
 import { activeTemplateId, getTemplates } from "@/lib/componentTemplates";
 import { TemplatePreviewScope } from "@/components/factory/templateKit";
 import { AnchoredPopover } from "@/components/factory/studioShared";
+import { ThemeFrame } from "@/components/ui/ThemeFrame";
 
 export function TemplateButton({
   componentId,
@@ -33,6 +43,9 @@ export function TemplateButton({
   const templates = getTemplates(componentId);
   const properties = useDesignSystem((s) => s.components[componentId]?.properties);
   const setProperty = useDesignSystem((s) => s.setComponentProperty);
+  // The cards claim to render "in your own tokens" — which means the mode the
+  // top bar is previewing too, not a fixed light one.
+  const mode = useDesignSystem((s) => s.currentPreviewMode);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -104,44 +117,63 @@ export function TemplateButton({
             {templates.map((t) => {
               const isActive = t.id === activeId;
               return (
-                <button
+                /* A card is a div, not a <button>: half these previews are
+                   themselves buttons (Button, Icon button, Button group, and
+                   every template branch with an action in it), and a <button>
+                   inside a <button> is invalid HTML that React reports on
+                   every render. role/tabIndex/aria-pressed plus the two keys a
+                   button answers to keep it a real control either way. */
+                <div
                   key={t.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => pick(t.id)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    pick(t.id);
+                  }}
                   aria-pressed={isActive}
-                  className={`flex flex-col items-stretch gap-2 rounded-lg border p-2 text-left transition-colors ${
+                  className={`flex cursor-pointer flex-col items-stretch gap-2 rounded-lg border p-2 text-left transition-colors ${
                     isActive
                       ? "border-line-strong bg-ink-raised"
                       : "border-line hover:border-line-strong hover:bg-ink/40"
                   }`}
                 >
-                  <div
-                    className="flex items-center justify-center overflow-hidden rounded-md border border-line bg-ink"
-                    style={{ height: 112 }}
-                  >
-                    {/* `inert` keeps a card's live demo controls (a nested
-                       TokenButton, an accordion toggle…) out of the tab order,
-                       so the outer <button> is the only focusable thing here.
-                       It's set imperatively rather than as a JSX prop because
-                       React 18 doesn't know `inert` is a boolean attribute and
-                       warns on every render if you pass it declaratively. */}
+                  {/* The frame is what makes the preview a preview: it declares
+                      the --ark-* variables the component renders from, and
+                      paints the system's own surface underneath it, in the mode
+                      the top bar is showing. See the note at the top of the
+                      file for what a card looks like without one. */}
+                  <ThemeFrame mode={mode} className="w-full">
                     <div
-                      aria-hidden="true"
-                      ref={(el) => el?.setAttribute("inert", "")}
-                      style={{
-                        pointerEvents: "none",
-                        transform: "scale(0.58)",
-                        transformOrigin: "center center",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
+                      className="flex items-center justify-center overflow-hidden"
+                      style={{ height: 112 }}
                     >
-                      <TemplatePreviewScope template={t.id}>
-                        {renderPreview(t.id)}
-                      </TemplatePreviewScope>
+                      {/* `inert` keeps a card's live demo controls (a nested
+                         TokenButton, an accordion toggle…) out of the tab order,
+                         so the card itself is the only focusable thing here.
+                         It's set imperatively rather than as a JSX prop because
+                         React 18 doesn't know `inert` is a boolean attribute and
+                         warns on every render if you pass it declaratively. */}
+                      <div
+                        aria-hidden="true"
+                        ref={(el) => el?.setAttribute("inert", "")}
+                        style={{
+                          pointerEvents: "none",
+                          transform: "scale(0.58)",
+                          transformOrigin: "center center",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <TemplatePreviewScope template={t.id}>
+                          {renderPreview(t.id)}
+                        </TemplatePreviewScope>
+                      </div>
                     </div>
-                  </div>
+                  </ThemeFrame>
                   <div className="px-0.5">
                     <div className="flex items-center gap-1.5">
                       <span className="truncate text-[11.5px] font-semibold text-fg">{t.name}</span>
@@ -165,7 +197,7 @@ export function TemplateButton({
                     </div>
                     <div className="mt-1 text-[10.5px] leading-snug text-fg-mute">{t.description}</div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
